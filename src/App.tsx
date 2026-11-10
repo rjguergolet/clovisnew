@@ -184,7 +184,7 @@ export default function App() {
         return isAuthorizedComparativo ? (
           <ComparativoFrequencia />
         ) : (
-          <div className="p-8 text-center text-red-600 font-bold bg-white rounded-xl border border-red-200 m-4 shadow-sm">
+          <div className="p-8 text-center text-red-600 font-bold bg-white rounded-2xl border border-red-200 m-4 shadow-sm">
             <i className="fa-solid fa-lock text-2xl mb-2 block"></i>
             Acesso Restrito: O módulo de Comparativo de Frequência (SED vs Mapão) é exclusivo para Gestão, Coordenação e Secretaria.
           </div>
@@ -193,7 +193,7 @@ export default function App() {
         return isAuthorizedAuditoria ? (
           <Auditoria />
         ) : (
-          <div className="p-8 text-center text-red-600 font-bold bg-white rounded-xl border border-red-200 m-4 shadow-sm">
+          <div className="p-8 text-center text-red-600 font-bold bg-white rounded-2xl border border-red-200 m-4 shadow-sm">
             <i className="fa-solid fa-lock text-2xl mb-2 block"></i>
             Acesso Restrito: O módulo de Auditoria é exclusivo para Direção e Vice-Direção.
           </div>
@@ -202,7 +202,7 @@ export default function App() {
         return isAuthorizedProfessores ? (
           <Professores userRole={userRole} />
         ) : (
-          <div className="p-8 text-center text-red-600 font-bold bg-white rounded-xl border border-red-200 m-4 shadow-sm">
+          <div className="p-8 text-center text-red-600 font-bold bg-white rounded-2xl border border-red-200 m-4 shadow-sm">
             <i className="fa-solid fa-lock text-2xl mb-2 block"></i>
             Acesso Restrito ao módulo de Professores.
           </div>
@@ -211,14 +211,14 @@ export default function App() {
         return <AgendaPEI />;
       case 'rotina-pdca':
         return isAuthorizedPDCA ? <GestaoRotinaPDCA /> : (
-          <div className="p-8 text-center text-red-600 font-bold bg-white rounded-xl border border-red-200 m-4 shadow-sm">
+          <div className="p-8 text-center text-red-600 font-bold bg-white rounded-2xl border border-red-200 m-4 shadow-sm">
             <i className="fa-solid fa-lock text-2xl mb-2 block"></i>
             Acesso Restrito ao Módulo Tarefas PDCA
           </div>
         );
       case 'dash-projetos-pei':
         return isAuthorizedPEI ? <DashProjetosPEI /> : (
-          <div className="p-8 text-center text-red-600 font-bold bg-white rounded-xl border border-red-200 m-4 shadow-sm">
+          <div className="p-8 text-center text-red-600 font-bold bg-white rounded-2xl border border-red-200 m-4 shadow-sm">
             <i className="fa-solid fa-lock text-2xl mb-2 block"></i>
             Acesso Restrito ao Dash Projetos PEI
           </div>
@@ -239,25 +239,38 @@ export default function App() {
   };
 
   const getRoleBadgeStyle = (cargo: string) => {
-    if (cargo.includes('DIRETOR')) return 'bg-purple-100 text-purple-800 border-purple-200';
-    if (cargo.includes('VICE')) return 'bg-indigo-100 text-indigo-800 border-indigo-200';
-    if (cargo.includes('CGPG') || cargo.includes('COORDENADOR')) return 'bg-blue-100 text-blue-800 border-blue-200';
-    if (cargo.includes('SECRETARIA')) return 'bg-amber-100 text-amber-800 border-amber-200';
-    if (cargo.includes('PAAC')) return 'bg-teal-100 text-teal-800 border-teal-200';
-    return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+    if (cargo.includes('DIRETOR')) return 'bg-purple-950/80 text-purple-200 border-purple-800';
+    if (cargo.includes('VICE')) return 'bg-indigo-950/80 text-indigo-200 border-indigo-800';
+    if (cargo.includes('CGPG') || cargo.includes('COORDENADOR')) return 'bg-sky-950/80 text-sky-200 border-sky-800';
+    if (cargo.includes('SECRETARIA')) return 'bg-amber-950/80 text-amber-200 border-amber-800';
+    if (cargo.includes('PAAC')) return 'bg-teal-950/80 text-teal-200 border-teal-800';
+    return 'bg-emerald-950/80 text-emerald-200 border-emerald-800';
   };
 
   const getRoleFriendlyName = (cargo: string) => {
-    if (cargo === 'DIRETOR') return 'Direção';
+    if (cargo === 'DIRETOR') return 'Direção Escolar';
     if (cargo === 'VICE_DIRETOR') return 'Vice-Direção';
     if (cargo === 'CGPG') return 'Coord. Geral';
     if (cargo === 'SECRETARIA') return 'Secretaria';
-    if (cargo === 'PAAC') return 'PAAC';
-    return 'Professor(a)';
+    if (cargo === 'PAAC') return 'Prof. PAAC';
+    return 'Docente PEI';
   };
 
+  const currentTabLabel = NAV_ITEMS.find((n) => n.id === currentTab)?.label || 'Visão Geral';
+
+  // Data formatada em português brasileiro
+  const dataHojeExtenso = (() => {
+    try {
+      const d = new Date();
+      const str = d.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    } catch (e) {
+      return 'Ano Letivo 2026';
+    }
+  })();
+
   return (
-    <div className="w-full min-h-screen bg-slate-100 text-slate-800 font-sans flex flex-col antialiased">
+    <div className="w-full min-h-screen bg-[#F8FAFC] text-slate-800 font-sans flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
       {/* Top Banner de Conexão Offline */}
       {!isOnline && (
         <div className="bg-amber-500 text-amber-950 px-4 py-2 text-xs font-bold flex items-center justify-center gap-2 shadow-sm sticky top-0 z-50">
@@ -266,8 +279,8 @@ export default function App() {
         </div>
       )}
 
-      {/* HEADER RESPONSIVO: 'Clovis de Lucca new' */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs transition-all">
+      {/* HEADER PRINCIPAL MODERNO: 'Clovis de Lucca new' */}
+      <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-white shadow-md transition-all">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6">
           <div className="flex items-center justify-between h-16 gap-2 sm:gap-4">
             
@@ -277,45 +290,44 @@ export default function App() {
               className="flex items-center gap-3 cursor-pointer group shrink-0 select-none"
               title="Voltar ao início do Clovis de Lucca new"
             >
-              <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-700 via-indigo-600 to-sky-500 text-white shadow-sm overflow-hidden border border-indigo-200 group-hover:scale-105 transition-transform">
+              <div className="relative flex items-center justify-center w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-500 via-indigo-600 to-sky-400 text-white shadow-md shadow-indigo-950/50 overflow-hidden border border-white/20 group-hover:scale-105 transition-transform">
                 <img 
                   src="/logo-clovis.svg" 
                   alt="Logo" 
                   className="w-full h-full object-cover p-1"
                   onError={(e) => {
-                    // Fallback para ícone estilizado se o SVG não estiver pronto
                     (e.target as HTMLElement).style.display = 'none';
                   }}
                 />
-                <i className="fa-solid fa-school text-lg text-white group-hover:rotate-6 transition-transform"></i>
+                <i className="fa-solid fa-graduation-cap text-lg text-white group-hover:rotate-6 transition-transform"></i>
               </div>
               <div className="flex flex-col">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-base sm:text-lg font-black tracking-tight text-slate-900 group-hover:text-indigo-600 transition-colors">
+                  <span className="text-base sm:text-lg font-black tracking-tight text-white group-hover:text-indigo-400 transition-colors">
                     Clovis de Lucca new
                   </span>
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 uppercase tracking-wider">
+                  <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-full bg-indigo-500/25 text-indigo-300 border border-indigo-400/30 uppercase tracking-wider">
                     PEI
                   </span>
                 </div>
-                <span className="text-[11px] text-slate-500 font-medium hidden sm:block truncate max-w-[280px]">
+                <span className="text-[11px] text-slate-400 font-medium hidden sm:block truncate max-w-[280px]">
                   E.E. Clóvis de Lucca • Gestão Integrada
                 </span>
               </div>
             </div>
 
-            {/* Navegação Desktop (Abas Principais com Rolagem Suave) */}
-            <nav className="hidden lg:flex items-center gap-1 overflow-x-auto py-1 scrollbar-none">
+            {/* Navegação Desktop com estilo Segmented Controls */}
+            <nav className="hidden lg:flex items-center gap-1 bg-slate-800/70 p-1 rounded-2xl border border-slate-700/60 overflow-x-auto scrollbar-none max-w-2xl">
               {NAV_ITEMS.filter(isNavAuthorized).map((item) => {
                 const isActive = currentTab === item.id;
                 return (
                   <button
                     key={item.id}
                     onClick={() => navigateToTab(item.id)}
-                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap cursor-pointer select-none ${
+                    className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap cursor-pointer select-none ${
                       isActive
-                        ? 'bg-indigo-600 text-white shadow-xs shadow-indigo-200'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                        ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-xs'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-700/60'
                     }`}
                   >
                     <i className={`fa-solid ${item.icon} text-xs ${isActive ? 'text-white' : 'text-slate-400'}`}></i>
@@ -325,56 +337,60 @@ export default function App() {
               })}
             </nav>
 
-            {/* Ações da Direita (Status, Cargo e Menu Mobile) */}
-            <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-              {/* Indicador de Conexão Online */}
-              <div 
-                className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
-                  isOnline 
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                    : 'bg-amber-50 text-amber-700 border-amber-200'
-                }`}
-                title={isOnline ? 'Conexão ativa com o MongoDB Atlas' : 'Offline - usando cache'}
+            {/* Ações da Direita (Botão IA, Auditoria, Status e Menu Mobile) */}
+            <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+              {/* Botão de Transcrição de Áudio com IA (Destaque Moderno) */}
+              <button
+                onClick={() => setIsAudioTranscriberOpen(true)}
+                className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-violet-600 via-indigo-600 to-sky-600 hover:from-violet-500 hover:to-sky-500 shadow-md shadow-indigo-950/60 active:scale-95 transition-all cursor-pointer border border-white/10"
+                title="Gravar áudio com microfone e transcrever com IA (gemini-3.5-transcribe)"
               >
-                <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></span>
-                <span className="hidden xl:inline">{isOnline ? 'Atlas Conectado' : 'Offline'}</span>
-              </div>
+                <div className="flex items-center gap-0.5">
+                  <span className="w-1 h-3 rounded-full bg-white/80 animate-soundwave-1"></span>
+                  <span className="w-1 h-4 rounded-full bg-white animate-soundwave-2"></span>
+                  <span className="w-1 h-2 rounded-full bg-white/80 animate-soundwave-3"></span>
+                </div>
+                <span className="hidden sm:inline">Transcrever Áudio</span>
+              </button>
 
-              {/* Tag de Cargo do Usuário Logado */}
-              <div className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${getRoleBadgeStyle(roleNorm)}`}>
-                <i className="fa-solid fa-user-shield text-[11px]"></i>
-                <span className="truncate max-w-[120px]">{userName ? `${userName} (${getRoleFriendlyName(roleNorm)})` : getRoleFriendlyName(roleNorm)}</span>
-              </div>
-
-              {/* Botão de Auditoria Rápida para Gestores */}
+              {/* Botão de Histórico / Auditoria para Gestores */}
               {isAuthorizedAuditoria && (
                 <button
                   onClick={() => setIsAuditModalOpen(true)}
-                  className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-700 hover:text-indigo-600 bg-slate-100 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 transition-colors cursor-pointer"
-                  title="Abrir Auditoria de Alterações"
+                  className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer"
+                  title="Abrir Auditoria e Log de Alterações"
                 >
-                  <i className="fa-solid fa-clock-rotate-left text-xs"></i>
-                  <span className="hidden xl:inline">Histórico</span>
+                  <i className="fa-solid fa-clock-rotate-left text-xs text-indigo-400"></i>
+                  <span className="hidden xl:inline">Auditoria</span>
                 </button>
               )}
 
-              {/* Botão de Transcrição de Áudio com IA (gemini-3.5-transcribe) */}
-              <button
-                onClick={() => setIsAudioTranscriberOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-700 hover:to-sky-700 shadow-xs hover:shadow-sm transition-all cursor-pointer"
-                title="Gravar áudio com microfone e transcrever com IA (gemini-3.5-transcribe)"
+              {/* Indicador de Conexão Online com Atlas */}
+              <div 
+                className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+                  isOnline 
+                    ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800' 
+                    : 'bg-amber-950/60 text-amber-300 border-amber-800'
+                }`}
+                title={isOnline ? 'Conexão ativa com o MongoDB Atlas' : 'Offline - usando cache'}
               >
-                <i className="fa-solid fa-microphone-lines text-xs"></i>
-                <span className="hidden sm:inline">Transcrever Áudio</span>
-              </button>
+                <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+                <span className="hidden xl:inline">{isOnline ? 'Atlas Online' : 'Offline'}</span>
+              </div>
+
+              {/* Tag de Cargo do Usuário Logado */}
+              <div className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-semibold border ${getRoleBadgeStyle(roleNorm)}`}>
+                <i className="fa-solid fa-user-shield text-[11px] text-indigo-300"></i>
+                <span className="truncate max-w-[130px]">{userName ? `${userName} (${getRoleFriendlyName(roleNorm)})` : getRoleFriendlyName(roleNorm)}</span>
+              </div>
 
               {/* Botão Hambúrguer Mobile / Tablet */}
               <button
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="lg:hidden inline-flex items-center justify-center w-9 h-9 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
+                className="lg:hidden inline-flex items-center justify-center w-9 h-9 rounded-xl text-slate-300 hover:text-white bg-slate-800 border border-slate-700 transition-colors cursor-pointer"
                 aria-label="Abrir Menu de Navegação"
               >
-                <i className={`fa-solid ${mobileMenuOpen ? 'fa-xmark text-lg text-indigo-600' : 'fa-bars text-base'}`}></i>
+                <i className={`fa-solid ${mobileMenuOpen ? 'fa-xmark text-lg text-indigo-400' : 'fa-bars text-base'}`}></i>
               </button>
             </div>
 
@@ -383,17 +399,17 @@ export default function App() {
 
         {/* Menu Dropdown Mobile / Tablet */}
         {mobileMenuOpen && (
-          <div className="lg:hidden border-t border-slate-200 bg-white/98 backdrop-blur-md px-4 py-3 shadow-lg animate-in slide-in-from-top duration-200">
-            <div className="flex items-center justify-between pb-3 mb-2 border-b border-slate-100">
+          <div className="lg:hidden border-t border-slate-800 bg-slate-900/98 px-4 py-3.5 shadow-xl animate-in slide-in-from-top duration-200">
+            <div className="flex items-center justify-between pb-3 mb-2.5 border-b border-slate-800">
               <div className="flex items-center gap-2">
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border ${getRoleBadgeStyle(roleNorm)}`}>
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border ${getRoleBadgeStyle(roleNorm)}`}>
                   <i className="fa-solid fa-user text-[11px]"></i>
                   <span>{userName ? `${userName} • ${getRoleFriendlyName(roleNorm)}` : getRoleFriendlyName(roleNorm)}</span>
                 </span>
               </div>
-              <div className={`inline-flex items-center gap-1 text-[11px] font-semibold ${isOnline ? 'text-emerald-600' : 'text-amber-600'}`}>
-                <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
-                <span>{isOnline ? 'Atlas Online' : 'Modo Offline'}</span>
+              <div className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${isOnline ? 'text-emerald-400' : 'text-amber-400'}`}>
+                <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+                <span>{isOnline ? 'Atlas Conectado' : 'Modo Offline'}</span>
               </div>
             </div>
 
@@ -404,26 +420,26 @@ export default function App() {
                   <button
                     key={item.id}
                     onClick={() => navigateToTab(item.id)}
-                    className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all text-left cursor-pointer ${
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all text-left cursor-pointer ${
                       isActive
                         ? 'bg-indigo-600 text-white shadow-xs'
-                        : 'text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200/80'
+                        : 'text-slate-300 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/60'
                     }`}
                   >
-                    <i className={`fa-solid ${item.icon} text-xs w-4 text-center ${isActive ? 'text-white' : 'text-indigo-500'}`}></i>
+                    <i className={`fa-solid ${item.icon} text-xs w-4 text-center ${isActive ? 'text-white' : 'text-indigo-400'}`}></i>
                     <span className="truncate">{item.label}</span>
                   </button>
                 );
               })}
             </div>
 
-            <div className="mt-3 pt-2 border-t border-slate-100 flex flex-col gap-2">
+            <div className="mt-3 pt-2.5 border-t border-slate-800 flex flex-col gap-2">
               <button
                 onClick={() => {
                   setMobileMenuOpen(false);
                   setIsAudioTranscriberOpen(true);
                 }}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-sky-600 shadow-xs transition-colors cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-violet-600 to-indigo-600 shadow-md transition-colors cursor-pointer"
               >
                 <i className="fa-solid fa-microphone-lines"></i>
                 <span>Transcrever Áudio com IA (gemini-3.5-transcribe)</span>
@@ -435,9 +451,9 @@ export default function App() {
                     setMobileMenuOpen(false);
                     setIsAuditModalOpen(true);
                   }}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 transition-colors cursor-pointer"
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer"
                 >
-                  <i className="fa-solid fa-shield-halved text-indigo-600"></i>
+                  <i className="fa-solid fa-clock-rotate-left text-indigo-400"></i>
                   <span>Auditoria e Histórico Completo de Alterações</span>
                 </button>
               )}
@@ -445,6 +461,27 @@ export default function App() {
           </div>
         )}
       </header>
+
+      {/* SUB-HEADER CONTEXTUAL (Breadcrumbs e Data do Dia) */}
+      <div className="bg-white border-b border-slate-200/80 px-4 sm:px-6 py-2.5 shadow-2xs">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs text-slate-500">
+          <div className="flex items-center gap-2 font-medium">
+            <span className="text-slate-400">Escola Clóvis</span>
+            <span className="text-slate-300">/</span>
+            <span className="font-bold text-indigo-600 flex items-center gap-1.5">
+              <i className={`fa-solid ${NAV_ITEMS.find(n => n.id === currentTab)?.icon || 'fa-folder-open'} text-[11px]`}></i>
+              {currentTabLabel}
+            </span>
+          </div>
+          <div className="flex items-center gap-3 text-slate-400">
+            <span className="hidden sm:inline font-medium">{dataHojeExtenso}</span>
+            <span className="hidden sm:inline">·</span>
+            <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+              SEDUC-SP • Ano Letivo 2026
+            </span>
+          </div>
+        </div>
+      </div>
 
       {/* ÁREA DE CONTEÚDO PRINCIPAL COM CLASSES TAILWIND */}
       <main className="flex-1 w-full min-w-0 max-w-7xl mx-auto px-2 sm:px-4 md:px-6 py-4 md:py-6">
@@ -476,10 +513,10 @@ export default function App() {
       </main>
 
       {/* Rodapé institucional com identidade do sistema */}
-      <footer className="w-full bg-white border-t border-slate-200 py-3 text-center text-xs text-slate-500 font-medium">
+      <footer className="w-full bg-white border-t border-slate-200 py-3.5 text-center text-xs text-slate-500 font-medium">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-700">Clovis de Lucca new</span>
+            <span className="font-bold text-slate-800">Clovis de Lucca new</span>
             <span>•</span>
             <span>Escola Estadual Clóvis de Lucca</span>
           </div>
