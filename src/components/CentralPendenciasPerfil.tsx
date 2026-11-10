@@ -71,10 +71,35 @@ export default function CentralPendenciasPerfil({
     }
   };
 
+  // Função utilitária para extrair percentual numérico de frequência (0 a 100)
+  const extrairPercentualFrequencia = (aluno: any): number => {
+    if (!aluno) return 100;
+    const raw = aluno.presenca_anual ?? aluno.presenca ?? aluno.frequencia ?? aluno.frequencia_anual ?? aluno.frequenciaNum;
+    if (raw === undefined || raw === null || String(raw).trim() === '' || String(raw).trim() === '-' || String(raw).trim() === 'N/D') {
+      return 100;
+    }
+    let str = String(raw).trim().replace('%', '').replace(',', '.');
+    let num = parseFloat(str);
+    if (isNaN(num)) return 100;
+    if (num > 0 && num <= 1) {
+      num = num * 100;
+    }
+    return num;
+  };
+
+  // Apenas tutorados com frequência estritamente abaixo de 75% (< 75%)
+  // Estudantes com 75% ou mais NUNCA devem constar como pendência!
+  const tutoradosReaisEmRisco = useMemo(() => {
+    return (tutoradosEmRisco || []).filter((al: any) => {
+      const freq = extrairPercentualFrequencia(al);
+      return freq < 75;
+    });
+  }, [tutoradosEmRisco]);
+
   // Total de itens pendentes calculados
   const totalPendencias = useMemo(() => {
     let count = recadosSemCiencia.length + tarefasUrgentes.length;
-    if (isProfessor || isPAAC) count += tutoradosEmRisco.length;
+    if (isProfessor || isPAAC) count += tutoradosReaisEmRisco.length;
     if (isDirecao || isCoord || isPAAC) count += notificacoesPedagogicas.length;
     if (isDirecao || isCoord) {
       if (alunosMapaoPendentesCount > 0) count += 1;
@@ -89,7 +114,7 @@ export default function CentralPendenciasPerfil({
   }, [
     recadosSemCiencia.length,
     tarefasUrgentes.length,
-    tutoradosEmRisco.length,
+    tutoradosReaisEmRisco.length,
     notificacoesPedagogicas.length,
     alunosMapaoPendentesCount,
     alunosBuscaAtivaCount,
@@ -144,6 +169,236 @@ export default function CentralPendenciasPerfil({
     return ativas[0] || aulasHoje[0] || null;
   }, [aulasHoje, proximaAulaHoje]);
 
+  // Discriminação exata de todas as ações necessárias para o perfil
+  const discriminacaoAcoes = useMemo(() => {
+    const itens: {
+      id: string;
+      categoria: 'recado' | 'tarefa' | 'tutorado' | 'notificacao' | 'substituicao' | 'busca_ativa' | 'auditoria' | 'atraso';
+      categoriaLabel: string;
+      corBadge: string;
+      corBorda: string;
+      icone: string;
+      titulo: string;
+      subtitulo: string;
+      detalheExtra?: string;
+      motivoAcao: string;
+      botaoAcaoTexto: string;
+      botaoAcaoIcone: string;
+      aoExecutarAcao: () => void;
+      botaoSecundarioTexto?: string;
+      aoExecutarSecundario?: () => void;
+    }[] = [];
+
+    // 1. Recados do Mural sem ciência
+    recadosSemCiencia.forEach((rec: any) => {
+      itens.push({
+        id: `recado-${rec.id}`,
+        categoria: 'recado',
+        categoriaLabel: 'Mural Oficial · Ciência Obrigatória',
+        corBadge: 'bg-purple-100 text-purple-900 border-purple-200',
+        corBorda: 'border-purple-200 bg-purple-50/50',
+        icone: 'fa-solid fa-bullhorn text-purple-600',
+        titulo: rec.titulo || 'Comunicado Oficial',
+        subtitulo: `Emitido por ${rec.autor || 'Direção'} · Para: ${rec.destinatarios || 'Equipe Escolar'}`,
+        detalheExtra: rec.conteudo || rec.mensagem || rec.descricao || '',
+        motivoAcao: 'Aguardando sua confirmação individual de leitura',
+        botaoAcaoTexto: 'Dar Ciência',
+        botaoAcaoIcone: 'fa-solid fa-check',
+        aoExecutarAcao: () => {
+          if (onConfirmarCiencia) onConfirmarCiencia(rec.id);
+        },
+        botaoSecundarioTexto: 'Ler Completo',
+        aoExecutarSecundario: () => {
+          if (onAbrirRecado) onAbrirRecado(rec);
+          else nav('mural');
+        }
+      });
+    });
+
+    // 2. Tarefas PDCA com prazo crítico ou vencido
+    tarefasUrgentes.forEach((t: any) => {
+      const dataPrazo = t.dataLimite ? String(t.dataLimite).slice(0, 10).split('-').reverse().join('/') : 'Hoje';
+      itens.push({
+        id: `tarefa-${t.id}`,
+        categoria: 'tarefa',
+        categoriaLabel: 'Plano PDCA · Tarefa Crítica',
+        corBadge: 'bg-amber-100 text-amber-900 border-amber-200',
+        corBorda: 'border-amber-200 bg-amber-50/50',
+        icone: 'fa-solid fa-list-check text-amber-600',
+        titulo: t.descricao || 'Tarefa da Rotina Escolar',
+        subtitulo: `Atribuída a: ${t.atribuirA || t.responsavel || 'Equipe PEI'}`,
+        motivoAcao: `Prazo crítico: ${dataPrazo} (Aguardando conclusão)`,
+        botaoAcaoTexto: 'Concluir Tarefa',
+        botaoAcaoIcone: 'fa-solid fa-check-double',
+        aoExecutarAcao: () => {
+          if (onToggleTarefa) onToggleTarefa(t.id, false);
+        },
+        botaoSecundarioTexto: 'Ver no PDCA',
+        aoExecutarSecundario: () => nav('rotina-pdca')
+      });
+    });
+
+    // 3. Tutorados em risco de frequência (Professor / PAAC) - estritamente < 75%
+    if (isProfessor || isPAAC) {
+      tutoradosReaisEmRisco.forEach((al: any) => {
+        const freqNum = extrairPercentualFrequencia(al);
+        const presenca = al.presenca_anual || al.presenca || `${freqNum}%`;
+        itens.push({
+          id: `tutorado-${al.ra || al.id}`,
+          categoria: 'tutorado',
+          categoriaLabel: 'Tutoria PEI · Frequência em Risco',
+          corBadge: 'bg-cyan-100 text-cyan-900 border-cyan-200',
+          corBorda: 'border-cyan-200 bg-cyan-50/50',
+          icone: 'fa-solid fa-user-graduate text-cyan-700',
+          titulo: `${al.nome} · ${al.turma || 'Turma não informada'}`,
+          subtitulo: `RA: ${al.ra} · Frequência Atual: ${presenca}`,
+          motivoAcao: `Presença em ${presenca} (Abaixo do mínimo legal de 75%)`,
+          botaoAcaoTexto: 'Abrir Ficha',
+          botaoAcaoIcone: 'fa-solid fa-folder-open',
+          aoExecutarAcao: () => {
+            if (onAbrirAluno && al.ra) onAbrirAluno(al.ra);
+            else nav('alunos');
+          },
+          botaoSecundarioTexto: 'Lançar Ocorrência',
+          aoExecutarSecundario: () => nav('registros')
+        });
+      });
+    }
+
+    // 4. Notificações pedagógicas urgentes (Direção / Vice / CGPG / PAAC)
+    if (isDirecao || isCoord || isPAAC) {
+      notificacoesPedagogicas.forEach((notif: any) => {
+        itens.push({
+          id: `notif-${notif.id}`,
+          categoria: 'notificacao',
+          categoriaLabel: 'Ocorrência Pedagógica · Encaminhada à Gestão',
+          corBadge: 'bg-rose-100 text-rose-900 border-rose-200',
+          corBorda: 'border-rose-200 bg-rose-50/50',
+          icone: 'fa-solid fa-triangle-exclamation text-rose-600',
+          titulo: `${notif.nomeAluno || `Estudante RA ${notif.ra}`} (${notif.turma || 'Turma não informada'})`,
+          subtitulo: `Encaminhado por: ${notif.autor_nome || notif.autor || 'Docente'} · Tipo: ${notif.tipo || 'Ocorrência'}`,
+          detalheExtra: notif.descricao || notif.conteudo || '',
+          motivoAcao: 'Notificação marcada para intervenção imediata da equipe gestora',
+          botaoAcaoTexto: 'Atender Alerta',
+          botaoAcaoIcone: 'fa-solid fa-check',
+          aoExecutarAcao: () => {
+            if (onAtenderNotificacao) onAtenderNotificacao(notif.id);
+          },
+          botaoSecundarioTexto: 'Ver Aluno',
+          aoExecutarSecundario: () => {
+            if (onAbrirAluno && notif.ra) onAbrirAluno(notif.ra);
+            else nav('alunos');
+          }
+        });
+      });
+    }
+
+    // 5. Substituições sem docente hoje
+    if (isDirecao || isCoord || isPAAC) {
+      substituicoesSemDocente.forEach((s: any) => {
+        itens.push({
+          id: `sub-${s.id || s.periodoId + '-' + s.turma}`,
+          categoria: 'substituicao',
+          categoriaLabel: 'Substituição PEI · Aula sem Docente',
+          corBadge: 'bg-blue-100 text-blue-900 border-blue-200',
+          corBorda: 'border-blue-200 bg-blue-50/50',
+          icone: 'fa-solid fa-shuffle text-blue-700',
+          titulo: `${s.periodoId ? `${s.periodoId}ª Aula · ` : ''}${s.turma} (${s.disciplina || 'Componente'})`,
+          subtitulo: `Professor ausente: ${s.professorAusente}`,
+          motivoAcao: 'Nenhum professor substituto foi designado para assumir esta aula hoje',
+          botaoAcaoTexto: 'Atribuir Docente',
+          botaoAcaoIcone: 'fa-solid fa-user-plus',
+          aoExecutarAcao: () => nav('substituicao-pei')
+        });
+      });
+    }
+
+    // 6. Alunos em Busca Ativa (Direção)
+    if (isDirecao && alunosBuscaAtivaCount > 0) {
+      itens.push({
+        id: 'alerta-busca-ativa',
+        categoria: 'busca_ativa',
+        categoriaLabel: 'Busca Ativa SEDUC · SLA 48h',
+        corBadge: 'bg-red-100 text-red-900 border-red-200',
+        corBorda: 'border-red-200 bg-red-50/50',
+        icone: 'fa-solid fa-magnifying-glass-location text-red-600',
+        titulo: `${alunosBuscaAtivaCount} estudantes em alerta crítico de faltas`,
+        subtitulo: 'Estudantes com faltas consecutivas ou frequência inferior a 75%',
+        motivoAcao: 'Exigência legal de registro de contato com as famílias e regularização',
+        botaoAcaoTexto: 'Abrir Busca Ativa',
+        botaoAcaoIcone: 'fa-solid fa-arrow-right',
+        aoExecutarAcao: () => nav('busca-ativa')
+      });
+    }
+
+    // 7. Mapão vs SED (Direção / Coordenação)
+    if ((isDirecao || isCoord) && alunosMapaoPendentesCount > 0) {
+      itens.push({
+        id: 'alerta-mapao-sed',
+        categoria: 'auditoria',
+        categoriaLabel: 'Auditoria SED vs Mapão · Fechamento Bimestral',
+        corBadge: 'bg-indigo-100 text-indigo-900 border-indigo-200',
+        corBorda: 'border-indigo-200 bg-indigo-50/50',
+        icone: 'fa-solid fa-scale-balanced text-indigo-600',
+        titulo: `${alunosMapaoPendentesCount} estudantes com pendência no Mapão`,
+        subtitulo: 'Notas ausentes ou divergência na sincronização de frequência SED',
+        motivoAcao: 'Regularização necessária antes do fechamento oficial do bimestre',
+        botaoAcaoTexto: 'Auditar SED vs Mapão',
+        botaoAcaoIcone: 'fa-solid fa-arrow-right',
+        aoExecutarAcao: () => nav('comparativo-frequencia')
+      });
+    }
+
+    // 8. Atrasos hoje (Secretaria)
+    if (isSecretaria && atrasosHojeCount > 0) {
+      itens.push({
+        id: 'alerta-atrasos-hoje',
+        categoria: 'atraso',
+        categoriaLabel: 'Portão Escolar · Entradas com Atraso',
+        corBadge: 'bg-amber-100 text-amber-900 border-amber-200',
+        corBorda: 'border-amber-200 bg-amber-50/50',
+        icone: 'fa-solid fa-clock-rotate-left text-amber-600',
+        titulo: `${atrasosHojeCount} alunos entraram com atraso no portão hoje`,
+        subtitulo: 'Acompanhamento de pontualidade e emissão de comunicados aos responsáveis',
+        motivoAcao: 'Registros do dia aguardando regularização ou justificativa da secretaria',
+        botaoAcaoTexto: 'Ver Atrasos do Dia',
+        botaoAcaoIcone: 'fa-solid fa-arrow-right',
+        aoExecutarAcao: () => nav('dashboard-atrasos')
+      });
+    }
+
+    return itens;
+  }, [
+    recadosSemCiencia,
+    tarefasUrgentes,
+    tutoradosReaisEmRisco,
+    notificacoesPedagogicas,
+    substituicoesSemDocente,
+    alunosBuscaAtivaCount,
+    alunosMapaoPendentesCount,
+    atrasosHojeCount,
+    isProfessor,
+    isPAAC,
+    isCoord,
+    isDirecao,
+    isSecretaria,
+    onConfirmarCiencia,
+    onAbrirRecado,
+    onToggleTarefa,
+    onAbrirAluno,
+    onAtenderNotificacao
+  ]);
+
+  const acoesFiltradas = useMemo(() => {
+    if (filtroAtivo === 'todas') return discriminacaoAcoes;
+    if (filtroAtivo === 'urgentes') return discriminacaoAcoes.filter(a => a.categoria === 'recado' || a.categoria === 'tarefa' || a.categoria === 'notificacao' || a.categoria === 'substituicao');
+    if (filtroAtivo === 'recados') return discriminacaoAcoes.filter(a => a.categoria === 'recado');
+    if (filtroAtivo === 'tarefas') return discriminacaoAcoes.filter(a => a.categoria === 'tarefa');
+    if (filtroAtivo === 'alunos') return discriminacaoAcoes.filter(a => a.categoria === 'tutorado' || a.categoria === 'busca_ativa');
+    if (filtroAtivo === 'aulas_subs') return discriminacaoAcoes.filter(a => a.categoria === 'substituicao');
+    return discriminacaoAcoes;
+  }, [discriminacaoAcoes, filtroAtivo]);
+
   return (
     <section className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden transition-all duration-200">
       
@@ -160,15 +415,120 @@ export default function CentralPendenciasPerfil({
               </h2>
               <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider ${
                 totalPendencias > 0
-                  ? 'bg-rose-500 text-white shadow-xs animate-pulse'
-                  : 'bg-emerald-500/30 text-emerald-300 border border-emerald-400/30'
+                  ? 'bg-rose-500 text-white shadow-xs animate-pulse flex items-center gap-1.5'
+                  : 'bg-emerald-500/30 text-emerald-300 border border-emerald-400/30 flex items-center gap-1.5'
               }`}>
-                {totalPendencias > 0 ? `${totalPendencias} ${totalPendencias === 1 ? 'Ação Necessária' : 'Ações Necessárias'}` : 'Tudo em Dia'}
+                {totalPendencias > 0 ? (
+                  <>
+                    <i className="fa-solid fa-triangle-exclamation text-[10px]"></i>
+                    <span>{totalPendencias} {totalPendencias === 1 ? 'Ação Necessária' : 'Ações Necessárias'}</span>
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-circle-check text-[10px]"></i>
+                    <span>Tudo em Dia</span>
+                  </>
+                )}
               </span>
             </div>
             <p className="text-xs text-slate-300 mt-0.5">
               Ações diretas e links de resolução prioritária para <strong>{effectiveUser.nome}</strong> ({activeRole}).
             </p>
+
+            {/* Chips de Identificação Precisa Imediata das Ações */}
+            {totalPendencias > 0 && (
+              <div className="flex items-center gap-1.5 flex-wrap mt-2.5">
+                <span className="text-[11px] font-bold text-slate-300 mr-0.5">Pendências:</span>
+                {recadosSemCiencia.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setFiltroAtivo('recados')}
+                    className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-purple-500/30 hover:bg-purple-500/50 text-purple-200 border border-purple-400/50 flex items-center gap-1 transition cursor-pointer"
+                    title="Clique para filtrar comunicados sem confirmação de leitura"
+                  >
+                    <i className="fa-solid fa-bullhorn text-[10px] text-purple-300"></i>
+                    <span>{recadosSemCiencia.length} Ciência{recadosSemCiencia.length > 1 ? 's' : ''} no Mural</span>
+                  </button>
+                )}
+                {tarefasUrgentes.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setFiltroAtivo('tarefas')}
+                    className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/30 hover:bg-amber-500/50 text-amber-200 border border-amber-400/50 flex items-center gap-1 transition cursor-pointer"
+                    title="Clique para filtrar tarefas com prazo crítico/vencidas"
+                  >
+                    <i className="fa-solid fa-list-check text-[10px] text-amber-300"></i>
+                    <span>{tarefasUrgentes.length} Tarefa{tarefasUrgentes.length > 1 ? 's' : ''} PDCA</span>
+                  </button>
+                )}
+                {(isProfessor || isPAAC) && tutoradosReaisEmRisco.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setFiltroAtivo('alunos')}
+                    className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-cyan-500/30 hover:bg-cyan-500/50 text-cyan-200 border border-cyan-400/50 flex items-center gap-1 transition cursor-pointer"
+                    title="Clique para filtrar tutorados com frequência < 75%"
+                  >
+                    <i className="fa-solid fa-user-graduate text-[10px] text-cyan-300"></i>
+                    <span>{tutoradosReaisEmRisco.length} Tutorado{tutoradosReaisEmRisco.length > 1 ? 's' : ''} em Risco</span>
+                  </button>
+                )}
+                {(isDirecao || isCoord || isPAAC) && notificacoesPedagogicas.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setFiltroAtivo('urgentes')}
+                    className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-rose-500/30 hover:bg-rose-500/50 text-rose-200 border border-rose-400/50 flex items-center gap-1 transition cursor-pointer"
+                    title="Clique para filtrar notificações pedagógicas encaminhadas à gestão"
+                  >
+                    <i className="fa-solid fa-triangle-exclamation text-[10px] text-rose-300"></i>
+                    <span>{notificacoesPedagogicas.length} Notificaç{notificacoesPedagogicas.length > 1 ? 'ões' : 'ão'} Pedagógica{notificacoesPedagogicas.length > 1 ? 's' : ''}</span>
+                  </button>
+                )}
+                {(isDirecao || isCoord || isPAAC) && substituicoesSemDocente.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setFiltroAtivo('aulas_subs')}
+                    className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-blue-500/30 hover:bg-blue-500/50 text-blue-200 border border-blue-400/50 flex items-center gap-1 transition cursor-pointer"
+                    title="Clique para filtrar aulas sem professor substituto hoje"
+                  >
+                    <i className="fa-solid fa-shuffle text-[10px] text-blue-300"></i>
+                    <span>{substituicoesSemDocente.length} Aula{substituicoesSemDocente.length > 1 ? 's' : ''} sem Substituto</span>
+                  </button>
+                )}
+                {isDirecao && alunosBuscaAtivaCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => nav('busca-ativa')}
+                    className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-red-500/30 hover:bg-red-500/50 text-red-200 border border-red-400/50 flex items-center gap-1 transition cursor-pointer"
+                    title="Clique para abrir Busca Ativa SEDUC"
+                  >
+                    <i className="fa-solid fa-magnifying-glass-location text-[10px] text-red-300"></i>
+                    <span>{alunosBuscaAtivaCount} Busca Ativa (SLA)</span>
+                  </button>
+                )}
+                {(isDirecao || isCoord) && alunosMapaoPendentesCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => nav('comparativo-frequencia')}
+                    className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-500/30 hover:bg-indigo-500/50 text-indigo-200 border border-indigo-400/50 flex items-center gap-1 transition cursor-pointer"
+                    title="Clique para abrir Comparativo SED vs Mapão"
+                  >
+                    <i className="fa-solid fa-scale-balanced text-[10px] text-indigo-300"></i>
+                    <span>{alunosMapaoPendentesCount} Auditoria SED vs Mapão</span>
+                  </button>
+                )}
+                {isSecretaria && atrasosHojeCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => nav('dashboard-atrasos')}
+                    className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/30 hover:bg-amber-500/50 text-amber-200 border border-amber-400/50 flex items-center gap-1 transition cursor-pointer"
+                    title="Clique para abrir Atrasos do Portão"
+                  >
+                    <i className="fa-solid fa-clock-rotate-left text-[10px] text-amber-300"></i>
+                    <span>{atrasosHojeCount} Atrasos Hoje</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -288,9 +648,9 @@ export default function CentralPendenciasPerfil({
           >
             <i className="fa-solid fa-user-graduate text-cyan-600"></i>
             <span>Estudantes em Alerta</span>
-            {(tutoradosEmRisco.length > 0 || alunosBuscaAtivaCount > 0) && (
+            {(tutoradosReaisEmRisco.length > 0 || alunosBuscaAtivaCount > 0) && (
               <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-cyan-100 text-cyan-900 font-mono">
-                {isProfessor || isPAAC ? tutoradosEmRisco.length : alunosBuscaAtivaCount}
+                {isProfessor || isPAAC ? tutoradosReaisEmRisco.length : alunosBuscaAtivaCount}
               </span>
             )}
           </button>
@@ -317,6 +677,123 @@ export default function CentralPendenciasPerfil({
 
       {/* 3. CONTEÚDO PRINCIPAL: ITENS DE RESOLUÇÃO */}
       <div className="p-4 sm:p-5 bg-slate-50/60 space-y-4">
+
+        {/* =============================================================== */}
+        {/* QUADRO DISCRIMINADO E PRECISO DAS AÇÕES NECESSÁRIAS */}
+        {/* =============================================================== */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="p-3.5 sm:p-4 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                <i className="fa-solid fa-list-check text-base"></i>
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm sm:text-base font-black tracking-tight text-white flex items-center gap-2">
+                    <span>Ações Necessárias Identificadas para Você</span>
+                  </h3>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+                    totalPendencias > 0
+                      ? 'bg-rose-500 text-white shadow-xs animate-pulse'
+                      : 'bg-emerald-500/30 text-emerald-300 border border-emerald-400/30'
+                  }`}>
+                    {totalPendencias} {totalPendencias === 1 ? 'ação pendente' : 'ações pendentes'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-0.5">
+                  {totalPendencias > 0
+                    ? `Discriminação detalhada e resolução direta para ${effectiveUser.nome} (${activeRole}):`
+                    : `Tudo regularizado para ${effectiveUser.nome}. Nenhuma ação prioritária em aberto.`}
+                </p>
+              </div>
+            </div>
+
+            {totalPendencias > 0 && (
+              <span className="text-[11px] font-mono text-slate-400 self-start sm:self-auto">
+                Exibindo {acoesFiltradas.length} de {totalPendencias} {totalPendencias === 1 ? 'item' : 'itens'}
+              </span>
+            )}
+          </div>
+
+          {/* Lista de Ações Precisas */}
+          {totalPendencias > 0 ? (
+            <div className="p-3.5 sm:p-4 space-y-2.5 bg-slate-50/60 divide-y divide-slate-100">
+              {acoesFiltradas.length > 0 ? (
+                acoesFiltradas.map((acao) => (
+                  <div
+                    key={acao.id}
+                    className={`p-3.5 rounded-xl border ${acao.corBorda} bg-white shadow-2xs hover:shadow-xs transition-all flex flex-col md:flex-row md:items-center justify-between gap-3 pt-3.5 first:pt-3.5`}
+                  >
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border ${acao.corBadge} flex items-center gap-1`}>
+                          <i className={acao.icone}></i>
+                          <span>{acao.categoriaLabel}</span>
+                        </span>
+                        <span className="text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 flex items-center gap-1">
+                          <i className="fa-solid fa-circle-exclamation text-[10px]"></i>
+                          <span>{acao.motivoAcao}</span>
+                        </span>
+                      </div>
+
+                      <h4 className="font-extrabold text-slate-900 text-xs sm:text-sm pt-0.5">
+                        {acao.titulo}
+                      </h4>
+
+                      <p className="text-[11px] text-slate-500">
+                        {acao.subtitulo}
+                      </p>
+
+                      {acao.detalheExtra && (
+                        <p className="text-[11px] text-slate-600 bg-slate-50 p-2 rounded-lg line-clamp-2 mt-1 border border-slate-100">
+                          {acao.detalheExtra}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Botões de Resolução Direta */}
+                    <div className="flex items-center gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100 self-end md:self-center">
+                      {acao.botaoSecundarioTexto && acao.aoExecutarSecundario && (
+                        <button
+                          type="button"
+                          onClick={acao.aoExecutarSecundario}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg transition cursor-pointer"
+                        >
+                          {acao.botaoSecundarioTexto}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={acao.aoExecutarAcao}
+                        className="px-3.5 py-1.5 bg-gradient-to-r from-blue-900 to-indigo-900 hover:from-blue-800 hover:to-indigo-800 text-white font-black text-xs rounded-lg transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                        title="Executar resolução desta ação"
+                      >
+                        <i className={`${acao.botaoAcaoIcone} text-[11px]`}></i>
+                        <span>{acao.botaoAcaoTexto}</span>
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="p-4 text-center text-xs text-slate-500 bg-white rounded-lg border border-slate-200">
+                  Nenhuma ação encontrada para o filtro selecionado ({filtroAtivo}).
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="p-6 text-center space-y-2 bg-emerald-50/40">
+              <div className="w-12 h-12 mx-auto rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-xl">
+                <i className="fa-solid fa-circle-check"></i>
+              </div>
+              <h4 className="font-bold text-emerald-950 text-sm">
+                Tudo em dia para {effectiveUser.nome}!
+              </h4>
+              <p className="text-xs text-emerald-700 max-w-md mx-auto">
+                Não há comunicados sem ciência, tarefas PDCA atrasadas ou estudantes com alerta crítico sob sua responsabilidade neste momento.
+              </p>
+            </div>
+          )}
+        </div>
 
         {/* --------------------------------------------------------------- */}
         {/* A. BLOCO DE AVISOS DO MURAL AGUARDANDO SUA CIÊNCIA */}
@@ -548,41 +1025,45 @@ export default function CentralPendenciasPerfil({
                     <span>Tutorados em Risco de Frequência</span>
                   </span>
                   <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
-                    tutoradosEmRisco.length > 0
+                    tutoradosReaisEmRisco.length > 0
                       ? 'bg-rose-100 text-rose-800 border border-rose-200'
                       : 'bg-emerald-100 text-emerald-800'
                   }`}>
-                    {tutoradosEmRisco.length} em alerta
+                    {tutoradosReaisEmRisco.length} em alerta (&lt;75%)
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Estudantes sob sua tutoria com presença inferior a 75% ou com faltas excessivas.
+                  Estudantes sob sua tutoria com presença estritamente inferior a 75% no ano letivo.
                 </p>
 
-                {tutoradosEmRisco.length > 0 ? (
+                {tutoradosReaisEmRisco.length > 0 ? (
                   <div className="mt-2.5 space-y-2 max-h-40 overflow-y-auto pr-1">
-                    {tutoradosEmRisco.slice(0, 3).map(al => (
-                      <div
-                        key={al.ra || al.id}
-                        className="p-2 bg-rose-50/70 hover:bg-rose-100/70 rounded-lg border border-rose-200 flex items-center justify-between text-xs transition"
-                      >
-                        <div className="min-w-0 pr-1">
-                          <p className="font-bold text-slate-800 truncate max-w-[130px]">{al.nome}</p>
-                          <span className="text-[10px] text-slate-500">{al.turma} · RA {al.ra}</span>
+                    {tutoradosReaisEmRisco.slice(0, 3).map(al => {
+                      const freq = extrairPercentualFrequencia(al);
+                      const presencaStr = al.presenca_anual || al.presenca || `${freq}%`;
+                      return (
+                        <div
+                          key={al.ra || al.id}
+                          className="p-2 bg-rose-50/70 hover:bg-rose-100/70 rounded-lg border border-rose-200 flex items-center justify-between text-xs transition"
+                        >
+                          <div className="min-w-0 pr-1">
+                            <p className="font-bold text-slate-800 truncate max-w-[130px]">{al.nome}</p>
+                            <span className="text-[10px] text-slate-500">{al.turma} · RA {al.ra}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="font-mono font-bold text-rose-700">{presencaStr}</span>
+                            <button
+                              type="button"
+                              onClick={() => onAbrirAluno && onAbrirAluno(al.ra)}
+                              className="px-2 py-1 bg-cyan-700 hover:bg-cyan-800 text-white font-black text-[10px] rounded transition cursor-pointer"
+                              title="Abrir prontuário e ficha de acompanhamento"
+                            >
+                              Ver Ficha
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="font-mono font-bold text-rose-700">{al.presenca_anual || al.presenca || '68%'}</span>
-                          <button
-                            type="button"
-                            onClick={() => onAbrirAluno && onAbrirAluno(al.ra)}
-                            className="px-2 py-1 bg-cyan-700 hover:bg-cyan-800 text-white font-black text-[10px] rounded transition cursor-pointer"
-                            title="Abrir prontuário e ficha de acompanhamento"
-                          >
-                            Ver Ficha
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="mt-3 p-3 bg-emerald-50 rounded-lg border border-emerald-200 text-center text-xs text-emerald-800 font-semibold flex items-center justify-center gap-1.5">

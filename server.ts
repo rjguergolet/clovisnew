@@ -25,63 +25,6 @@ async function startServer() {
   // ==========================================
 
   // ==========================================
-  // ROTA DE TRANSCRIÇÃO DE ÁUDIO COM GEMINI 3.5 TRANSCRIBE
-  // ==========================================
-  app.post('/api/gemini/transcribe', async (req, res) => {
-    try {
-      const { audio, mimeType, prompt } = req.body;
-      if (!audio) {
-        return res.status(400).json({ error: 'Nenhum áudio foi fornecido para transcrição.' });
-      }
-
-      const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-      if (!apiKey) {
-        return res.status(500).json({
-          error: 'Chave GEMINI_API_KEY não configurada no servidor. Por favor, adicione a chave no painel Secrets.'
-        });
-      }
-
-      // Remove prefixo base64 se fornecido (ex: data:audio/webm;base64,...)
-      const cleanBase64 = String(audio).includes('base64,') ? String(audio).split('base64,')[1] : String(audio);
-
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          },
-        },
-      });
-
-      const audioPart = {
-        inlineData: {
-          mimeType: mimeType || 'audio/webm',
-          data: cleanBase64,
-        },
-      };
-
-      const instruction = prompt || 'Transcreva este áudio em português com alta precisão, pontuação correta e ortografia clara. Retorne exclusivamente o texto falado.';
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.5-transcribe',
-        contents: {
-          parts: [audioPart, { text: instruction }],
-        },
-      });
-
-      const transcription = response.text || '';
-      return res.json({
-        success: true,
-        text: transcription.trim(),
-      });
-    } catch (err: any) {
-      console.error('[Gemini 3.5 Transcribe] Erro:', err?.message || err);
-      return res.status(500).json({
-        error: 'Falha ao processar a transcrição com Gemini 3.5 Transcribe',
-        details: err?.message || String(err),
-      });
-    }
-  });
 
   // Health Check & Status da Conexão
   app.get('/api/health', async (req, res) => {

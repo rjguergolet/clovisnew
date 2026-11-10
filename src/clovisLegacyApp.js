@@ -20338,7 +20338,7 @@ Yasmin Seline`;
           window.atualizarVisibilidadeAbasEPermissoes();
         }
 
-        const tabDestino = window.currentActiveTab || "mural";
+        const tabDestino = window.currentActiveTab || "inicio";
         if (typeof window.switchTab === "function") {
           window.switchTab(tabDestino);
         }

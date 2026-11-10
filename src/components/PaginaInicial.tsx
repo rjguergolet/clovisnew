@@ -710,21 +710,33 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       .slice(0, 4);
   }, [atrasosMes]);
 
-  // Busca Ativa - Alunos Infrequentes (< 75% ou faltas > 15)
-  // REGRA: Por padrão NÃO deve aparecer alunos inativos, a não ser que o usuário decida por meio do filtro
+  // Função utilitária para extrair percentual de frequência com rigor (0 a 100)
+  const extrairPercentualFrequencia = (aluno: any): number => {
+    if (!aluno) return 100;
+    const raw = aluno.presenca_anual ?? aluno.presenca ?? aluno.frequencia ?? aluno.frequencia_anual ?? aluno.frequenciaNum;
+    if (raw === undefined || raw === null || String(raw).trim() === '' || String(raw).trim() === '-' || String(raw).trim() === 'N/D') {
+      return 100;
+    }
+    let str = String(raw).trim().replace('%', '').replace(',', '.');
+    let num = parseFloat(str);
+    if (isNaN(num)) return 100;
+    if (num > 0 && num <= 1) {
+      num = num * 100;
+    }
+    return num;
+  };
+
+  // Busca Ativa - Alunos Infrequentes (< 75%)
+  // REGRA CRÍTICA: Estudantes com presença >= 75% NUNCA devem aparecer como pendência de Busca Ativa / Infrequência!
   const alunosBuscaAtiva = useMemo(() => {
     return alunos.filter(a => {
       const ativo = isAlunoAtivo(a);
       if (filtroStatusBuscaAtiva === 'ATIVOS' && !ativo) return false;
       if (filtroStatusBuscaAtiva === 'INATIVOS' && ativo) return false;
 
-      let p = 100;
-      const raw = a.presenca_anual || a.presenca || a.frequencia;
-      if (raw) {
-        p = parseFloat(String(raw).replace('%', '').replace(',', '.'));
-      }
-      const faltas = parseInt(String(a.total_faltas || a.faltas || 0), 10);
-      return (p > 0 && p < 75) || faltas >= 20;
+      const p = extrairPercentualFrequencia(a);
+      // Estritamente menor que 75%
+      return p < 75;
     }).slice(0, 10);
   }, [alunos, filtroStatusBuscaAtiva]);
 
@@ -756,13 +768,14 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
     });
   }, [recadosDirecionados, effectiveUser, currentUser, activeRole]);
 
-  // Tutorados do professor em alerta de frequência ou Busca Ativa
+  // Tutorados do professor em alerta de frequência (< 75%)
+  // REGRA CRÍTICA: Só é considerado em risco se a frequência for estritamente MENOR que 75%.
+  // Estudantes com 75% ou mais NUNCA devem constar como pendência!
   const tutoradosEmRisco = useMemo(() => {
     return tutoradosDoProfessor.filter(aluno => {
-      let freqNum = 100;
-      const rawF = aluno.presenca_anual || aluno.presenca;
-      if (rawF) freqNum = parseFloat(String(rawF).replace('%', '').replace(',', '.'));
-      return freqNum < 75 || aluno.sla_busca_ativa || aluno.busca_ativa;
+      if (!isAlunoAtivo(aluno)) return false;
+      const freqNum = extrairPercentualFrequencia(aluno);
+      return freqNum < 75;
     });
   }, [tutoradosDoProfessor]);
 
