@@ -1,0 +1,254 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="100%" height="100%" fill="none" role="img" aria-label="Brasão Oficial EE Prof. Clóvis de Lucca">
+  <defs>
+    <!-- Filtro de sombra sutil para dar presença e profundidade -->
+    <filter id="shieldShadow" x="-10%" y="-10%" width="125%" height="125%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#0f172a" flood-opacity="0.18" />
+    </filter>
+  </defs>
+
+  <!-- ================= RAMOS DE LOURO LATERAIS ================= -->
+  <!-- Ramo Esquerdo -->
+  <g id="laurel-left" stroke="#222b3a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="#ffffff">
+    <!-- Haste principal esquerda curvada -->
+    <path d="M 105 380 C 65 330, 42 240, 52 145" fill="none" />
+    
+    <!-- Pares de Folhas ao longo da haste esquerda -->
+    <!-- Nível 1 (base) -->
+    <path d="M 102 370 C 82 372, 72 388, 78 398 C 88 402, 100 390, 102 370 Z" />
+    <path d="M 97 360 C 76 355, 68 368, 72 378 C 82 383, 94 372, 97 360 Z" />
+    
+    <!-- Nível 2 -->
+    <path d="M 88 340 C 62 338, 54 352, 60 362 C 72 366, 84 352, 88 340 Z" />
+    <path d="M 82 315 C 56 312, 48 326, 54 336 C 66 340, 78 327, 82 315 Z" />
+    
+    <!-- Nível 3 -->
+    <path d="M 75 285 C 48 280, 40 294, 46 305 C 58 310, 71 297, 75 285 Z" />
+    <path d="M 70 255 C 42 248, 35 262, 40 273 C 52 278, 66 266, 70 255 Z" />
+    
+    <!-- Nível 4 -->
+    <path d="M 66 225 C 38 216, 32 230, 37 241 C 49 247, 62 235, 66 225 Z" />
+    <path d="M 62 195 C 34 184, 28 198, 33 209 C 45 215, 58 205, 62 195 Z" />
+    
+    <!-- Nível 5 -->
+    <path d="M 58 165 C 32 152, 28 166, 32 177 C 44 183, 55 174, 58 165 Z" />
+    <path d="M 55 135 C 32 120, 26 134, 30 145 C 42 151, 52 143, 55 135 Z" />
+    
+    <!-- Ponta Superior -->
+    <path d="M 53 115 C 40 98, 48 88, 55 92 C 62 98, 58 108, 53 115 Z" />
+  </g>
+
+  <!-- Ramo Direito (Simétrico) -->
+  <g id="laurel-right" stroke="#222b3a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="#ffffff">
+    <!-- Haste principal direita curvada -->
+    <path d="M 395 380 C 435 330, 458 240, 448 145" fill="none" />
+    
+    <!-- Pares de Folhas ao longo da haste direita -->
+    <!-- Nível 1 (base) -->
+    <path d="M 398 370 C 418 372, 428 388, 422 398 C 412 402, 400 390, 398 370 Z" />
+    <path d="M 403 360 C 424 355, 432 368, 428 378 C 418 383, 406 372, 403 360 Z" />
+    
+    <!-- Nível 2 -->
+    <path d="M 412 340 C 438 338, 446 352, 440 362 C 428 366, 416 352, 412 340 Z" />
+    <path d="M 418 315 C 444 312, 452 326, 446 336 C 434 340, 422 327, 418 315 Z" />
+    
+    <!-- Nível 3 -->
+    <path d="M 425 285 C 452 280, 460 294, 454 305 C 442 310, 429 297, 425 285 Z" />
+    <path d="M 430 255 C 458 248, 465 262, 460 273 C 448 278, 434 266, 430 255 Z" />
+    
+    <!-- Nível 4 -->
+    <path d="M 434 225 C 462 216, 468 230, 463 241 C 451 247, 438 235, 434 225 Z" />
+    <path d="M 438 195 C 466 184, 472 198, 467 209 C 455 215, 442 205, 438 195 Z" />
+    
+    <!-- Nível 5 -->
+    <path d="M 442 165 C 468 152, 472 166, 468 177 C 456 183, 445 174, 442 165 Z" />
+    <path d="M 445 135 C 468 120, 474 134, 470 145 C 458 151, 448 143, 445 135 Z" />
+    
+    <!-- Ponta Superior -->
+    <path d="M 447 115 C 460 98, 452 88, 445 92 C 438 98, 442 108, 447 115 Z" />
+  </g>
+
+  <!-- ================= ESCUDO HERALDICO PRINCIPAL ================= -->
+  <!-- Top central tip/peg -->
+  <path d="M 244 38 L 256 38 L 254 52 L 246 52 Z" fill="#222b3a" stroke="#222b3a" stroke-width="1.5" />
+  <rect x="242" y="36" width="16" height="3.5" rx="1" fill="#222b3a" />
+
+  <!-- Contorno Externo do Escudo -->
+  <path 
+    id="shield-outer"
+    d="M 90 68 
+       C 150 72, 210 52, 250 52 
+       C 290 52, 350 72, 410 68 
+       C 412 110, 414 185, 406 230 
+       C 392 310, 315 385, 250 418 
+       C 185 385, 108 310, 94 230 
+       C 86 185, 88 110, 90 68 Z" 
+    fill="#222b3a" 
+    stroke="#222b3a" 
+    stroke-width="5"
+    stroke-linejoin="round"
+    filter="url(#shieldShadow)"
+  />
+
+  <!-- Margem Branca Interna do Escudo -->
+  <path 
+    id="shield-white-border"
+    d="M 94 72 
+       C 152 76, 210 56, 250 56 
+       C 290 56, 348 76, 406 72 
+       C 408 112, 410 183, 402 227 
+       C 388 305, 313 379, 250 411 
+       C 187 379, 112 305, 98 227 
+       C 90 183, 92 112, 94 72 Z" 
+    fill="#ffffff" 
+  />
+
+  <!-- Campo do Escudo Azul Escuro (Navy) -->
+  <path 
+    id="shield-field"
+    d="M 97 75 
+       C 154 79, 210 59, 250 59 
+       C 290 59, 346 79, 403 75 
+       C 405 114, 407 182, 399 225 
+       C 385 301, 311 374, 250 405 
+       C 189 374, 115 301, 101 225 
+       C 93 182, 95 114, 97 75 Z" 
+    fill="#1d2b4f" 
+  />
+
+  <!-- ================= CRUZ DIVISÓRIA (QUARTEADO) ================= -->
+  <!-- Linha Vertical (haste central) -->
+  <line x1="250" y1="59" x2="250" y2="405" stroke="#ffffff" stroke-width="4.5" stroke-linecap="square" />
+  <line x1="250" y1="59" x2="250" y2="405" stroke="#222b3a" stroke-width="1.8" stroke-linecap="square" />
+
+  <!-- Linha Horizontal (trave) -->
+  <line x1="94" y1="208" x2="406" y2="208" stroke="#ffffff" stroke-width="4.5" stroke-linecap="square" />
+  <line x1="94" y1="208" x2="406" y2="208" stroke="#222b3a" stroke-width="1.8" stroke-linecap="square" />
+
+  <!-- ================= QUADRANTE 1 (SUPERIOR ESQUERDO): LETRA 'C' ================= -->
+  <g id="quadrant-C">
+    <!-- Letra C em Serifa clássica e tom azul celeste claro -->
+    <text 
+      x="180" 
+      y="172" 
+      font-family="'Playfair Display', 'Bodoni MT', 'Times New Roman', 'Georgia', serif" 
+      font-size="108" 
+      font-weight="700" 
+      fill="#b8d8f8" 
+      text-anchor="middle"
+      style="letter-spacing: -2px;"
+    >C</text>
+  </g>
+
+  <!-- ================= QUADRANTE 2 (SUPERIOR DIREITO): LIVRO ABERTO ================= -->
+  <g id="quadrant-book" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Livro Aberto com páginas e perspectiva tridimensional -->
+    <!-- Capa / Base Inferior do Livro -->
+    <path d="M 264 153 C 285 156, 310 156, 332 147 L 386 157 C 362 166, 335 166, 314 163 Z" fill="none" stroke-width="2.5" />
+    <path d="M 264 153 C 285 156, 310 156, 332 147 L 386 128 C 362 136, 335 136, 314 133 L 264 138 Z" fill="#1d2b4f" stroke-width="2.8" />
+    
+    <!-- Página Esquerda -->
+    <path d="M 324 134 C 304 137, 282 137, 264 129 L 264 148 C 282 156, 304 156, 324 152 Z" fill="#1d2b4f" stroke-width="2.8" />
+    
+    <!-- Linhas de contorno do topo do livro aberto -->
+    <!-- Página Direita Principal -->
+    <path d="M 325 134 C 345 125, 368 126, 386 135 L 386 148 C 368 139, 345 138, 325 147 Z" fill="#1d2b4f" stroke-width="2.8" />
+    
+    <!-- Folhas internas decorativas para efeito de volume -->
+    <path d="M 267 132 C 285 139, 305 139, 323 136" fill="none" stroke-width="2" />
+    <path d="M 327 136 C 345 128, 365 129, 383 137" fill="none" stroke-width="2" />
+    <path d="M 269 136 C 286 142, 305 142, 323 139" fill="none" stroke-width="1.8" />
+    <path d="M 327 139 C 345 132, 365 133, 381 140" fill="none" stroke-width="1.8" />
+    
+    <!-- Lombada Central do Livro -->
+    <line x1="325" y1="134" x2="325" y2="153" stroke-width="3" />
+  </g>
+
+  <!-- ================= QUADRANTE 3 (INFERIOR ESQUERDO): CAPELO + PILHA DE LIVROS ================= -->
+  <g id="quadrant-grad-cap-books" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round">
+    <!-- --- CAPELO (MORTARBOARD) --- -->
+    <!-- Losango Superior do Capelo em perspectiva -->
+    <polygon points="175,224 235,242 175,260 126,242" fill="#1d2b4f" stroke-width="3.2" />
+    
+    <!-- Botão Central do Capelo -->
+    <circle cx="175" cy="242" r="2.5" fill="#ffffff" stroke="none" />
+    
+    <!-- Cordão e Pingente/Tassel caindo à esquerda -->
+    <path d="M 175 242 C 160 248, 142 258, 137 274" fill="none" stroke-width="2.2" />
+    <path d="M 137 274 L 134 286 L 140 286 Z" fill="#ffffff" stroke-width="1" />
+    
+    <!-- Base / Encaixe de Cabeça do Capelo -->
+    <path d="M 152 253 C 152 264, 198 264, 198 253" fill="#1d2b4f" stroke-width="2.5" />
+    
+    <!-- --- PILHA DE 3 LIVROS EM PERSPECTIVA --- -->
+    <!-- Livro 1 (Superior) -->
+    <!-- Lombada Arredondada à esquerda -->
+    <path d="M 136 280 C 130 280, 130 293, 136 293 L 218 293 C 224 293, 224 280, 218 280 Z" fill="#1d2b4f" stroke-width="2.8" />
+    <line x1="148" y1="280" x2="148" y2="293" stroke-width="1.8" />
+    <line x1="210" y1="286" x2="154" y2="286" stroke-width="1.5" stroke-dasharray="2 2" />
+
+    <!-- Livro 2 (Meio) -->
+    <path d="M 130 299 C 124 299, 124 313, 130 313 L 222 313 C 228 313, 228 299, 222 299 Z" fill="#1d2b4f" stroke-width="2.8" />
+    <line x1="143" y1="299" x2="143" y2="313" stroke-width="1.8" />
+    <line x1="215" y1="306" x2="149" y2="306" stroke-width="1.5" stroke-dasharray="2 2" />
+
+    <!-- Livro 3 (Base - Maior) -->
+    <path d="M 142 319 C 136 319, 136 334, 142 334 L 228 334 C 234 334, 234 319, 228 319 Z" fill="#1d2b4f" stroke-width="2.8" />
+    <line x1="155" y1="319" x2="155" y2="334" stroke-width="1.8" />
+    <line x1="220" y1="326" x2="161" y2="326" stroke-width="1.5" stroke-dasharray="2 2" />
+  </g>
+
+  <!-- ================= QUADRANTE 4 (INFERIOR DIREITO): LETRA 'L' ================= -->
+  <g id="quadrant-L">
+    <!-- Letra L em Serifa clássica e tom azul celeste claro -->
+    <text 
+      x="325" 
+      y="322" 
+      font-family="'Playfair Display', 'Bodoni MT', 'Times New Roman', 'Georgia', serif" 
+      font-size="108" 
+      font-weight="700" 
+      fill="#b8d8f8" 
+      text-anchor="middle"
+      style="letter-spacing: -2px;"
+    >L</text>
+  </g>
+
+  <!-- ================= FAIXA / BANNER INFERIOR ================= -->
+  <!-- Dobras Traseiras Esquerda e Direita (efeito 3D da fita) -->
+  <g id="ribbon-back" stroke="#222b3a" stroke-width="3" stroke-linejoin="round" fill="#ffffff">
+    <!-- Cauda Esquerda com Ponta em 'V' (Swallowtail) -->
+    <polygon points="105,420 54,402 74,428 48,452 105,446" />
+    <!-- Dobra interna esquerda (triângulo de sombra) -->
+    <polygon points="105,420 105,446 118,446" fill="#1d2b4f" />
+
+    <!-- Cauda Direita com Ponta em 'V' (Swallowtail) -->
+    <polygon points="395,420 446,402 426,428 452,452 395,446" />
+    <!-- Dobra interna direita (triângulo de sombra) -->
+    <polygon points="395,420 395,446 382,446" fill="#1d2b4f" />
+  </g>
+
+  <!-- Painel Central Principal da Fita -->
+  <g id="ribbon-front" filter="url(#shieldShadow)">
+    <path 
+      d="M 100 415 
+         C 170 422, 330 422, 400 415 
+         L 404 466 
+         C 330 472, 170 472, 96 466 Z" 
+      fill="#ffffff" 
+      stroke="#222b3a" 
+      stroke-width="3.2" 
+      stroke-linejoin="round"
+    />
+
+    <!-- Texto Oficial EE PROF. CLOVIS DE LUCCA -->
+    <text 
+      x="250" 
+      y="449" 
+      font-family="'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" 
+      font-size="20" 
+      font-weight="800" 
+      fill="#111827" 
+      text-anchor="middle"
+      letter-spacing="0.8"
+    >EE PROF. CLOVIS DE LUCCA</text>
+  </g>
+</svg>
