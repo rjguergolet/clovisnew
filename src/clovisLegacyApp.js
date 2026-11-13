@@ -4111,20 +4111,14 @@
           }
         }
 
-        // Controle de Notificação à Direção no Dossiê (Exclusivo para Professor e por padrão NUNCA notifica)
+        // Controle de Notificação à Gestão no Dossiê (Disponível para todos os perfis e desligado por padrão)
         const containerDossieNotif = document.getElementById("container-dossie-notificar-direcao");
         const chkDossieNotif = document.getElementById("modal-acao-notificar-direcao");
-        const roleNormDossie = window.normalizarUserRole ? window.normalizarUserRole(role) : String(role || "").toUpperCase();
-        const isDocenteDossie = (roleNormDossie === "PROFESSOR" || roleNormDossie === "PROFESSOR_PAAC" || role === "PROFESSOR_PAAC" || role === "PROFESSOR");
         if (containerDossieNotif) {
-          if (isDocenteDossie) {
-            containerDossieNotif.classList.remove("hidden");
-          } else {
-            containerDossieNotif.classList.add("hidden");
-          }
+          containerDossieNotif.classList.remove("hidden");
         }
         if (chkDossieNotif) {
-          chkDossieNotif.checked = false; // Por padrão não notifica a direção, só se o professor marcar mesmo
+          chkDossieNotif.checked = false; // Por padrão não notifica a gestão, só se o usuário marcar
         }
 
         // Controle do Painel de Dispensa / Afastamento Legal no Dossiê (Exclusivo Secretaria, CGPG, Direção e Vice)
@@ -4545,18 +4539,11 @@
           }
           const chkNotificar = document.getElementById("oc-notificar-direcao");
           const containerNotif = document.getElementById("container-notificar-direcao");
-          const roleAtual = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
-          const roleNorm = window.normalizarUserRole ? window.normalizarUserRole(roleAtual) : "PROFESSOR";
-          const isProfessor = (roleNorm === "PROFESSOR");
 
           if (containerNotif) {
-            if (isProfessor) {
-              containerNotif.classList.remove("hidden");
-            } else {
-              containerNotif.classList.add("hidden");
-            }
+            containerNotif.classList.remove("hidden");
           }
-          // Por padrão NÃO notifica a direção, só se o professor marcar mesmo
+          // Por padrão NÃO notifica a gestão, só se o usuário marcar
           if (chkNotificar) {
             chkNotificar.checked = false;
           }
@@ -4712,10 +4699,7 @@
               if (inputOcId) inputOcId.value = "";
             } else {
               const chkNotificarDirecao = document.getElementById("oc-notificar-direcao");
-              const roleAtualForm = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
-              const roleNormForm = window.normalizarUserRole ? window.normalizarUserRole(roleAtualForm) : "PROFESSOR";
-              const isDocenteForm = (roleNormForm === "PROFESSOR" || roleNormForm === "PROFESSOR_PAAC" || roleAtualForm === "PROFESSOR_PAAC");
-              const notificarDirecao = (isDocenteForm && chkNotificarDirecao && chkNotificarDirecao.checked) ? true : false;
+              const notificarDirecao = Boolean(chkNotificarDirecao && chkNotificarDirecao.checked);
 
               // É NOVO REGISTRO: Criar um documento do zero com rastreabilidade completa.
               // REGRA CRÍTICA DE INTEGRAÇÃO (JSON): estritamente proibido criar ou incluir id ou _id
@@ -4847,6 +4831,8 @@
             if (inputDataCiencia) inputDataCiencia.value = "";
             if (chkConviva) chkConviva.checked = false;
             if (inputCodConviva) inputCodConviva.value = "";
+            const chkNotificarReset = document.getElementById("oc-notificar-direcao");
+            if (chkNotificarReset) chkNotificarReset.checked = false;
             document.getElementById('oc-container-data-ciencia')?.classList.add('hidden');
             document.getElementById('oc-container-codigo-conviva')?.classList.add('hidden');
           } catch (err) {
@@ -16923,10 +16909,7 @@ Yasmin Seline`;
           const autorFinal = userDetails.textoCompleto;
 
           const chkNotificarDirecao = document.getElementById("modal-acao-notificar-direcao");
-          const roleAtualModal = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
-          const roleNormModal = window.normalizarUserRole ? window.normalizarUserRole(roleAtualModal) : "PROFESSOR";
-          const isDocenteModal = (roleNormModal === "PROFESSOR" || roleNormModal === "PROFESSOR_PAAC" || roleAtualModal === "PROFESSOR_PAAC");
-          const notificarDirecao = (isDocenteModal && chkNotificarDirecao && chkNotificarDirecao.checked) ? true : false;
+          const notificarDirecao = Boolean(chkNotificarDirecao && chkNotificarDirecao.checked);
 
           const aluno = (window.allStudentsData || []).find(s => s.ra === ra) || {};
           // REGRA CRÍTICA DE INTEGRAÇÃO (JSON): estritamente proibido incluir id ou _id

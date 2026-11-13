@@ -141,9 +141,10 @@ function compararTurmas(a: string, b: string): number {
 
 function isOcorrenciaDispensaValid(oc: any): boolean {
   if (!oc) return false;
-  if (oc.isDispensa === true && (oc.dataInicio || oc.dataFim)) return true;
+  const hasAnyDate = Boolean(oc.dataInicio || oc.dataFim || oc.data || oc.createdAt || oc.criadoEm);
+  if (oc.isDispensa === true && hasAnyDate) return true;
   const tipo = String(oc.tipo || oc.categoria || '').toUpperCase();
-  return (tipo.includes('DISPENSA') || tipo.includes('AFASTAMENTO LEGAL')) && Boolean(oc.dataInicio || oc.dataFim);
+  return (tipo.includes('DISPENSA') || tipo.includes('AFASTAMENTO')) && hasAnyDate;
 }
 
 function isOcorrenciaAtrasoValid(oc: any): boolean {
@@ -152,7 +153,8 @@ function isOcorrenciaAtrasoValid(oc: any): boolean {
   const tipo = String(oc.tipo || '').toUpperCase();
   const cat = String(oc.categoria || '').toUpperCase();
   const desc = String(oc.descricao || '').toUpperCase();
-  return tipo.includes('ATRASO') || cat.includes('ATRASO') || desc.startsWith('ATRASO');
+  const titulo = String(oc.titulo || '').toUpperCase();
+  return tipo.includes('ATRASO') || cat.includes('ATRASO') || desc.startsWith('ATRASO') || titulo.includes('ATRASO');
 }
 
 export default function PresencaDiariaIA() {
@@ -473,10 +475,11 @@ export default function PresencaDiariaIA() {
     return () => unsubscribe();
   }, []);
 
-  // 9. Indexar Dispensas com Datas e Atrasos do Dia a partir de 'ocorrencias' + 'alunos'
+  // 9. Indexar Dispensas com Datas e Atrasos do Dia/Histórico a partir de 'ocorrencias' + 'alunos'
   const integracaoCruzada = useMemo(() => {
     const dispensasPorRa: Record<string, DispensaPeriodo[]> = {};
     const atrasosDiaPorRa: Record<string, AtrasoDiaInfo> = {};
+    const atrasosPorRaData: Record<string, Record<string, AtrasoDiaInfo>> = {};
     const atrasosCountOcorrenciasPorRa: Record<string, number> = {};
     const seenSigDispensa = new Set<string>();
     const seenSigAtraso = new Set<string>();
@@ -492,7 +495,7 @@ export default function PresencaDiariaIA() {
 
     const registrarAtraso = (raKey: string, oc: any) => {
       if (!raKey) return;
-      const dtYmd = toLocalYmd(oc.data || oc.createdAt);
+      const dtYmd = toLocalYmd(oc.data || oc.createdAt || oc.criadoEm);
       const horario = extrairHoraAtraso(oc);
       const sig = `${raKey}|${dtYmd}|${horario}|${String(oc.descricao || '').slice(0, 40)}`;
       if (seenSigAtraso.has(sig)) return;
@@ -500,12 +503,19 @@ export default function PresencaDiariaIA() {
 
       atrasosCountOcorrenciasPorRa[raKey] = (atrasosCountOcorrenciasPorRa[raKey] || 0) + 1;
 
+      const infoAtraso: AtrasoDiaInfo = {
+        horario,
+        descricao: oc.descricao || '',
+        registradoPor: oc.usuario || oc.autor || oc.autor_nome || ''
+      };
+
+      if (dtYmd) {
+        if (!atrasosPorRaData[raKey]) atrasosPorRaData[raKey] = {};
+        atrasosPorRaData[raKey][dtYmd] = infoAtraso;
+      }
+
       if (dtYmd === dataSelecionada) {
-        atrasosDiaPorRa[raKey] = {
-          horario,
-          descricao: oc.descricao || '',
-          registradoPor: oc.usuario || oc.autor || oc.autor_nome || ''
-        };
+        atrasosDiaPorRa[raKey] = infoAtraso;
       }
     };
 
@@ -514,10 +524,12 @@ export default function PresencaDiariaIA() {
       const raKey = normalizarRaChave(oc?.ra);
       if (!raKey) return;
       if (isOcorrenciaDispensaValid(oc)) {
+        const dtIni = toLocalYmd(oc.dataInicio || oc.data || oc.createdAt || oc.criadoEm);
+        const dtFim = toLocalYmd(oc.dataFim || oc.dataInicio || oc.data || oc.createdAt || oc.criadoEm);
         registrarDispensa(raKey, {
-          dataInicio: toLocalYmd(oc.dataInicio),
-          dataFim: toLocalYmd(oc.dataFim || oc.dataInicio),
-          motivo: oc.motivoDispensa || 'Atestado Médico',
+          dataInicio: dtIni,
+          dataFim: dtFim,
+          motivo: oc.motivoDispensa || oc.motivo || 'Atestado Médico',
           descricao: oc.descricao || '',
           registradoPor: oc.usuario || oc.autor || ''
         });
@@ -533,10 +545,12 @@ export default function PresencaDiariaIA() {
 
       if (Array.isArray(al.dispensas)) {
         al.dispensas.forEach((d: any) => {
-          if (d?.dataInicio || d?.dataFim) {
+          if (d?.dataInicio || d?.dataFim || d?.data) {
+            const dtIni = toLocalYmd(d.dataInicio || d.data);
+            const dtFim = toLocalYmd(d.dataFim || d.dataInicio || d.data);
             registrarDispensa(raKey, {
-              dataInicio: toLocalYmd(d.dataInicio),
-              dataFim: toLocalYmd(d.dataFim || d.dataInicio),
+              dataInicio: dtIni,
+              dataFim: dtFim,
               motivo: d.motivoDispensa || d.motivo || 'Atestado Médico',
               descricao: d.descricao || '',
               registradoPor: d.registradoPor || ''
@@ -549,10 +563,12 @@ export default function PresencaDiariaIA() {
       embutidas.forEach((oc: any) => {
         if (!oc) return;
         if (isOcorrenciaDispensaValid(oc)) {
+          const dtIni = toLocalYmd(oc.dataInicio || oc.data || oc.createdAt || oc.criadoEm);
+          const dtFim = toLocalYmd(oc.dataFim || oc.dataInicio || oc.data || oc.createdAt || oc.criadoEm);
           registrarDispensa(raKey, {
-            dataInicio: toLocalYmd(oc.dataInicio),
-            dataFim: toLocalYmd(oc.dataFim || oc.dataInicio),
-            motivo: oc.motivoDispensa || 'Atestado Médico',
+            dataInicio: dtIni,
+            dataFim: dtFim,
+            motivo: oc.motivoDispensa || oc.motivo || 'Atestado Médico',
             descricao: oc.descricao || '',
             registradoPor: oc.usuario || oc.autor || ''
           });
@@ -592,10 +608,60 @@ export default function PresencaDiariaIA() {
     return {
       dispensasPorRa,
       atrasosDiaPorRa,
+      atrasosPorRaData,
       atrasosCountOcorrenciasPorRa,
       diasDispensaLetivosPorRa
     };
   }, [ocorrenciasLista, alunosBase, dataSelecionada, hojeIso, eventosAgenda]);
+
+  // Sincronização automática: se atraso ou afastamento/dispensa for lançado para um aluno já marcado com falta,
+  // a falta perde e passa a constar o atraso ou afastamento.
+  useEffect(() => {
+    setRegistrosPresenca((prev) => {
+      let alterado = false;
+      const next = { ...prev };
+      const agoraIso = new Date().toISOString();
+
+      Object.entries(prev).forEach(([raRaw, reg]) => {
+        if (!reg || reg.status !== 'falta') return;
+        const raKey = normalizarRaChave(raRaw);
+        if (!raKey) return;
+
+        const dispensaAtiva = (integracaoCruzada.dispensasPorRa[raKey] || []).find(
+          (d) => dataSelecionada >= d.dataInicio && dataSelecionada <= d.dataFim
+        );
+        const atrasoOcorrencia = integracaoCruzada.atrasosDiaPorRa[raKey];
+
+        if (dispensaAtiva) {
+          next[raRaw] = {
+            status: 'licenca',
+            motivoLicenca: dispensaAtiva.motivo,
+            verificado: true,
+            manualOverride: false,
+            origem: 'dispensa',
+            atualizadoEm: agoraIso
+          };
+          alterado = true;
+        } else if (atrasoOcorrencia) {
+          next[raRaw] = {
+            status: 'atrasado',
+            horarioAtraso: atrasoOcorrencia.horario,
+            verificado: true,
+            manualOverride: false,
+            origem: 'atraso_ocorrencia',
+            atualizadoEm: agoraIso
+          };
+          alterado = true;
+        }
+      });
+
+      if (alterado) {
+        registrosEditadosLocalmenteRef.current = true;
+        return next;
+      }
+      return prev;
+    });
+  }, [registrosPresenca, integracaoCruzada, dataSelecionada]);
 
   // 10. Lista única de turmas na ordem escolar (6º -> 9º -> 1ª EM -> 3ª EM)
   const listaTurmas = useMemo(() => {
@@ -606,7 +672,7 @@ export default function PresencaDiariaIA() {
     return Array.from(s).sort(compararTurmas);
   }, [alunosBase]);
 
-  // 11. Agregação contínua multi-dias (considerando dispensas cruzadas)
+  // 11. Agregação contínua multi-dias (considerando dispensas e atrasos cruzados sobrepondo faltas)
   const historicoAgregado = useMemo(() => {
     const docIdAtual = `chamada_${dataSelecionada}_${ANO_LETIVO_OPERACAO}`;
     const mapaPorRa: Record<
@@ -620,6 +686,20 @@ export default function PresencaDiariaIA() {
         faltasConsecutivas: number;
       }
     > = {};
+
+    const resolverStatusDia = (raKey: string, dataIso: string, info?: RegistroPresencaItem): StatusPresenca => {
+      const stBase: StatusPresenca = info?.status || 'presente';
+      if (stBase === 'falta' || !info?.manualOverride) {
+        const temDispensaNoDia = (integracaoCruzada.dispensasPorRa[raKey] || []).some(
+          (d) => dataIso >= d.dataInicio && dataIso <= d.dataFim
+        );
+        if (temDispensaNoDia) return 'licenca';
+
+        const temAtrasoNoDia = Boolean(integracaoCruzada.atrasosPorRaData[raKey]?.[dataIso]);
+        if (temAtrasoNoDia) return 'atrasado';
+      }
+      return stBase;
+    };
 
     const atrasosPorDiaSemana: Record<string, number> = { Seg: 0, Ter: 0, Qua: 0, Qui: 0, Sex: 0 };
     const faltasPorDiaSemana: Record<string, number> = { Seg: 0, Ter: 0, Qua: 0, Qui: 0, Sex: 0 };
@@ -664,7 +744,7 @@ export default function PresencaDiariaIA() {
             faltasConsecutivas: 0
           };
         }
-        const st = info?.status || 'presente';
+        const st = resolverStatusDia(raKey, dataIso, info);
         if (st === 'falta') {
           mapaPorRa[raKey].faltasDiario++;
           totalFaltasHistorico++;
@@ -685,9 +765,14 @@ export default function PresencaDiariaIA() {
     Object.keys(mapaPorRa).forEach((raKey) => {
       let seq = 0;
       for (const dataIso of datasOrdenadasDesc) {
-        const reg = sessoesPorData.get(dataIso)?.[raKey];
+        const registrosDia = sessoesPorData.get(dataIso);
+        if (!registrosDia) continue;
+        const reg =
+          registrosDia[raKey] ||
+          Object.entries(registrosDia).find(([k]) => normalizarRaChave(k) === raKey)?.[1];
         if (!reg) continue;
-        if (reg.status === 'falta') seq++;
+        const stEfetivo = resolverStatusDia(raKey, dataIso, reg);
+        if (stEfetivo === 'falta') seq++;
         else break;
       }
       mapaPorRa[raKey].faltasConsecutivas = seq;
@@ -718,9 +803,10 @@ export default function PresencaDiariaIA() {
         alertasConsecutivos
       }
     };
-  }, [historicoChamadas, registrosPresenca, dataSelecionada]);
+  }, [historicoChamadas, registrosPresenca, dataSelecionada, integracaoCruzada]);
 
   // 12. Montagem da lista enriquecida: ordenação estrita por TURMA -> ALFABÉTICA, cruzando Dispensas + Atrasos
+  // Regra de precedência: falta sempre perde para atraso ou afastamento/dispensa lançado para o mesmo estudante.
   const listaAlunosEnriquecida: AlunoPresenca[] = useMemo(() => {
     const lista = alunosBase.map((a) => {
       const raKey = normalizarRaChave(a.ra || a.id);
@@ -738,28 +824,35 @@ export default function PresencaDiariaIA() {
       let horarioAtraso = '';
       let motivoLicenca = '';
 
-      if (regSalvo?.manualOverride) {
+      const podeSobrescreverPorOcorrencia =
+        !regSalvo ||
+        !regSalvo.manualOverride ||
+        regSalvo.status === 'falta';
+
+      if (podeSobrescreverPorOcorrencia) {
+        if (dispensaAtiva) {
+          statusEfetivo = 'licenca';
+          origem = 'dispensa';
+          verificado = true;
+          motivoLicenca = dispensaAtiva.motivo;
+        } else if (atrasoOcorrencia) {
+          statusEfetivo = 'atrasado';
+          origem = 'atraso_ocorrencia';
+          verificado = true;
+          horarioAtraso = atrasoOcorrencia.horario;
+        } else if (regSalvo) {
+          statusEfetivo = regSalvo.status || 'presente';
+          origem = regSalvo.origem || 'manual';
+          verificado = Boolean(regSalvo.verificado);
+          horarioAtraso = regSalvo.horarioAtraso || '';
+          motivoLicenca = regSalvo.motivoLicenca || '';
+        }
+      } else {
         statusEfetivo = regSalvo.status;
         origem = regSalvo.origem || 'manual';
         verificado = true;
         horarioAtraso = regSalvo.horarioAtraso || (atrasoOcorrencia?.horario ?? '');
         motivoLicenca = regSalvo.motivoLicenca || (dispensaAtiva?.motivo ?? '');
-      } else if (dispensaAtiva) {
-        statusEfetivo = 'licenca';
-        origem = 'dispensa';
-        verificado = true;
-        motivoLicenca = dispensaAtiva.motivo;
-      } else if (atrasoOcorrencia) {
-        statusEfetivo = 'atrasado';
-        origem = 'atraso_ocorrencia';
-        verificado = true;
-        horarioAtraso = atrasoOcorrencia.horario;
-      } else if (regSalvo) {
-        statusEfetivo = regSalvo.status || 'presente';
-        origem = regSalvo.origem || 'manual';
-        verificado = Boolean(regSalvo.verificado);
-        horarioAtraso = regSalvo.horarioAtraso || '';
-        motivoLicenca = regSalvo.motivoLicenca || '';
       }
 
       const hist = historicoAgregado.mapaPorRa[raKey] || {
@@ -962,8 +1055,31 @@ export default function PresencaDiariaIA() {
       return;
     }
 
-    registrosEditadosLocalmenteRef.current = true;
     const al = listaAlunosEnriquecida.find((x) => x.ra === ra);
+
+    // Regra de precedência: falta não prevalece quando há atraso ou afastamento/dispensa para o mesmo aluno
+    if (novoStatus === 'falta') {
+      if (al?.dispensaAtiva) {
+        if (typeof (window as any).showToast === 'function') {
+          (window as any).showToast(
+            `${al.nome} possui afastamento/dispensa (${al.dispensaAtiva.motivo}) nesta data. A falta perde e consta o afastamento.`,
+            'info'
+          );
+        }
+        return;
+      }
+      if (al?.atrasoOcorrencia) {
+        if (typeof (window as any).showToast === 'function') {
+          (window as any).showToast(
+            `${al.nome} possui atraso registrado (${al.atrasoOcorrencia.horario}) nesta data. A falta perde e consta o atraso.`,
+            'info'
+          );
+        }
+        return;
+      }
+    }
+
+    registrosEditadosLocalmenteRef.current = true;
 
     setRegistrosPresenca((prev) => ({
       ...prev,
@@ -1144,10 +1260,12 @@ export default function PresencaDiariaIA() {
     const docId = `chamada_${dataSelecionada}_${ANO_LETIVO_OPERACAO}`;
     const agoraIso = new Date().toISOString();
 
-    // Consolidar registros incluindo entradas cruzadas (dispensas/atrasos) e no modo 'final' confirmar restantes da seleção
+    // Consolidar registros incluindo entradas cruzadas (dispensas/atrasos sobrepondo eventuais faltas)
     const registrosParaSalvar: Record<string, RegistroPresencaItem> = { ...registrosPresenca };
     listaAlunosEnriquecida.forEach((a) => {
-      if (!registrosParaSalvar[a.ra] && (a.dispensaAtiva || a.atrasoOcorrencia)) {
+      const regAtual = registrosParaSalvar[a.ra];
+      const faltaSobrescrita = regAtual?.status === 'falta' && (a.dispensaAtiva || a.atrasoOcorrencia);
+      if ((!regAtual && (a.dispensaAtiva || a.atrasoOcorrencia)) || faltaSobrescrita) {
         registrosParaSalvar[a.ra] = {
           status: a.status,
           horarioAtraso: a.horarioAtraso || undefined,
