@@ -775,54 +775,17 @@
                 <span class="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950/80 text-emerald-300 font-mono font-bold border border-emerald-800/60">BI</span>
               </div>
 
-              <!-- DASHBOARD GERAL -->
+              <!-- CENTRAL DE DASHBOARDS (TODOS EM PÁGINA ÚNICA) -->
               <button 
                 onclick="switchTab('dashboard')" 
                 id="nav-dashboard" 
                 class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+                title="Central Unificada: Geral, Atrasos, Notas e Projetos PEI em uma página"
               >
                 <div class="nav-icon-tile bg-emerald-400/20 border-emerald-400/30 text-emerald-300 group-hover:scale-110 transition-transform">
                   <i class="fa-solid fa-chart-pie text-xs"></i>
                 </div>
-                <span class="truncate">Dashboard Geral</span>
-              </button>
-
-              <!-- DASHBOARD DE ATRASOS & FALTAS -->
-              <button 
-                onclick="switchTab('dashboard-atrasos')" 
-                id="nav-dashboard-atrasos" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
-                title="Dashboard de Atrasos, Faltas & Comparativo de Presença"
-              >
-                <div class="nav-icon-tile bg-amber-400/20 border-amber-400/30 text-amber-300 group-hover:scale-110 transition-transform">
-                  <i class="fa-solid fa-clock-rotate-left text-xs"></i>
-                </div>
-                <span class="truncate">Dashboard Atrasos</span>
-              </button>
-
-              <!-- DASHBOARD DE NOTAS -->
-              <button 
-                onclick="switchTab('dashboard-notas')" 
-                id="nav-dashboard-notas" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
-                title="Dashboard de Rendimento Escolar &amp; Notas dos Alunos"
-              >
-                <div class="nav-icon-tile bg-emerald-400/20 border-emerald-400/30 text-emerald-300 group-hover:scale-110 transition-transform">
-                  <i class="fa-solid fa-graduation-cap text-xs"></i>
-                </div>
-                <span class="truncate">Dashboard Notas</span>
-              </button>
-
-              <!-- DASH PROJETOS PEI -->
-              <button 
-                onclick="switchTab('dash-projetos-pei')" 
-                id="nav-dash-projetos-pei" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
-              >
-                <div class="nav-icon-tile bg-emerald-400/20 border-emerald-400/30 text-emerald-300 group-hover:scale-110 transition-transform">
-                  <i class="fa-solid fa-chart-line text-xs"></i>
-                </div>
-                <span class="truncate">Dash Projetos PEI</span>
+                <span class="truncate">Central de Dashboards</span>
               </button>
             </div>
 
@@ -877,7 +840,7 @@
               <button 
                 onclick="switchTab('presenca-diaria')" 
                 id="nav-presenca-diaria" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer hidden"
                 title="Chamada Diária, 3ª Métrica de Faltas Efetivas, Mapeamento Preditivo 2027 e Mensagens aos Pais com IA"
               >
                 <div class="nav-icon-tile bg-cyan-400/20 border-cyan-400/30 text-cyan-300 group-hover:scale-110 transition-transform">
@@ -939,7 +902,7 @@
               <button 
                 onclick="switchTab('substituicao-pei')" 
                 id="nav-substituicao-pei" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer hidden"
               >
                 <div class="nav-icon-tile bg-amber-400/20 border-amber-400/30 text-amber-300 group-hover:scale-110 transition-transform">
                   <i class="fa-solid fa-user-gear text-xs"></i>
@@ -963,7 +926,7 @@
               <button 
                 onclick="switchTab('professores')" 
                 id="nav-professores" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer hidden"
                 title="Gestão &amp; Registros de Professores"
               >
                 <div class="nav-icon-tile bg-purple-400/20 border-purple-400/30 text-purple-300 group-hover:scale-110 transition-transform">
@@ -1411,7 +1374,8 @@
           </div>
 
           <!-- ABA 1: DASHBOARD (Exclusivo para o Perfil do DIRETOR - Penúltimo módulo antes de Config) -->
-          <div id="content-dashboard" class="tab-content hidden space-y-6">
+          <div id="legacy-dashboards-dock" class="hidden">
+          <div id="content-dashboard" class="space-y-6">
             <!-- Barra Superior de Controle e Filtro por Tutor (PEI) -->
             <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
               <div class="flex items-center gap-3">
@@ -1593,7 +1557,7 @@
           </div>
 
           <!-- ABA: DASHBOARD DE ATRASOS, FALTAS & FREQUÊNCIA -->
-          <div id="content-dashboard-atrasos" class="tab-content hidden space-y-6">
+          <div id="content-dashboard-atrasos" class="space-y-6">
             <!-- Barra Superior de Controle e Filtros -->
             <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
               <div class="flex items-center gap-3">
@@ -1832,6 +1796,7 @@
                 </table>
               </div>
             </div>
+          </div>
           </div>
 
 
@@ -4926,7 +4891,7 @@
             </button>
 
             <!-- Presença Diária & IA 2027 -->
-            <button type="button" onclick="window.switchTab('presenca-diaria'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-presenca-diaria">
+            <button type="button" onclick="window.switchTab('presenca-diaria'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile hidden flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-presenca-diaria">
               <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-700 text-white flex items-center justify-center text-lg shadow-sm">
                 <i class="fa-solid fa-clipboard-user"></i>
               </div>
@@ -4957,40 +4922,16 @@
               <span class="text-[11px] font-bold text-slate-700 truncate w-full">Agenda</span>
             </button>
 
-            <!-- Dashboard Notas -->
-            <button type="button" onclick="window.switchTab('dashboard-notas'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-dashboard-notas">
-              <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-600 text-white flex items-center justify-center text-lg shadow-sm">
-                <i class="fa-solid fa-graduation-cap"></i>
-              </div>
-              <span class="text-[11px] font-bold text-slate-700 truncate w-full">Notas</span>
-            </button>
-
-            <!-- Dashboard Atrasos -->
-            <button type="button" onclick="window.switchTab('dashboard-atrasos'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-dashboard-atrasos">
-              <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-600 to-orange-600 text-white flex items-center justify-center text-lg shadow-sm">
-                <i class="fa-solid fa-clock-rotate-left"></i>
-              </div>
-              <span class="text-[11px] font-bold text-slate-700 truncate w-full">Atrasos</span>
-            </button>
-
-            <!-- Dashboard Geral -->
+            <!-- Central Unificada de Dashboards -->
             <button type="button" onclick="window.switchTab('dashboard'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-dashboard">
               <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-700 to-indigo-800 text-white flex items-center justify-center text-lg shadow-sm">
                 <i class="fa-solid fa-chart-pie"></i>
               </div>
-              <span class="text-[11px] font-bold text-slate-700 truncate w-full">Dash Geral</span>
-            </button>
-
-            <!-- Dash Projetos PEI -->
-            <button type="button" onclick="window.switchTab('dash-projetos-pei'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-dash-projetos-pei">
-              <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-600 to-violet-600 text-white flex items-center justify-center text-lg shadow-sm">
-                <i class="fa-solid fa-chart-line"></i>
-              </div>
-              <span class="text-[11px] font-bold text-slate-700 truncate w-full">Projetos PEI</span>
+              <span class="text-[11px] font-bold text-slate-700 truncate w-full">Dashboards</span>
             </button>
 
             <!-- Substituição PEI -->
-            <button type="button" onclick="window.switchTab('substituicao-pei'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-substituicao-pei">
+            <button type="button" onclick="window.switchTab('substituicao-pei'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile hidden flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-substituicao-pei">
               <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-500 text-white flex items-center justify-center text-lg shadow-sm">
                 <i class="fa-solid fa-user-gear"></i>
               </div>
@@ -4998,7 +4939,7 @@
             </button>
 
             <!-- Professores -->
-            <button type="button" onclick="window.switchTab('professores'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-professores">
+            <button type="button" onclick="window.switchTab('professores'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile hidden flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-professores">
               <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-600 to-pink-600 text-white flex items-center justify-center text-lg shadow-sm">
                 <i class="fa-solid fa-chalkboard-user"></i>
               </div>

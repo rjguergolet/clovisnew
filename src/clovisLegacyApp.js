@@ -3207,7 +3207,7 @@
         CGPCG: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "comparativo-frequencia"],
         PROFESSOR_PAAC: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos"],
         PAAC: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos"],
-        PROFESSOR: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos"],
+        PROFESSOR: ["inicio", "mural", "alunos", "dashboard-notas", "registros", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "dashboard", "dashboard-atrasos"],
         SECRETARIA: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "comparativo-frequencia"]
       };
 
@@ -4148,15 +4148,24 @@
         const role = String(roleRaw || "").toUpperCase().trim();
         const abasPermitidas = (window.PERMISSOES_ABAS && (window.PERMISSOES_ABAS[role] || window.PERMISSOES_ABAS[window.normalizarUserRole(role)])) || ["mural", "alunos", "registros"];
 
-        const todasAbas = ["inicio", "mural", "alunos", "dashboard-notas", "dashboard-atrasos", "professores", "rotina-pdca", "agenda", "registros", "busca-ativa", "horarios", "substituicao-pei", "dash-projetos-pei", "secretaria", "comparativo-frequencia", "dashboard", "admin", "auditoria"];
+        const todasAbas = ["inicio", "mural", "alunos", "dashboard-notas", "dashboard-atrasos", "presenca-diaria", "professores", "rotina-pdca", "agenda", "registros", "busca-ativa", "horarios", "substituicao-pei", "dash-projetos-pei", "secretaria", "comparativo-frequencia", "dashboard", "admin", "auditoria"];
 
         todasAbas.forEach(tab => {
+          const ehPermitida = abasPermitidas.includes(tab);
           const navEl = document.getElementById(`nav-${tab}`);
           if (navEl) {
-            if (abasPermitidas.includes(tab)) {
+            if (ehPermitida) {
               navEl.classList.remove("hidden");
             } else {
               navEl.classList.add("hidden");
+            }
+          }
+          const mobEl = document.getElementById(`mob-grid-${tab}`);
+          if (mobEl) {
+            if (ehPermitida) {
+              mobEl.classList.remove("hidden");
+            } else {
+              mobEl.classList.add("hidden");
             }
           }
         });
@@ -21129,10 +21138,13 @@ Yasmin Seline`;
         "substituicao-pei",
         "professores",
         "auditoria",
+        "dashboard",
+        "dashboard-atrasos",
         "dashboard-notas",
         "dash-projetos-pei",
         "comparativo-frequencia"
       ];
+      const UNIFIED_DASHBOARD_TABS = ["dashboard", "dashboard-atrasos", "dashboard-notas", "dash-projetos-pei"];
 
       // Função Global para Alternar Abas no Painel com RBAC Enforcement
       window.switchTab = function(tabName) {
@@ -21155,19 +21167,29 @@ Yasmin Seline`;
 
         // Atualizar estilos dos botões e manter a ocultação visual estrita (RBAC)
         const todasAbas = ["inicio", "mural", "alunos", "dashboard-notas", "dashboard-atrasos", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "horarios", "substituicao-pei", "admin", "dash-projetos-pei", "rotina-pdca", "dashboard", "auditoria", "comparativo-frequencia"];
+        const isDashboardUnificadoAtivo = UNIFIED_DASHBOARD_TABS.includes(tabName);
         todasAbas.forEach(tab => {
+          const ehPermitida = abasPermitidas.includes(tab);
           const navEl = document.getElementById(`nav-${tab}`);
           if (navEl) {
-            const ehPermitida = abasPermitidas.includes(tab);
             if (!ehPermitida) {
               navEl.classList.add("hidden");
             } else {
               navEl.classList.remove("hidden");
-              if (tab === tabName) {
+              const isSelectedNav = tab === tabName || (tab === "dashboard" && isDashboardUnificadoAtivo);
+              if (isSelectedNav) {
                 navEl.className = "tab-btn group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-cyan-400 to-cyan-300 text-slate-950 shadow-md shadow-cyan-500/20 cursor-pointer transition-all duration-200";
               } else {
                 navEl.className = "tab-btn group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-300 hover:bg-slate-800/80 hover:text-white transition-all duration-200 cursor-pointer";
               }
+            }
+          }
+          const mobEl = document.getElementById(`mob-grid-${tab}`);
+          if (mobEl) {
+            if (ehPermitida) {
+              mobEl.classList.remove("hidden");
+            } else {
+              mobEl.classList.add("hidden");
             }
           }
         });
@@ -21195,8 +21217,8 @@ Yasmin Seline`;
           "presenca-diaria": "Presença Diária & Inteligência Comportamental 2027",
           mural: "Mural de Recados & Avisos Institucionais",
           alunos: "Gestão de Alunos",
-          "dashboard-notas": "Dashboard de Rendimento & Notas dos Alunos",
-          "dashboard-atrasos": "Dashboard de Atrasos, Faltas & Frequência",
+          "dashboard-notas": "Central Unificada de Dashboards & BI Escolar",
+          "dashboard-atrasos": "Central Unificada de Dashboards & BI Escolar",
           registros: "Registros Acadêmicos & Ocorrências",
           secretaria: "Secretaria & Documentação",
           auditoria: "Auditoria do Sistema (Direção e Vice-Direção)",
@@ -21205,11 +21227,11 @@ Yasmin Seline`;
           horarios: "Grade Horária Escolar PEI",
           "substituicao-pei": "Gestão de Substituição PEI & Eventuais",
           admin: "Painel do Administrador",
-          "dash-projetos-pei": "Dash Projetos PEI & Painel Analítico de Tutores",
+          "dash-projetos-pei": "Central Unificada de Dashboards & BI Escolar",
           "rotina-pdca": "Gestão de Tarefas & Rotina PDCA",
           "comparativo-frequencia": "Auditoria SED vs Mapão de Frequência",
           professores: "Gestão & Acompanhamento de Professores",
-          dashboard: "Dashboard Geral & Métricas PEI"
+          dashboard: "Central Unificada de Dashboards & BI Escolar"
         };
         if (pageTitle && titles[tabName]) {
           pageTitle.textContent = titles[tabName];
@@ -21239,10 +21261,10 @@ Yasmin Seline`;
             }
           }
         }
-        if (tabName === "dashboard" && typeof atualizarDashboardGraficos === "function") {
-          atualizarDashboardGraficos();
-        }
-        if (tabName === "dashboard-atrasos") {
+        if (isDashboardUnificadoAtivo) {
+          if (typeof atualizarDashboardGraficos === "function") {
+            atualizarDashboardGraficos();
+          }
           if (typeof window.atualizarDashboardAtrasos === "function") {
             window.atualizarDashboardAtrasos();
           }
@@ -21258,24 +21280,27 @@ Yasmin Seline`;
                   await window.carregarHistoricoOcorrenciasGeral();
                 }
               }
+              if (typeof atualizarDashboardGraficos === "function") {
+                atualizarDashboardGraficos();
+              }
               if (typeof window.atualizarDashboardAtrasos === "function") {
                 window.atualizarDashboardAtrasos();
               }
-            } catch (errDashAtrasos) {
-              console.warn("Aviso ao atualizar dados para Dashboard de Atrasos:", errDashAtrasos);
+            } catch (errDash) {
+              console.warn("Aviso ao atualizar dados para Central de Dashboards:", errDash);
             }
           })();
         }
         if (tabName === "registros" && typeof window.carregarHistoricoOcorrenciasGeral === "function") {
           window.carregarHistoricoOcorrenciasGeral();
         }
-        if ((tabName === "secretaria" || tabName === "admin" || tabName === "dashboard") && typeof window.carregarEventosGeral === "function") {
+        if ((tabName === "secretaria" || tabName === "admin" || isDashboardUnificadoAtivo) && typeof window.carregarEventosGeral === "function") {
           window.carregarEventosGeral();
         }
         if (tabName === "secretaria" && typeof window.inicializarDropzoneFreqSed === "function") {
           window.inicializarDropzoneFreqSed();
         }
-        if ((tabName === "admin" || tabName === "dashboard") && typeof window.carregarModelos === "function") {
+        if ((tabName === "admin" || isDashboardUnificadoAtivo) && typeof window.carregarModelos === "function") {
           window.carregarModelos();
         }
         if (tabName === "admin") {

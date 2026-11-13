@@ -823,7 +823,7 @@ export default function Horarios() {
     const newId = anoGrade === '2027' ? `2027_horario-${Date.now()}` : `horario-${Date.now()}`;
     const safePeriodoId = isNaN(Number(periodoId)) ? periodoId : Number(periodoId);
     const userAtivo = obterUsuarioAtivoCompleto();
-    const novaAula = {
+    const { id: _omitId, ...novaAulaDbPayload } = {
       id: newId,
       dia: diaId,
       periodoId: safePeriodoId,
@@ -839,11 +839,12 @@ export default function Horarios() {
       editadoPorCargo: userAtivo.cargo,
       editadoEm: new Date().toISOString()
     };
+    const novaAula = { id: newId, ...novaAulaDbPayload };
 
     try {
       if (anoGrade === '2026') {
         const docRef = doc(db, 'horarios', newId);
-        await setDoc(docRef, novaAula);
+        await setDoc(docRef, novaAulaDbPayload);
       }
       await persistirGradeAtual([...horarios, novaAula]);
       notificar(`Nova aula alocada na planilha (${anoGrade}) com sucesso!`, 'success');
@@ -892,8 +893,12 @@ export default function Horarios() {
       notificar('A grade precisa ter ao menos um slot de horário.', 'warning');
       return;
     }
-    const filtrados = periodosAula.filter(p => Number(p.id) !== Number(idSlot));
+    const slotAlvo = periodosAula.find(p => String(p.id) === String(idSlot));
+    const filtrados = periodosAula.filter(p => String(p.id) !== String(idSlot));
     setPeriodosAula(filtrados);
+    if (slotAlvo) {
+      notificar(`Slot "${slotAlvo.rotulo}" removido da lista. Clique em "Salvar Slots de Horário" para confirmar.`, 'info');
+    }
   };
 
   // Handlers para Controle de Indisponibilidade / Ausência de Professores
@@ -1793,11 +1798,15 @@ export default function Horarios() {
   // Execução efetiva da exclusão de uma aula
   const executarExclusaoHorario = async (id) => {
     try {
-      const aulaRemovida = horarios.find(h => h.id === id);
+      const aulaRemovida = horarios.find(h => String(h.id) === String(id));
+      const novos = horarios.filter(h => String(h.id) !== String(id));
 
-      if (anoGrade === '2026' && id) {
+      // Persiste a remoção e a lista de deletedIds ANTES de disparar deleteDoc para evitar corrida com onSnapshot
+      await persistirGradeAtual(novos, id ? [id] : []);
+
+      if (anoGrade === '2026' && id && !String(id).startsWith('init-') && !String(id).startsWith('local-')) {
         try {
-          await deleteDoc(doc(db, 'horarios', id));
+          await deleteDoc(doc(db, 'horarios', String(id)));
         } catch (delErr) {
           console.warn('Aviso ao deletar doc em horarios:', delErr);
         }
@@ -1807,7 +1816,7 @@ export default function Horarios() {
         modulo: `Grade Horária ${anoGrade}`,
         acao: 'EXCLUIR',
         descricao: `Removida aula ${aulaRemovida ? `${aulaRemovida.disciplina} (${aulaRemovida.turma})` : ''} ID #${id} da grade ${anoGrade}.`,
-        detalhes: { id, aulaRemovida, anoGrade }
+        detalhes: { aulaId: id, aulaRemovida, anoGrade }
       };
       if (typeof window.registrarLogAuditoria === 'function') {
         window.registrarLogAuditoria(auditPayloadExcluir);
@@ -1815,13 +1824,11 @@ export default function Horarios() {
         registrarLogAuditoria(auditPayloadExcluir);
       }
 
-      const novos = horarios.filter(h => h.id !== id);
-      await persistirGradeAtual(novos, [id]);
       notificar('Aula removida com sucesso.', 'success');
     } catch (error) {
       console.error('Erro ao excluir:', error);
-      const novos = horarios.filter(h => h.id !== id);
-      await persistirGradeAtual(novos, [id]);
+      const novos = horarios.filter(h => String(h.id) !== String(id));
+      await persistirGradeAtual(novos, id ? [id] : []);
       notificar('Aula removida da grade.', 'info');
     }
   };
@@ -2037,15 +2044,18 @@ export default function Horarios() {
       variant: 'danger',
       onConfirm: async () => {
         try {
-          if (anoGrade === '2026' && aula.id) {
-            try { await deleteDoc(doc(db, 'horarios', aula.id)); } catch (e) {}
+          const novosHorarios = horarios.filter(h => String(h.id) !== String(aula.id));
+          await persistirGradeAtual(novosHorarios, aula.id ? [aula.id] : []);
+
+          if (anoGrade === '2026' && aula.id && !String(aula.id).startsWith('init-') && !String(aula.id).startsWith('local-')) {
+            try { await deleteDoc(doc(db, 'horarios', String(aula.id))); } catch (e) {}
           }
 
           const auditPayload = {
             modulo: `Grade Horária ${anoGrade}`,
             acao: 'AUDITORIA_DIRETOR_EXCLUIR',
             descricao: `Diretor excluiu aula atribuída de ${aula.professor} - ${aula.disciplina} (${aula.turma}) em ${aula.dia}, ${rotuloP}`,
-            detalhes: { id: aula.id, aula }
+            detalhes: { aulaId: aula.id, aula }
           };
 
           if (typeof window.registrarLogAuditoria === 'function') {
@@ -2054,13 +2064,11 @@ export default function Horarios() {
             registrarLogAuditoria(auditPayload);
           }
 
-          const novosHorarios = horarios.filter(h => h.id !== aula.id);
-          await persistirGradeAtual(novosHorarios, [aula.id]);
           notificar(`Aula de ${aula.disciplina} (${aula.professor}) removida da grade.`, 'success');
         } catch (err) {
           console.error('Erro ao excluir aula na auditoria:', err);
-          const novosHorarios = horarios.filter(h => h.id !== aula.id);
-          await persistirGradeAtual(novosHorarios, [aula.id]);
+          const novosHorarios = horarios.filter(h => String(h.id) !== String(aula.id));
+          await persistirGradeAtual(novosHorarios, aula.id ? [aula.id] : []);
         }
       }
     });
@@ -2193,16 +2201,16 @@ export default function Horarios() {
       variant: 'danger',
       onConfirm: async () => {
         try {
-          if (anoGrade === '2026' && aula.id) {
-            try { await deleteDoc(doc(db, 'horarios', aula.id)); } catch (e) {}
+          const novosHorarios = horarios.filter(h => String(h.id) !== String(aula.id));
+          await persistirGradeAtual(novosHorarios, aula.id ? [aula.id] : []);
+          if (anoGrade === '2026' && aula.id && !String(aula.id).startsWith('init-') && !String(aula.id).startsWith('local-')) {
+            try { await deleteDoc(doc(db, 'horarios', String(aula.id))); } catch (e) {}
           }
-          const novosHorarios = horarios.filter(h => h.id !== aula.id);
-          await persistirGradeAtual(novosHorarios, [aula.id]);
           notificar('Aula removida da Grade PEI.', 'success');
         } catch (err) {
           console.error('Erro ao excluir aula na grade admin:', err);
-          const novosHorarios = horarios.filter(h => h.id !== aula.id);
-          await persistirGradeAtual(novosHorarios, [aula.id]);
+          const novosHorarios = horarios.filter(h => String(h.id) !== String(aula.id));
+          await persistirGradeAtual(novosHorarios, aula.id ? [aula.id] : []);
         }
       }
     });
@@ -2232,11 +2240,14 @@ export default function Horarios() {
         try {
           setSalvando(true);
           const idsRemovidos = aulasDoProf.map(a => a.id).filter(Boolean);
+          const novosHorarios = horarios.filter(h => !isSameProfessor(h.professor, profNome));
+          await persistirGradeAtual(novosHorarios, idsRemovidos);
 
-          if (anoGrade === '2026') {
+          const idsBanco = idsRemovidos.filter(aId => !String(aId).startsWith('init-') && !String(aId).startsWith('local-'));
+          if (anoGrade === '2026' && idsBanco.length > 0) {
             const batch = writeBatch(db);
-            idsRemovidos.forEach((aId) => {
-              batch.delete(doc(db, 'horarios', aId));
+            idsBanco.forEach((aId) => {
+              batch.delete(doc(db, 'horarios', String(aId)));
             });
             await batch.commit().catch(() => {});
           }
@@ -2254,13 +2265,11 @@ export default function Horarios() {
             registrarLogAuditoria(auditPayload);
           }
 
-          const novosHorarios = horarios.filter(h => !isSameProfessor(h.professor, profNome));
-          await persistirGradeAtual(novosHorarios, idsRemovidos);
           notificar(`Grade de ${profNome} limpa com sucesso (${aulasDoProf.length} aulas excluídas).`, 'success');
         } catch (err) {
           console.error('Erro ao limpar grade do professor:', err);
           const novosHorarios = horarios.filter(h => !isSameProfessor(h.professor, profNome));
-          await persistirGradeAtual(novosHorarios, aulasDoProf.map(a => a.id));
+          await persistirGradeAtual(novosHorarios, aulasDoProf.map(a => a.id).filter(Boolean));
           notificar(`Grade de ${profNome} limpa localmente.`, 'warning');
         } finally {
           setSalvando(false);
@@ -2924,19 +2933,21 @@ export default function Horarios() {
         setSalvando(true);
         try {
           const idsAtuais = (horarios || []).map(h => h.id).filter(Boolean);
-          if (anoGrade === '2026' && idsAtuais.length > 0) {
+          await persistirGradeAtual([], idsAtuais);
+
+          const idsBanco = idsAtuais.filter(hId => !String(hId).startsWith('init-') && !String(hId).startsWith('local-'));
+          if (anoGrade === '2026' && idsBanco.length > 0) {
             try {
               const chunkSize = 200;
-              for (let i = 0; i < idsAtuais.length; i += chunkSize) {
+              for (let i = 0; i < idsBanco.length; i += chunkSize) {
                 const batch = writeBatch(db);
-                idsAtuais.slice(i, i + chunkSize).forEach(hId => batch.delete(doc(db, 'horarios', hId)));
+                idsBanco.slice(i, i + chunkSize).forEach(hId => batch.delete(doc(db, 'horarios', String(hId))));
                 await batch.commit();
               }
             } catch (bErr) {
               console.warn('Aviso ao limpar docs de horarios em lote:', bErr);
             }
           }
-          await persistirGradeAtual([], idsAtuais);
           notificar(`Grade horária ${anoGrade} limpa permanentemente.`, 'success');
           setIsGerenciarModalOpen(false);
         } finally {
@@ -2988,15 +2999,17 @@ export default function Horarios() {
         } catch (e) {}
 
         const idsRemovidos = afetadas.map(a => a.id).filter(Boolean);
-        if (anoGrade === '2026' && idsRemovidos.length > 0) {
+        const restantes = horarios.filter(h => h.turma !== turmaNome);
+        await persistirGradeAtual(restantes, idsRemovidos);
+
+        const idsBanco = idsRemovidos.filter(aId => !String(aId).startsWith('init-') && !String(aId).startsWith('local-'));
+        if (anoGrade === '2026' && idsBanco.length > 0) {
           try {
             const batch = writeBatch(db);
-            idsRemovidos.forEach(aId => batch.delete(doc(db, 'horarios', aId)));
+            idsBanco.forEach(aId => batch.delete(doc(db, 'horarios', String(aId))));
             await batch.commit();
           } catch (e) {}
         }
-        const restantes = horarios.filter(h => h.turma !== turmaNome);
-        await persistirGradeAtual(restantes, idsRemovidos);
         if (turmaSelecionada === turmaNome) {
           setTurmaSelecionada(restantes[0]?.turma || baseAtualizada.turmas[0] || '');
         }
@@ -3126,15 +3139,17 @@ export default function Horarios() {
         } catch (e) {}
 
         const idsRemovidos = afetadas.map(a => a.id).filter(Boolean);
-        if (anoGrade === '2026' && idsRemovidos.length > 0) {
+        const restantes = horarios.filter(h => !isSameProfessor(h.professor, profNome) && h.professor !== profNome);
+        await persistirGradeAtual(restantes, idsRemovidos);
+
+        const idsBanco = idsRemovidos.filter(aId => !String(aId).startsWith('init-') && !String(aId).startsWith('local-'));
+        if (anoGrade === '2026' && idsBanco.length > 0) {
           try {
             const batch = writeBatch(db);
-            idsRemovidos.forEach(aId => batch.delete(doc(db, 'horarios', aId)));
+            idsBanco.forEach(aId => batch.delete(doc(db, 'horarios', String(aId))));
             await batch.commit();
           } catch (e) {}
         }
-        const restantes = horarios.filter(h => !isSameProfessor(h.professor, profNome) && h.professor !== profNome);
-        await persistirGradeAtual(restantes, idsRemovidos);
         if (professorSelecionado === profNome) {
           setProfessorSelecionado(restantes[0]?.professor || novosProfs[0]?.nome || '');
         }
@@ -3315,15 +3330,17 @@ export default function Horarios() {
         } catch (e) {}
 
         const idsRemovidos = afetadas.map(a => a.id).filter(Boolean);
-        if (anoGrade === '2026' && idsRemovidos.length > 0) {
+        const restantes = horarios.filter(h => h.sala !== salaNome);
+        await persistirGradeAtual(restantes, idsRemovidos);
+
+        const idsBanco = idsRemovidos.filter(aId => !String(aId).startsWith('init-') && !String(aId).startsWith('local-'));
+        if (anoGrade === '2026' && idsBanco.length > 0) {
           try {
             const batch = writeBatch(db);
-            idsRemovidos.forEach(aId => batch.delete(doc(db, 'horarios', aId)));
+            idsBanco.forEach(aId => batch.delete(doc(db, 'horarios', String(aId))));
             await batch.commit();
           } catch (e) {}
         }
-        const restantes = horarios.filter(h => h.sala !== salaNome);
-        await persistirGradeAtual(restantes, idsRemovidos);
         if (salaSelecionada === salaNome) {
           setSalaSelecionada(restantes[0]?.sala || baseAtualizada.salas[0] || '');
         }
@@ -3412,49 +3429,49 @@ export default function Horarios() {
     window.print();
   };
 
-  // Obter Estilo e Cor da Disciplina por Categoria Seduc/PEI
+  // Obter Estilo e Cor da Disciplina por Categoria Seduc/PEI (Soft Semantic Badges)
   const getCorDisciplina = (disciplinaNome) => {
-    if (!disciplinaNome) return { bg: 'bg-slate-100 text-slate-800 border-slate-200', badge: 'bg-slate-600 text-white' };
+    if (!disciplinaNome) return { bg: 'bg-slate-50/90 text-slate-800 border-slate-200/80 border-l-4 border-l-slate-400', badge: 'bg-slate-200/80 text-slate-800' };
     const discUpper = String(disciplinaNome).toUpperCase().trim();
 
     if (['FOLGA', 'OFF', '-', 'S', '*', 'BLOQUEIO', 'JANELA', 'FORA', 'AUSENTE'].some(term => discUpper === term || discUpper.includes(term))) {
-      return { bg: 'bg-rose-100/90 border-2 border-rose-300 text-rose-950 font-bold', badge: 'bg-rose-700 text-white font-black' };
+      return { bg: 'bg-rose-50/90 border-rose-200/70 border-l-4 border-l-rose-500 text-rose-950 font-semibold', badge: 'bg-rose-100 text-rose-900 font-semibold' };
     }
 
-    // 1. Amarelo/Laranja: Língua Portuguesa, Inglês, Arte, Educação Física
+    // 1. Âmbar/Suave: Língua Portuguesa, Inglês, Arte, Educação Física
     if (['PORTUGUÊS', 'PORTUGUES', 'LÍNGUA PORTUGUESA', 'LINGUA PORTUGUESA', 'INGLÊS', 'INGLES', 'ARTE', 'ARTES', 'EDUCAÇÃO FÍSICA', 'EDUCACAO FISICA', 'ED. FÍSICA', 'ED. FISICA', 'ED FISICA'].some(t => discUpper.includes(t))) {
-      return { bg: 'bg-amber-100 border-amber-300 text-amber-900 font-bold', badge: 'bg-amber-600 text-white' };
+      return { bg: 'bg-amber-50/85 border-amber-200/70 border-l-4 border-l-amber-500 text-amber-950 font-semibold', badge: 'bg-amber-100/90 text-amber-900' };
     }
 
-    // 2. Vermelho/Rose: Matemática
+    // 2. Rose/Suave: Matemática
     if (['MATEMÁTICA', 'MATEMATICA', 'MAT'].some(t => discUpper.includes(t))) {
-      return { bg: 'bg-rose-100 border-rose-300 text-rose-900 font-bold', badge: 'bg-rose-600 text-white' };
+      return { bg: 'bg-rose-50/85 border-rose-200/70 border-l-4 border-l-rose-500 text-rose-950 font-semibold', badge: 'bg-rose-100/90 text-rose-900' };
     }
 
-    // 3. Verde: Ciências, Biologia, Física, Química
+    // 3. Esmeralda/Suave: Ciências, Biologia, Física, Química
     if (['CIÊNCIAS', 'CIENCIAS', 'BIOLOGIA', 'FÍSICA', 'FISICA', 'QUÍMICA', 'QUIMICA'].some(t => discUpper.includes(t))) {
-      return { bg: 'bg-emerald-100 border-emerald-300 text-emerald-900 font-bold', badge: 'bg-emerald-600 text-white' };
+      return { bg: 'bg-emerald-50/85 border-emerald-200/70 border-l-4 border-l-emerald-500 text-emerald-950 font-semibold', badge: 'bg-emerald-100/90 text-emerald-900' };
     }
 
-    // 4. Roxo/Fúcsia: História, Geografia, Filosofia, Sociologia
+    // 4. Roxo/Suave: História, Geografia, Filosofia, Sociologia
     if (['HISTÓRIA', 'HISTORIA', 'GEOGRAFIA', 'GEO', 'FILOSOFIA', 'SOCIOLOGIA'].some(t => discUpper.includes(t))) {
-      return { bg: 'bg-fuchsia-100 border-fuchsia-300 text-fuchsia-900 font-bold', badge: 'bg-fuchsia-600 text-white' };
+      return { bg: 'bg-purple-50/85 border-purple-200/70 border-l-4 border-l-purple-600 text-purple-950 font-semibold', badge: 'bg-purple-100/90 text-purple-900' };
     }
 
-    // 5. Ciano/Azul: Eletivas, Projeto de Vida, Práticas, Tecnologia, Orientação, Tutoria, Robótica
+    // 5. Índigo/Suave: Eletivas, Projeto de Vida, Práticas, Tecnologia, Orientação, Tutoria, Robótica
     if (['ELETIVA', 'PROJETO DE VIDA', 'PRÁTICA', 'PRATICA', 'TECNOLOGIA', 'INOVAÇÃO', 'INOVACAO', 'ORIENTAÇÃO', 'ORIENTACAO', 'ESTUDO ORIENTADO', 'TUTORIA', 'COMPUTACIONAL', 'ROBÓTICA', 'ROBOTICA', 'PLANTÃO', 'PLANTAO'].some(t => discUpper.includes(t))) {
-      return { bg: 'bg-sky-100 border-sky-300 text-sky-900 font-bold', badge: 'bg-sky-600 text-white' };
+      return { bg: 'bg-indigo-50/80 border-indigo-200/60 border-l-4 border-l-indigo-600 text-slate-800 font-semibold', badge: 'bg-indigo-100/90 text-indigo-900' };
     }
 
     // 6. Cinza Neutro: Intervalo, Almoço, Recreio
     if (['INTERVALO', 'ALMOÇO', 'ALMOCO', 'RECREIO'].some(t => discUpper.includes(t))) {
-      return { bg: 'bg-slate-200 border-slate-300 text-slate-700 italic font-semibold', badge: 'bg-slate-600 text-white' };
+      return { bg: 'bg-slate-100/90 border-slate-200/80 border-l-4 border-l-slate-400 text-slate-700 italic font-medium', badge: 'bg-slate-200 text-slate-700' };
     }
 
     const chave = Object.keys(DISCIPLINAS_CORES).find(k =>
       disciplinaNome.toLowerCase().includes(k.toLowerCase())
     );
-    return DISCIPLINAS_CORES[chave] || { bg: 'bg-sky-100 text-sky-900 border-sky-300 font-bold', badge: 'bg-sky-600 text-white' };
+    return DISCIPLINAS_CORES[chave] || { bg: 'bg-indigo-50/80 text-slate-800 border-indigo-200/60 border-l-4 border-l-indigo-600 font-semibold', badge: 'bg-indigo-100/90 text-indigo-900' };
   };
   const getDisciplinaCor = getCorDisciplina;
 
@@ -3474,69 +3491,102 @@ export default function Horarios() {
   const totalSalasAtivas = new Set(horariosEfetivos.map(h => h.sala).filter(Boolean)).size;
 
   return (
-    <div className="w-full space-y-6 pb-12">
-      {/* Cabeçalho da Seção */}
-      <div className="bg-gradient-to-r from-blue-900 via-blue-950 to-slate-900 rounded-2xl p-6 text-white shadow-lg border border-blue-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-xl bg-cyan-100 text-cyan-300 flex items-center justify-center text-2xl border border-cyan-400 shadow-inner">
+    <div className="w-full space-y-5 pb-16 bg-[#F8FAFC]/60">
+      {/* Cabeçalho Glassmorphic */}
+      <div className="bg-white/95 backdrop-blur-md rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex flex-col gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-xl shrink-0 border border-indigo-200/50">
               <i className="fa-solid fa-clock-rotate-left"></i>
             </div>
             <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl font-black text-white tracking-tight">Grade Horária Escolar PEI</h1>
-                <div className="inline-flex rounded-lg bg-slate-900/80 border border-slate-700 p-0.5 text-[11px] font-black">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Grade Horária Escolar PEI</h1>
+                <div className="inline-flex rounded-xl bg-slate-100 border border-slate-200/70 p-0.5 text-xs font-medium">
                   <button
                     type="button"
                     onClick={() => handleAlternarAnoGrade('2026')}
-                    className={`px-2.5 py-1 rounded-md transition cursor-pointer ${anoGrade === '2026' ? 'bg-emerald-500 text-slate-950 shadow-xs' : 'text-slate-300 hover:text-white'}`}
+                    className={`px-3 py-1 rounded-lg transition cursor-pointer ${
+                      anoGrade === '2026'
+                        ? 'bg-white text-slate-900 font-semibold shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
                   >
                     Grade 2026 (Vigente)
                   </button>
                   <button
                     type="button"
                     onClick={() => handleAlternarAnoGrade('2027')}
-                    className={`px-2.5 py-1 rounded-md transition cursor-pointer ${anoGrade === '2027' ? 'bg-cyan-400 text-blue-950 shadow-xs' : 'text-slate-300 hover:text-white'}`}
+                    className={`px-3 py-1 rounded-lg transition cursor-pointer ${
+                      anoGrade === '2027'
+                        ? 'bg-indigo-600 text-white font-semibold shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
                   >
                     Grade 2027 (Planejamento)
                   </button>
                 </div>
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">
-                  <span className={`w-2 h-2 rounded-full ${isRealtimeConnected ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border ${
+                  isRealtimeConnected
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200/70'
+                    : 'bg-amber-50 text-amber-700 border-amber-200/70'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${isRealtimeConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></span>
                   {isRealtimeConnected ? 'Sincronizado' : 'Conectando...'}
                 </span>
               </div>
-              <p className="text-xs text-cyan-200 font-medium mt-0.5">
-                Escola Estadual Clóvis de Lucca &bull; Ano Letivo {anoGrade} &bull; Matriz de Aulas por Turma, Professor e Sala
+              <p className="text-xs text-slate-500 font-medium mt-1">
+                Escola Estadual Clóvis de Lucca &bull; Ano Letivo <span className="tabular-nums font-semibold text-slate-700">{anoGrade}</span> &bull; Matriz de Aulas por Turma, Professor e Sala
               </p>
             </div>
           </div>
+
+          {/* Botão Primário + Ações Rápidas */}
+          <div className="flex flex-wrap items-center gap-2 print:hidden">
+            <button
+              type="button"
+              onClick={() => carregarGradeHorarios(true)}
+              className="inline-flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-medium px-3 py-2 rounded-xl border border-slate-200/80 transition cursor-pointer"
+              title="Forçar atualização da Grade Horária a partir do servidor"
+            >
+              <i className="fa-solid fa-arrows-rotate text-slate-500"></i>
+              <span>Atualizar</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleImprimir}
+              className="inline-flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-medium px-3 py-2 rounded-xl border border-slate-200/80 transition cursor-pointer"
+            >
+              <i className="fa-solid fa-print text-slate-500"></i>
+              <span>Imprimir</span>
+            </button>
+
+            {podeEditar ? (
+              <button
+                type="button"
+                onClick={() => handleAbrirModalNovo()}
+                className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition shadow-xs cursor-pointer"
+              >
+                <i className="fa-solid fa-plus"></i>
+                <span>Novo Horário</span>
+              </button>
+            ) : (
+              <div className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-600 text-xs font-medium px-3 py-2 rounded-xl border border-slate-200/80" title="Modo somente leitura para docentes">
+                <i className="fa-solid fa-eye text-slate-500"></i>
+                <span>Somente Leitura</span>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Botões de Ação */}
-        <div className="flex flex-wrap items-center gap-2 print:hidden">
-          <button
-            onClick={() => carregarGradeHorarios(true)}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-700 transition shadow-sm cursor-pointer"
-            title="Forçar atualização da Grade Horária a partir do servidor"
-          >
-            <i className="fa-solid fa-arrows-rotate text-cyan-400"></i>
-            <span>Atualizar Grade</span>
-          </button>
-
-          <button
-            onClick={handleImprimir}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-700 transition shadow-sm cursor-pointer"
-          >
-            <i className="fa-solid fa-print text-cyan-400"></i>
-            <span>Imprimir Grade</span>
-          </button>
-
+        {/* Barra de Ferramentas de Gestão (Horizontal deslizável no mobile) */}
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pt-2 border-t border-slate-100 print:hidden">
           {podeEditar ? (
             <>
-              <label className="flex items-center gap-2 bg-gradient-to-r from-emerald-700 to-teal-800 hover:from-emerald-600 hover:to-teal-700 text-white text-xs font-black px-3.5 py-2.5 rounded-xl border border-emerald-500/70 transition shadow-sm cursor-pointer" title="Importar arquivo CSV (Grade em Matriz ou Tabela)">
-                <i className="fa-solid fa-file-csv text-cyan-300"></i>
-                <span>Subir CSV (Grade/Matriz)</span>
+              <label className="shrink-0 inline-flex items-center gap-1.5 bg-emerald-50/90 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold px-3 py-2 rounded-xl border border-emerald-200/70 transition cursor-pointer" title="Importar arquivo CSV (Grade em Matriz ou Tabela)">
+                <i className="fa-solid fa-file-csv text-emerald-600"></i>
+                <span>Subir CSV</span>
                 <input
                   type="file"
                   accept=".csv,text/csv"
@@ -3546,47 +3596,50 @@ export default function Horarios() {
               </label>
 
               <button
+                type="button"
                 onClick={() => setModoPlanilha(!modoPlanilha)}
-                className={`flex items-center gap-2 text-xs font-black px-3.5 py-2.5 rounded-xl transition cursor-pointer border shadow-sm ${
+                className={`shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl transition cursor-pointer border ${
                   modoPlanilha
-                    ? 'bg-emerald-600 hover:bg-emerald-500 border-emerald-400 text-white shadow-emerald-900/30 ring-2 ring-emerald-400'
-                    : 'bg-emerald-800/90 hover:bg-emerald-700 text-emerald-100 border-emerald-600/70'
+                    ? 'bg-emerald-600 hover:bg-emerald-700 border-emerald-600 text-white shadow-xs'
+                    : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200/80'
                 }`}
                 title="Ativar modo planilha para edição rápida e direta de todas as células da grade"
               >
-                <i className={`fa-solid ${modoPlanilha ? 'fa-table-cells-large' : 'fa-file-excel'} text-cyan-300`}></i>
-                <span>{modoPlanilha ? 'Modo Planilha Ativo' : 'Ativar Modo Planilha'}</span>
+                <i className={`fa-solid ${modoPlanilha ? 'fa-table-cells-large' : 'fa-file-excel text-emerald-600'}`}></i>
+                <span>{modoPlanilha ? 'Modo Planilha Ativo' : 'Modo Planilha'}</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => setIsConfigHorariosModalOpen(true)}
-                className="flex items-center gap-2 bg-indigo-900/90 hover:bg-indigo-800 text-indigo-100 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-indigo-700/70 transition shadow-sm cursor-pointer"
+                className="shrink-0 inline-flex items-center gap-1.5 bg-white hover:bg-indigo-50/70 text-slate-700 hover:text-indigo-700 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200/80 transition cursor-pointer"
                 title="Editar slots de tempo (horários das aulas e intervalos)"
               >
-                <i className="fa-solid fa-clock text-cyan-300"></i>
+                <i className="fa-solid fa-clock text-indigo-600"></i>
                 <span>Editar Slots de Horário</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => setIsAusenciaModalOpen(true)}
-                className="flex items-center gap-2 bg-purple-900 hover:bg-purple-800 text-purple-100 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-purple-700 transition shadow-sm cursor-pointer"
+                className="shrink-0 inline-flex items-center gap-1.5 bg-white hover:bg-purple-50/70 text-slate-700 hover:text-purple-700 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200/80 transition cursor-pointer"
                 title="Configurar agenda de ausência / indisponibilidade de professores"
               >
-                <i className="fa-solid fa-user-slash text-rose-300"></i>
+                <i className="fa-solid fa-user-slash text-purple-600"></i>
                 <span>Indisponibilidade Docente</span>
               </button>
 
-              {/* Botão de Auditoria de Aulas Atribuídas */}
               {(podeEditar || isDiretor) && (
                 <button
+                  type="button"
                   onClick={() => {
                     setAuditoriaFiltroProfessor(modoVisao === 'por_professor' && professorSelecionado ? professorSelecionado : 'TODOS');
                     setIsAuditoriaAulasModalOpen(true);
                   }}
-                  className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black px-4 py-2.5 rounded-xl border border-amber-400 shadow-md transition cursor-pointer shrink-0"
+                  className="shrink-0 inline-flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 text-xs font-semibold px-3 py-2 rounded-xl border border-amber-200/80 transition cursor-pointer"
                   title="Auditoria e Gestão de Aulas Atribuídas"
                 >
-                  <i className="fa-solid fa-clipboard-check text-slate-950 text-sm"></i>
+                  <i className="fa-solid fa-clipboard-check text-amber-600"></i>
                   <span>Auditoria de Atribuição</span>
                 </button>
               )}
@@ -3602,60 +3655,47 @@ export default function Horarios() {
                     onConfirm: () => handleDuplicarGradePara2027(true)
                   });
                 }}
-                className="flex items-center gap-2 bg-gradient-to-r from-purple-900 to-indigo-950 hover:from-purple-800 hover:to-indigo-900 text-purple-100 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-purple-500/50 transition shadow-sm cursor-pointer"
+                className="shrink-0 inline-flex items-center gap-1.5 bg-white hover:bg-purple-50/70 text-slate-700 hover:text-purple-700 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200/80 transition cursor-pointer"
                 title="Duplicar grade atual para planejamento do Ano Letivo 2027"
               >
-                <i className="fa-solid fa-calendar-plus text-cyan-300"></i>
+                <i className="fa-solid fa-calendar-plus text-purple-600"></i>
                 <span>Preparar Grade 2027</span>
               </button>
 
               <button
+                type="button"
                 onClick={() => setIsGerenciarModalOpen(true)}
-                className="flex items-center gap-2 bg-blue-900 hover:bg-blue-800 text-blue-100 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-blue-700/60 transition shadow-sm cursor-pointer"
+                className="shrink-0 inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200/80 transition cursor-pointer"
                 title="Ferramentas de Gerenciamento da Grade (Upload CSV / Redefinição / Exclusão)"
               >
-                <i className="fa-solid fa-sliders text-cyan-300"></i>
+                <i className="fa-solid fa-sliders text-slate-600"></i>
                 <span>Gerenciar Grade</span>
-              </button>
-
-              <button
-                onClick={() => handleAbrirModalNovo()}
-                className="flex items-center gap-2 bg-gradient-to-r from-cyan-400 to-cyan-500 hover:from-cyan-300 hover:to-cyan-400 text-blue-950 text-xs font-black px-4 py-2.5 rounded-xl transition shadow-md cursor-pointer"
-              >
-                <i className="fa-solid fa-plus text-sm"></i>
-                <span>Novo Horário</span>
               </button>
             </>
           ) : (
-            <>
-              <button
-                onClick={() => setIsAusenciaModalOpen(true)}
-                className="flex items-center gap-2 bg-purple-900 hover:bg-purple-800 text-purple-100 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-purple-700 transition shadow-sm cursor-pointer"
-                title="Consultar agenda de ausências dos professores"
-              >
-                <i className="fa-solid fa-user-slash text-rose-300"></i>
-                <span>Ver Ausências Docentes</span>
-              </button>
-
-              <div className="flex items-center gap-2 bg-slate-800 text-cyan-300 text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-700 shadow-sm" title="Modo somente leitura para docentes">
-                <i className="fa-solid fa-eye text-cyan-400"></i>
-                <span>Modo de Visualização (Somente Leitura)</span>
-              </div>
-            </>
+            <button
+              type="button"
+              onClick={() => setIsAusenciaModalOpen(true)}
+              className="shrink-0 inline-flex items-center gap-1.5 bg-white hover:bg-purple-50 text-slate-700 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200/80 transition cursor-pointer"
+              title="Consultar agenda de ausências dos professores"
+            >
+              <i className="fa-solid fa-user-slash text-purple-600"></i>
+              <span>Ver Ausências Docentes</span>
+            </button>
           )}
         </div>
       </div>
 
       {/* Banner Informativo do Modo Planejamento 2027 */}
       {anoGrade === '2027' && (
-        <div className="bg-cyan-50 border-2 border-cyan-300 text-blue-950 px-5 py-4 rounded-2xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs print:hidden">
+        <div className="bg-indigo-50/90 border border-indigo-200/70 border-l-4 border-l-indigo-600 text-slate-800 px-5 py-4 rounded-2xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs print:hidden">
           <div className="flex items-start sm:items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-cyan-400 text-blue-950 flex items-center justify-center font-black shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0 tabular-nums">
               2027
             </div>
             <div>
-              <p className="font-black text-sm">Modo de Planejamento: Grade Horária 2027</p>
-              <p className="text-slate-700 font-medium">
+              <p className="font-semibold text-sm text-slate-900">Modo de Planejamento: Grade Horária 2027</p>
+              <p className="text-slate-600 font-medium mt-0.5">
                 {horarios.length === 0
                   ? 'A base de horários de 2027 ainda está vazia. Você pode duplicar a grade de 2026 com 1 clique ou alocar aulas manualmente sem afetar 2026.'
                   : `Editando a base isolada de 2027 (${horarios.length} aula(s) planejadas). A grade vigente de 2026 permanece intacta.`}
@@ -3666,9 +3706,9 @@ export default function Horarios() {
             <button
               type="button"
               onClick={() => handleDuplicarGradePara2027(false)}
-              className="px-4 py-2 bg-blue-950 hover:bg-slate-900 text-white font-black rounded-xl transition cursor-pointer flex items-center gap-2 shrink-0"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition cursor-pointer inline-flex items-center gap-2 shrink-0"
             >
-              <i className="fa-solid fa-clone text-cyan-300"></i>
+              <i className="fa-solid fa-clone"></i>
               <span>{horarios.length === 0 ? 'Importar Grade de 2026 para 2027' : 'Reimportar Base de 2026'}</span>
             </button>
           )}
@@ -3677,136 +3717,141 @@ export default function Horarios() {
 
       {/* Alertas & Mensagens */}
       {erro && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-xl text-xs font-semibold flex items-center justify-between shadow-sm">
+        <div className="bg-amber-50/90 border border-amber-200/70 border-l-4 border-l-amber-500 text-amber-900 px-4 py-3 rounded-2xl text-xs font-medium flex items-center justify-between shadow-2xs">
           <div className="flex items-center gap-2">
             <i className="fa-solid fa-triangle-exclamation text-amber-600 text-base"></i>
             <span>{erro}</span>
           </div>
-          <span className="text-[11px] text-amber-700 bg-amber-100 px-2.5 py-1 rounded-lg">Modo Resiliente Ativo</span>
+          <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 px-2.5 py-1 rounded-lg">Modo Resiliente Ativo</span>
         </div>
       )}
 
-      {/* Cards de Métricas e Resumo */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 print:hidden">
-        <div 
+      {/* Bento Grid de Métricas e Resumo */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 print:hidden">
+        <div
           onClick={() => {
             setAuditoriaFiltroProfessor('TODOS');
             setIsAuditoriaAulasModalOpen(true);
           }}
-          className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3 cursor-pointer hover:border-amber-400 hover:bg-amber-50 transition"
+          className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex items-center gap-3.5 cursor-pointer hover:border-indigo-300 transition group"
           title="Clique para auditar e gerenciar a lista de todas as aulas atribuídas"
         >
-          <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-lg font-bold">
+          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-base shrink-0">
             <i className="fa-solid fa-calendar-check"></i>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-1.5">
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Aulas Atribuidas</p>
-              <span className="text-[9px] font-black bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.5 rounded-md">
+              <p className="text-xs font-medium text-slate-500 truncate">Aulas Atribuídas</p>
+              <span className="text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200/70 px-1.5 py-0.5 rounded-md">
                 Auditar
               </span>
             </div>
-            <p className="text-xl font-black text-slate-800">{totalAulasSemanais}</p>
+            <p className="text-xl font-bold text-slate-900 tabular-nums mt-0.5">{totalAulasSemanais}</p>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg font-bold">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-base shrink-0">
             <i className="fa-solid fa-chalkboard-user"></i>
           </div>
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Professores</p>
-            <p className="text-xl font-black text-slate-800">{totalProfessoresAtivos}</p>
+            <p className="text-xs font-medium text-slate-500">Professores</p>
+            <p className="text-xl font-bold text-slate-900 tabular-nums mt-0.5">{totalProfessoresAtivos}</p>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center text-lg font-bold">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center text-base shrink-0">
             <i className="fa-solid fa-users"></i>
           </div>
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Turmas PEI</p>
-            <p className="text-xl font-black text-slate-800">{totalTurmasAtivas}</p>
+            <p className="text-xs font-medium text-slate-500">Turmas PEI</p>
+            <p className="text-xl font-bold text-slate-900 tabular-nums mt-0.5">{totalTurmasAtivas}</p>
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-lg font-bold">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex items-center gap-3.5">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-base shrink-0">
             <i className="fa-solid fa-door-open"></i>
           </div>
           <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Salas / Espaços</p>
-            <p className="text-xl font-black text-slate-800">{totalSalasAtivas}</p>
+            <p className="text-xs font-medium text-slate-500">Salas / Espaços</p>
+            <p className="text-xl font-bold text-slate-900 tabular-nums mt-0.5">{totalSalasAtivas}</p>
           </div>
         </div>
       </div>
 
-      {/* Painel de Modos de Visualização e Filtros */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4 print:hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
-          {/* Tabs de Seleção de Visão */}
-          <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
+      {/* Command Bar: Modos de Visualização e Filtros */}
+      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4 print:hidden">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          {/* Segmented Control de Visão (Deslizável no mobile) */}
+          <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-xl overflow-x-auto no-scrollbar">
             <button
+              type="button"
               onClick={() => setModoVisao('por_turma')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+              className={`shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition cursor-pointer ${
                 modoVisao === 'por_turma'
-                  ? 'bg-blue-900 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                  ? 'bg-white text-slate-900 font-semibold shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <i className="fa-solid fa-users"></i>
+              <i className="fa-solid fa-users text-indigo-600"></i>
               <span>Por Turma</span>
             </button>
 
             <button
+              type="button"
               onClick={() => setModoVisao('por_professor')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+              className={`shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition cursor-pointer ${
                 modoVisao === 'por_professor'
-                  ? 'bg-blue-900 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                  ? 'bg-white text-slate-900 font-semibold shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <i className="fa-solid fa-chalkboard-user"></i>
+              <i className="fa-solid fa-chalkboard-user text-indigo-600"></i>
               <span>Por Professor</span>
             </button>
 
             <button
+              type="button"
               onClick={() => setModoVisao('por_sala')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+              className={`shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition cursor-pointer ${
                 modoVisao === 'por_sala'
-                  ? 'bg-blue-900 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                  ? 'bg-white text-slate-900 font-semibold shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <i className="fa-solid fa-door-open"></i>
+              <i className="fa-solid fa-door-open text-indigo-600"></i>
               <span>Por Sala / Espaço</span>
             </button>
 
             <button
+              type="button"
               onClick={() => setModoVisao('matriz_geral')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+              className={`shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition cursor-pointer ${
                 modoVisao === 'matriz_geral'
-                  ? 'bg-blue-900 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+                  ? 'bg-white text-slate-900 font-semibold shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <i className="fa-solid fa-table-cells"></i>
+              <i className="fa-solid fa-table-cells text-indigo-600"></i>
               <span>Visão Geral</span>
             </button>
           </div>
 
           {/* Campo de Busca Rápida */}
-          <div className="relative w-full sm:w-64">
+          <div className="relative w-full md:w-72">
             <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
             <input
               type="text"
               value={termoBusca}
               onChange={(e) => setTermoBusca(e.target.value)}
               placeholder="Buscar disciplina, prof, sala..."
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-cyan-400 outline-none transition"
+              className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200/80 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition"
             />
             {termoBusca && (
               <button
+                type="button"
                 onClick={() => setTermoBusca('')}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
               >
@@ -3817,18 +3862,18 @@ export default function Horarios() {
         </div>
 
         {/* Seletores Específicos do Modo Ativo */}
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3">
           {modoVisao === 'por_turma' && (
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3 w-full">
               <div className="flex items-center gap-2">
-                <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-                  <i className="fa-solid fa-filter text-cyan-600"></i>
-                  <span>Selecione a Turma:</span>
+                <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                  <i className="fa-solid fa-filter text-indigo-600"></i>
+                  <span>Turma:</span>
                 </label>
                 <select
                   value={turmaSelecionada}
                   onChange={(e) => setTurmaSelecionada(e.target.value)}
-                  className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-xs font-extrabold text-blue-950 focus:ring-2 focus:ring-cyan-400 outline-none cursor-pointer"
+                  className="px-3 py-2 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none cursor-pointer"
                 >
                   {listaTurmas.map((t) => (
                     <option key={t} value={t}>{t}</option>
@@ -3836,27 +3881,25 @@ export default function Horarios() {
                 </select>
               </div>
 
-              {/* Badge do Segmento da Turma */}
               {isEnsinoMedio && (
-                <span className="px-2.5 py-1 bg-indigo-100 text-indigo-950 border border-indigo-300 rounded-xl text-xs font-extrabold uppercase flex items-center gap-1.5 shadow-2xs">
-                  <i className="fa-solid fa-graduation-cap text-indigo-700"></i>
+                <span className="px-2.5 py-1 bg-indigo-50 text-indigo-800 border border-indigo-200/60 border-l-4 border-l-indigo-600 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5">
+                  <i className="fa-solid fa-graduation-cap text-indigo-600"></i>
                   <span>Ensino Médio</span>
                 </span>
               )}
               {isEnsinoFundamental && (
-                <span className="px-2.5 py-1 bg-teal-100 text-teal-950 border border-teal-300 rounded-xl text-xs font-extrabold uppercase flex items-center gap-1.5 shadow-2xs">
-                  <i className="fa-solid fa-school text-teal-700"></i>
+                <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200/60 border-l-4 border-l-emerald-500 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5">
+                  <i className="fa-solid fa-school text-emerald-600"></i>
                   <span>Ensino Fundamental</span>
                 </span>
               )}
 
-              {/* Toggle de Supressão do Turno Inativo */}
-              <label className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 cursor-pointer shadow-2xs hover:bg-slate-50 transition select-none">
+              <label className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-100/70 transition select-none">
                 <input
                   type="checkbox"
                   checked={suprimirTurnosOutros}
                   onChange={(e) => setSuprimirTurnosOutros(e.target.checked)}
-                  className="rounded text-cyan-600 focus:ring-cyan-500 w-4 h-4 cursor-pointer"
+                  className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
                 />
                 <span>
                   {isEnsinoMedio ? 'Suprimir Manhã (Exibir Tarde)' : isEnsinoFundamental ? 'Suprimir Tarde (Exibir Manhã)' : 'Suprimir Turno Inativo'}
@@ -3866,94 +3909,94 @@ export default function Horarios() {
           )}
 
           {modoVisao === 'por_professor' && (
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center gap-2">
-                <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-                  <i className="fa-solid fa-filter text-cyan-600"></i>
-                  <span>Selecione o Professor:</span>
-                </label>
-                <select
-                  value={professorSelecionado}
-                  onChange={(e) => setProfessorSelecionado(e.target.value)}
-                  className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-xs font-extrabold text-blue-950 focus:ring-2 focus:ring-cyan-400 outline-none cursor-pointer"
+            <div className="flex flex-col gap-3 w-full">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                    <i className="fa-solid fa-filter text-indigo-600"></i>
+                    <span>Professor:</span>
+                  </label>
+                  <select
+                    value={professorSelecionado}
+                    onChange={(e) => setProfessorSelecionado(e.target.value)}
+                    className="px-3 py-2 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none cursor-pointer"
+                  >
+                    {listaProfessores.map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuditoriaFiltroProfessor(professorSelecionado || 'TODOS');
+                    setIsAuditoriaAulasModalOpen(true);
+                  }}
+                  className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer"
+                  title={`Auditar e gerenciar lista de aulas atribuídas para ${professorSelecionado}`}
                 >
-                  {listaProfessores.map((p) => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
+                  <i className="fa-solid fa-list-check text-amber-600"></i>
+                  <span>Auditar Aulas ({professorSelecionado ? professorSelecionado.split(' ')[0] : 'Docente'})</span>
+                </button>
+
+                <label className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-100/70 transition select-none">
+                  <input
+                    type="checkbox"
+                    checked={apenasHorariosNaEscola}
+                    onChange={(e) => setApenasHorariosNaEscola(e.target.checked)}
+                    className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                  />
+                  <span>Filtrar Apenas Períodos na Escola</span>
+                </label>
               </div>
 
-              {/* Botão de Auditoria Direta das Aulas Atribuídas deste Professor */}
-              <button
-                type="button"
-                onClick={() => {
-                  setAuditoriaFiltroProfessor(professorSelecionado || 'TODOS');
-                  setIsAuditoriaAulasModalOpen(true);
-                }}
-                className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition cursor-pointer border border-amber-400"
-                title={`Auditar e gerenciar lista de aulas atribuídas para ${professorSelecionado}`}
-              >
-                <i className="fa-solid fa-list-check text-sm"></i>
-                <span>Auditar Aulas Atribuídas ({professorSelecionado ? professorSelecionado.split(' ')[0] : 'Docente'})</span>
-              </button>
-
-              {/* Toggle de Filtro por Horário de Trabalho na Escola */}
-              <label className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 cursor-pointer shadow-2xs hover:bg-slate-50 transition select-none">
-                <input
-                  type="checkbox"
-                  checked={apenasHorariosNaEscola}
-                  onChange={(e) => setApenasHorariosNaEscola(e.target.checked)}
-                  className="rounded text-cyan-600 focus:ring-cyan-500 w-4 h-4 cursor-pointer"
-                />
-                <span>Filtrar Apenas Períodos de Trabalho na Escola</span>
-              </label>
-
-              {/* Badges de Carga Horária, Substituições e Saldo Efetivo do Professor Selecionado */}
-              <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold">
-                <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-2xs" title="Aulas regulares atribuídas na grade oficial de horários">
-                  <i className="fa-solid fa-calculator text-[10px] text-emerald-700"></i>
-                  <span>Aulas na Grade: {estatisticasProfessor.aulasRegulares}</span>
+              {/* Badges de Carga Horária, Substituições e Saldo Efetivo (Soft Semantic + tabular-nums) */}
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 text-xs">
+                <span className="shrink-0 bg-emerald-50/90 text-emerald-900 border border-emerald-200/60 border-l-4 border-l-emerald-500 px-2.5 py-1 rounded-lg inline-flex items-center gap-1.5 font-medium tabular-nums" title="Aulas regulares atribuídas na grade oficial de horários">
+                  <i className="fa-solid fa-calculator text-[10px] text-emerald-600"></i>
+                  <span>Aulas na Grade: <strong className="font-bold">{estatisticasProfessor.aulasRegulares}</strong></span>
                 </span>
-                <span className="bg-blue-100 text-blue-900 border border-blue-300 px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-2xs" title="Aulas assumidas como substituto (+1 por aula)">
-                  <i className="fa-solid fa-user-plus text-[10px] text-blue-700"></i>
-                  <span>Créditos (+): +{estatisticasProfessor.creditosSubst}</span>
+                <span className="shrink-0 bg-indigo-50/80 text-slate-800 border border-indigo-200/50 border-l-4 border-l-indigo-600 px-2.5 py-1 rounded-lg inline-flex items-center gap-1.5 font-medium tabular-nums" title="Aulas assumidas como substituto (+1 por aula)">
+                  <i className="fa-solid fa-user-plus text-[10px] text-indigo-600"></i>
+                  <span>Créditos: <strong className="font-bold">+{estatisticasProfessor.creditosSubst}</strong></span>
                 </span>
-                <span className="bg-rose-100 text-rose-900 border border-rose-300 px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-2xs" title="Ausências registradas (-1 por aula)">
-                  <i className="fa-solid fa-user-minus text-[10px] text-rose-700"></i>
-                  <span>Débitos (-): -{estatisticasProfessor.debitosSubst}</span>
+                <span className="shrink-0 bg-rose-50/90 text-rose-900 border border-rose-200/60 border-l-4 border-l-rose-500 px-2.5 py-1 rounded-lg inline-flex items-center gap-1.5 font-medium tabular-nums" title="Ausências registradas (-1 por aula)">
+                  <i className="fa-solid fa-user-minus text-[10px] text-rose-600"></i>
+                  <span>Débitos: <strong className="font-bold">-{estatisticasProfessor.debitosSubst}</strong></span>
                 </span>
-                <span className={`border px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-2xs font-extrabold ${
+                <span className={`shrink-0 border border-l-4 px-2.5 py-1 rounded-lg inline-flex items-center gap-1.5 font-semibold tabular-nums ${
                   estatisticasProfessor.saldoAcumulado > 0
-                    ? 'bg-emerald-200 text-emerald-950 border-emerald-400'
+                    ? 'bg-emerald-50 text-emerald-900 border-emerald-200/60 border-l-emerald-500'
                     : estatisticasProfessor.saldoAcumulado < 0
-                    ? 'bg-rose-200 text-rose-950 border-rose-400'
-                    : 'bg-slate-100 text-slate-800 border-slate-300'
+                    ? 'bg-rose-50 text-rose-900 border-rose-200/60 border-l-rose-500'
+                    : 'bg-slate-50 text-slate-700 border-slate-200/70 border-l-slate-400'
                 }`} title="Saldo acumulado de substituições (Créditos - Débitos + Saldo Inicial)">
                   <i className="fa-solid fa-scale-balanced text-[10px]"></i>
-                  <span>Saldo de Substituição: {estatisticasProfessor.saldoAcumulado > 0 ? `+${estatisticasProfessor.saldoAcumulado}` : estatisticasProfessor.saldoAcumulado} aula(s)</span>
+                  <span>Saldo Substituição: {estatisticasProfessor.saldoAcumulado > 0 ? `+${estatisticasProfessor.saldoAcumulado}` : estatisticasProfessor.saldoAcumulado}</span>
                 </span>
-                <span className="bg-indigo-100 text-indigo-950 border border-indigo-300 px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-2xs" title="Carga horária total efetiva (Aulas na Grade + Saldo de Substituição)">
-                  <i className="fa-solid fa-award text-[10px] text-indigo-700"></i>
-                  <span>Carga Efetiva: {estatisticasProfessor.saldoTotalEfetivo} aula(s)</span>
+                <span className="shrink-0 bg-purple-50/90 text-purple-900 border border-purple-200/60 border-l-4 border-l-purple-600 px-2.5 py-1 rounded-lg inline-flex items-center gap-1.5 font-semibold tabular-nums" title="Carga horária total efetiva (Aulas na Grade + Saldo de Substituição)">
+                  <i className="fa-solid fa-award text-[10px] text-purple-600"></i>
+                  <span>Carga Efetiva: {estatisticasProfessor.saldoTotalEfetivo}</span>
                 </span>
-                <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-2xs" title="Compromissos sem aula (ATPC, Formação, Almoço, Inativo, etc.)">
-                  <i className="fa-solid fa-user-clock text-[10px] text-amber-700"></i>
-                  <span>Inativos/ATPC: {estatisticasProfessor.compromissosInativos}</span>
+                <span className="shrink-0 bg-amber-50/90 text-amber-900 border border-amber-200/60 border-l-4 border-l-amber-500 px-2.5 py-1 rounded-lg inline-flex items-center gap-1.5 font-medium tabular-nums" title="Compromissos sem aula (ATPC, Formação, Almoço, Inativo, etc.)">
+                  <i className="fa-solid fa-user-clock text-[10px] text-amber-600"></i>
+                  <span>Inativos/ATPC: <strong className="font-bold">{estatisticasProfessor.compromissosInativos}</strong></span>
                 </span>
               </div>
             </div>
           )}
 
           {modoVisao === 'por_sala' && (
-            <div className="flex items-center gap-3">
-              <label className="text-xs font-extrabold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-                <i className="fa-solid fa-filter text-cyan-600"></i>
-                <span>Selecione a Sala / Ambiente:</span>
+            <div className="flex items-center gap-2.5">
+              <label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                <i className="fa-solid fa-filter text-indigo-600"></i>
+                <span>Sala / Ambiente:</span>
               </label>
               <select
                 value={salaSelecionada}
                 onChange={(e) => setSalaSelecionada(e.target.value)}
-                className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl text-xs font-extrabold text-blue-950 focus:ring-2 focus:ring-cyan-400 outline-none cursor-pointer"
+                className="px-3 py-2 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none cursor-pointer"
               >
                 {listaSalas.map((s) => (
                   <option key={s} value={s}>{s}</option>
@@ -3972,73 +4015,72 @@ export default function Horarios() {
 
       {/* Banner do Modo Planilha Ativo */}
       {modoPlanilha && podeEditar && (
-        <div className="bg-emerald-950 text-emerald-100 p-4 rounded-2xl border border-emerald-700 shadow-md flex flex-wrap items-center justify-between gap-3 animate-fadeIn">
+        <div className="bg-emerald-50/90 text-emerald-950 p-4 rounded-2xl border border-emerald-200/70 border-l-4 border-l-emerald-500 shadow-2xs flex flex-wrap items-center justify-between gap-3 animate-fadeIn print:hidden">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-300 flex items-center justify-center text-xl font-black border border-emerald-400">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-700 flex items-center justify-center text-lg shrink-0">
               <i className="fa-solid fa-file-excel"></i>
             </div>
             <div>
-              <p className="text-xs font-black uppercase tracking-wider text-emerald-300 flex items-center gap-2">
+              <p className="text-xs font-semibold text-emerald-900 flex items-center gap-2">
                 <span>Modo Planilha (Edição Direta) Ativo</span>
-                <span className="bg-emerald-500 text-emerald-950 text-[10px] font-extrabold px-2 py-0.5 rounded-md uppercase">Ao Vivo</span>
+                <span className="bg-emerald-600 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full">Ao Vivo</span>
               </p>
-              <p className="text-[11px] text-emerald-200/90 mt-0.5">
-                Edite matérias, professores e salas diretamente nos seletores de cada célula. Salve instantaneamente no Firestore em tempo real.
+              <p className="text-xs text-emerald-800/90 mt-0.5">
+                Edite matérias, professores e salas diretamente nos seletores de cada célula e clique em Salvar.
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={() => setModoPlanilha(false)}
-            className="bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl border border-emerald-600 transition cursor-pointer shadow-xs"
+            className="bg-white hover:bg-emerald-100 text-emerald-800 text-xs font-semibold px-3.5 py-2 rounded-xl border border-emerald-200 transition cursor-pointer"
           >
             Sair do Modo Planilha
           </button>
         </div>
       )}
 
-      {/* Control Banner de Arraste e Solte (Drag & Drop) e Duplicação Rápida */}
+      {/* Control Banner de Arraste e Solte (Drag & Drop) */}
       {podeEditar && !modoPlanilha && (
-        <div className="bg-slate-900 text-white p-3 sm:p-4 rounded-2xl border border-slate-800 shadow-md flex flex-wrap items-center justify-between gap-3 animate-fadeIn">
+        <div className="hidden md:flex bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-2xs items-center justify-between gap-3 print:hidden">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-cyan-100 text-cyan-300 flex items-center justify-center text-lg font-black border border-cyan-400 shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm shrink-0">
               <i className="fa-solid fa-up-down-left-right"></i>
             </div>
             <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-black uppercase text-cyan-300 tracking-wider">
-                  Edição Rápida & Arraste com o Mouse
-                </span>
-                <span className="bg-cyan-100 text-cyan-200 border border-cyan-400 text-[10px] font-bold px-2 py-0.5 rounded-full">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-800">Edição Rápida com Arraste</span>
+                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200/60 text-[10px] font-medium px-2 py-0.5 rounded-full">
                   Ativo
                 </span>
               </div>
-              <p className="text-[11px] text-slate-300 mt-0.5">
-                Arraste qualquer aula para mudar de lugar. Para <strong className="text-amber-300">duplicar</strong>, selecione a chave abaixo ou segure a tecla <kbd className="bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 text-cyan-300 text-[10px] font-mono">ALT</kbd> ao arrastar.
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Arraste qualquer aula para mover de horário. Para duplicar, ative a chave ao lado ou segure <kbd className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-slate-700 text-[10px] font-mono">ALT</kbd>.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-800 p-1 rounded-xl border border-slate-700">
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/60">
             <button
               type="button"
               onClick={() => setModoDuplicarComArrasto(false)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
                 !modoDuplicarComArrasto
-                  ? 'bg-cyan-400 text-blue-950 shadow-sm'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-white text-slate-900 font-semibold shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <i className="fa-solid fa-up-down-left-right text-[10px]"></i>
+              <i className="fa-solid fa-up-down-left-right text-[10px] text-indigo-600"></i>
               <span>Mover Aula</span>
             </button>
 
             <button
               type="button"
               onClick={() => setModoDuplicarComArrasto(true)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
                 modoDuplicarComArrasto
-                  ? 'bg-amber-400 text-amber-950 shadow-sm ring-2 ring-amber-300'
-                  : 'text-slate-400 hover:text-white'
+                  ? 'bg-amber-500 text-white font-semibold shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <i className="fa-solid fa-clone text-[10px]"></i>
@@ -4050,35 +4092,37 @@ export default function Horarios() {
 
       {/* Banners Informativos de Filtros Ativos (Turno / Indisponibilidade) */}
       {modoVisao === 'por_turma' && suprimirTurnosOutros && (isEnsinoMedio || isEnsinoFundamental) && (
-        <div className="mb-3 bg-blue-50 border border-blue-200 p-2.5 px-4 rounded-xl text-xs font-semibold text-blue-950 flex items-center justify-between gap-2 flex-wrap shadow-2xs">
+        <div className="bg-indigo-50/80 border border-indigo-200/60 border-l-4 border-l-indigo-600 px-4 py-2.5 rounded-xl text-xs font-medium text-slate-800 flex items-center justify-between gap-2 flex-wrap print:hidden">
           <div className="flex items-center gap-2">
-            <i className="fa-solid fa-eye-slash text-blue-600 text-sm"></i>
+            <i className="fa-solid fa-eye-slash text-indigo-600"></i>
             <span>
-              <strong>Visão por Turma Otimizada:</strong> {isEnsinoMedio ? `As aulas da manhã foram suprimidas para a turma do Ensino Médio (${turmaSelecionada}).` : `As aulas da tarde foram suprimidas para a turma do Ensino Fundamental (${turmaSelecionada}).`}
+              <strong className="font-semibold">Visão Otimizada:</strong> {isEnsinoMedio ? `Aulas da manhã ocultas para o Ensino Médio (${turmaSelecionada}).` : `Aulas da tarde ocultas para o Ensino Fundamental (${turmaSelecionada}).`}
             </span>
           </div>
           <button
+            type="button"
             onClick={() => setSuprimirTurnosOutros(false)}
-            className="text-[11px] font-extrabold text-blue-700 hover:text-blue-900 underline cursor-pointer"
+            className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 underline cursor-pointer"
           >
-            Exibir Grade Completa (Todos os Horários)
+            Exibir Grade Completa
           </button>
         </div>
       )}
 
       {modoVisao === 'por_professor' && (
-        <div className="mb-3 bg-slate-100 border border-slate-300 p-2.5 px-4 rounded-xl text-xs font-semibold text-slate-900 flex items-center justify-between gap-2 flex-wrap shadow-2xs">
+        <div className="bg-slate-50 border border-slate-200/80 px-4 py-2.5 rounded-xl text-xs font-medium text-slate-700 flex items-center justify-between gap-2 flex-wrap print:hidden">
           <div className="flex items-center gap-2">
-            <i className="fa-solid fa-user-clock text-indigo-600 text-sm"></i>
+            <i className="fa-solid fa-user-clock text-indigo-600"></i>
             <span>
-              <strong>Indisponibilidade Docente:</strong> Exibindo horários de presença na escola de {professorSelecionado}.
+              <strong className="font-semibold text-slate-900">Disponibilidade Docente:</strong> Exibindo períodos na escola de {professorSelecionado}.
             </span>
           </div>
           <button
+            type="button"
             onClick={() => setApenasHorariosNaEscola(!apenasHorariosNaEscola)}
-            className="text-[11px] font-extrabold text-indigo-700 hover:text-indigo-900 underline cursor-pointer"
+            className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 underline cursor-pointer"
           >
-            {apenasHorariosNaEscola ? 'Ver Matriz Completa de 14 Períodos' : 'Ocultar Períodos Sem Presença'}
+            {apenasHorariosNaEscola ? 'Ver Matriz Completa (14 Períodos)' : 'Ocultar Períodos Sem Presença'}
           </button>
         </div>
       )}
@@ -4094,428 +4138,417 @@ export default function Horarios() {
 
       {/* Tabela / Grid Principal do Horário */}
       {loading ? (
-        <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center shadow-sm">
-          <i className="fa-solid fa-spinner fa-spin text-3xl text-cyan-500 mb-3 block"></i>
-          <p className="text-sm font-bold text-slate-700">Carregando grade horária...</p>
+        <div className="bg-white p-12 rounded-2xl border border-slate-200/80 text-center shadow-2xs">
+          <i className="fa-solid fa-spinner fa-spin text-3xl text-indigo-600 mb-3 block"></i>
+          <p className="text-sm font-semibold text-slate-700">Carregando grade horária...</p>
         </div>
       ) : (
         <>
-          {/* VISUALIZAÇÃO DESKTOP / TABLET (Intacta em md:block) */}
-          <div className="hidden md:block bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          {/* VISUALIZAÇÃO DESKTOP / TABLET */}
+          <div className="hidden md:block bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse min-w-[800px]">
-              <thead>
-                <tr className="bg-blue-950 text-white text-xs font-black uppercase tracking-wider">
-                  <th className="p-3.5 border-b border-blue-900 w-36 text-center">Horário / Período</th>
-                  {DIAS_SEMANA.map((dia) => {
-                    const ehHoje = agoraInfo.diaId === dia.id;
-                    return (
-                      <th
-                        key={dia.id}
-                        className={`p-3.5 border-b border-blue-900 text-center ${
-                          ehHoje ? 'bg-cyan-500 text-blue-950 font-black' : ''
-                        }`}
-                      >
-                        <div className="flex items-center justify-center gap-1.5">
-                          <span>{dia.label}</span>
-                          {ehHoje && <span className="bg-blue-950 text-cyan-300 text-[10px] px-1.5 py-0.5 rounded uppercase">Hoje</span>}
-                        </div>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 text-xs font-medium">
-                {periodosToRender.map((periodo) => {
-                  const isIntervalo = periodo.tipo === 'intervalo';
-
-                  return (
-                    <tr key={periodo.id} className={`transition ${isIntervalo ? 'bg-amber-50 hover:bg-amber-50' : 'hover:bg-slate-50'}`}>
-                      {/* Coluna do Horário */}
-                      <td className={`p-3 border-r border-slate-200 text-center font-bold ${isIntervalo ? 'bg-amber-100/50' : 'bg-slate-50'}`}>
-                        <div className="flex items-center justify-center gap-1">
-                          {isIntervalo && <i className="fa-solid fa-mug-hot text-amber-600 text-xs mr-0.5"></i>}
-                          <span className="text-cyan-900 font-extrabold text-xs">{periodo.rotulo}</span>
-                        </div>
-                        <div className="text-[10px] text-slate-500 font-mono mt-0.5">{periodo.horario}</div>
-                        {isIntervalo && (
-                          <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 bg-amber-200/80 text-amber-900 rounded mt-1 inline-block">
-                            PEI Flexível
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Colunas dos Dias da Semana */}
-                      {DIAS_SEMANA.map((dia) => {
-                        const ehAulaAgora = agoraInfo.diaId === dia.id && getPeriodoOrder(agoraInfo.periodoId) === getPeriodoOrder(periodo.id);
-                        const isTargetCell = dragOverTarget?.dia === dia.id && getPeriodoOrder(dragOverTarget?.periodoId) === getPeriodoOrder(periodo.id);
-
-                        // Aulas/Atividades neste slot específico
-                        const aulasNoSlot = horariosFiltrados.filter((h) => {
-                          if (h.dia !== dia.id) return false;
-                          if (isIntervalo) {
-                            return String(h.periodoId).toLowerCase().trim() === String(periodo.id).toLowerCase().trim();
-                          }
-                          const hIdStr = String(h.periodoId).toLowerCase().trim();
-                          if (hIdStr.startsWith('int') || hIdStr.includes('almoco') || hIdStr.includes('almoço') || hIdStr.includes('jantar')) {
-                            return false;
-                          }
-                          return getPeriodoOrder(h.periodoId) === getPeriodoOrder(periodo.id);
-                        });
-
-                        // Status do Docente na Escola (se estiver no Modo por Professor)
-                        const statusDocente = (modoVisao === 'por_professor' && professorSelecionado)
-                          ? isTeacherAtSchool(professorSelecionado, dia.id, periodo.id, indisponibilidadeProfs, horariosEfetivos, cadastroProfessores)
-                          : null;
-
-                        return (
-                          <td
-                            key={dia.id}
-                            onDragOver={(e) => !isIntervalo && handleDragOverCell(e, dia.id, periodo.id)}
-                            onDragLeave={handleDragLeaveCell}
-                            onDrop={(e) => !isIntervalo && handleDropCell(e, dia.id, periodo.id)}
-                            className={`p-2 border-r border-slate-200 align-top transition min-h-[90px] relative ${
-                              isTargetCell
-                                ? 'bg-cyan-100/90 ring-4 ring-cyan-500 ring-inset border-2 border-dashed border-cyan-600 shadow-lg scale-[1.01] z-20'
-                                : ehAulaAgora
-                                ? 'bg-cyan-50/60 ring-2 ring-inset ring-cyan-400'
-                                : statusDocente && !statusDocente.atSchool
-                                ? 'bg-slate-50'
-                                : isIntervalo
-                                ? 'bg-amber-50/30'
-                                : ''
-                            }`}
-                          >
-                            {/* Overlay de Arraste na Célula Alvo */}
-                            {isTargetCell && (
-                              <div className="absolute inset-0 bg-cyan-500/10 backdrop-blur-[1px] rounded-xl flex items-center justify-center pointer-events-none z-30 p-1">
-                                <span className="bg-blue-950 text-cyan-200 text-[10px] font-black uppercase px-2.5 py-1 rounded-lg border border-cyan-400 shadow-md flex items-center gap-1.5 animate-bounce">
-                                  <i className={`fa-solid ${modoDuplicarComArrasto ? 'fa-clone text-amber-300' : 'fa-hand-holding-hand text-cyan-300'}`}></i>
-                                  <span>{modoDuplicarComArrasto ? 'Solte para Duplicar Cópia' : 'Solte para Mover Aula'}</span>
-                                </span>
-                              </div>
+              <table className="w-full text-left border-collapse min-w-[820px]">
+                <thead>
+                  <tr className="bg-slate-50/95 text-slate-700 text-xs font-semibold border-b border-slate-200/80">
+                    <th className="p-3.5 w-36 text-center border-r border-slate-200/70">Horário / Período</th>
+                    {DIAS_SEMANA.map((dia) => {
+                      const ehHoje = agoraInfo.diaId === dia.id;
+                      return (
+                        <th
+                          key={dia.id}
+                          className={`p-3.5 text-center border-r last:border-r-0 border-slate-200/70 ${
+                            ehHoje ? 'bg-indigo-50/90 text-indigo-900' : ''
+                          }`}
+                        >
+                          <div className="flex items-center justify-center gap-1.5">
+                            <span>{dia.label}</span>
+                            {ehHoje && (
+                              <span className="bg-indigo-600 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                                Hoje
+                              </span>
                             )}
+                          </div>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200/70 text-xs font-medium">
+                  {periodosToRender.map((periodo) => {
+                    const isIntervalo = periodo.tipo === 'intervalo';
 
-                            {aulasNoSlot.length === 0 ? (
-                              isIntervalo ? (
-                                <div className="h-full min-h-[60px] flex flex-col items-center justify-center p-2 rounded-xl border border-dashed border-amber-200/80 bg-amber-50/50 text-amber-800">
-                                  <span className="text-[11px] font-bold text-amber-800 flex items-center gap-1.5">
-                                    <i className="fa-solid fa-mug-hot text-amber-600 text-xs"></i>
-                                    <span>{periodo.rotulo}</span>
+                    return (
+                      <tr key={periodo.id} className={`transition ${isIntervalo ? 'bg-amber-50/35 hover:bg-amber-50/50' : 'hover:bg-slate-50/50'}`}>
+                        {/* Coluna do Horário */}
+                        <td className={`p-3 border-r border-slate-200/70 text-center ${isIntervalo ? 'bg-amber-50/60' : 'bg-slate-50/60'}`}>
+                          <div className="flex items-center justify-center gap-1.5">
+                            {isIntervalo && <i className="fa-solid fa-mug-hot text-amber-600 text-xs"></i>}
+                            <span className="text-slate-900 font-semibold text-xs">{periodo.rotulo}</span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 font-mono tabular-nums mt-0.5">{periodo.horario}</div>
+                          {isIntervalo && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 bg-amber-100/80 text-amber-800 rounded-md mt-1 inline-block">
+                              PEI Flexível
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Colunas dos Dias da Semana */}
+                        {DIAS_SEMANA.map((dia) => {
+                          const ehAulaAgora = agoraInfo.diaId === dia.id && getPeriodoOrder(agoraInfo.periodoId) === getPeriodoOrder(periodo.id);
+                          const isTargetCell = dragOverTarget?.dia === dia.id && getPeriodoOrder(dragOverTarget?.periodoId) === getPeriodoOrder(periodo.id);
+
+                          const aulasNoSlot = horariosFiltrados.filter((h) => {
+                            if (h.dia !== dia.id) return false;
+                            if (isIntervalo) {
+                              return String(h.periodoId).toLowerCase().trim() === String(periodo.id).toLowerCase().trim();
+                            }
+                            const hIdStr = String(h.periodoId).toLowerCase().trim();
+                            if (hIdStr.startsWith('int') || hIdStr.includes('almoco') || hIdStr.includes('almoço') || hIdStr.includes('jantar')) {
+                              return false;
+                            }
+                            return getPeriodoOrder(h.periodoId) === getPeriodoOrder(periodo.id);
+                          });
+
+                          const statusDocente = (modoVisao === 'por_professor' && professorSelecionado)
+                            ? isTeacherAtSchool(professorSelecionado, dia.id, periodo.id, indisponibilidadeProfs, horariosEfetivos, cadastroProfessores)
+                            : null;
+
+                          return (
+                            <td
+                              key={dia.id}
+                              onDragOver={(e) => !isIntervalo && handleDragOverCell(e, dia.id, periodo.id)}
+                              onDragLeave={handleDragLeaveCell}
+                              onDrop={(e) => !isIntervalo && handleDropCell(e, dia.id, periodo.id)}
+                              className={`p-2 border-r last:border-r-0 border-slate-200/70 align-top transition min-h-[92px] relative ${
+                                isTargetCell
+                                  ? 'bg-indigo-50/90 ring-2 ring-indigo-500 ring-inset z-20'
+                                  : ehAulaAgora
+                                  ? 'bg-indigo-50/40 ring-2 ring-inset ring-indigo-500/30'
+                                  : statusDocente && !statusDocente.atSchool
+                                  ? 'bg-slate-50/70'
+                                  : isIntervalo
+                                  ? 'bg-amber-50/20'
+                                  : ''
+                              }`}
+                            >
+                              {isTargetCell && (
+                                <div className="absolute inset-0 bg-indigo-500/10 backdrop-blur-[1px] rounded-xl flex items-center justify-center pointer-events-none z-30 p-1">
+                                  <span className="bg-slate-900 text-white text-[11px] font-semibold px-3 py-1.5 rounded-lg shadow-sm flex items-center gap-1.5">
+                                    <i className={`fa-solid ${modoDuplicarComArrasto ? 'fa-clone text-amber-300' : 'fa-hand-holding-hand text-indigo-300'}`}></i>
+                                    <span>{modoDuplicarComArrasto ? 'Solte para Duplicar' : 'Solte para Mover'}</span>
                                   </span>
-                                  <span className="text-[10px] text-amber-600/70 font-mono mt-0.5">{periodo.horario}</span>
                                 </div>
-                              ) : statusDocente && !statusDocente.atSchool ? (
-                                <div
-                                  className={`h-full min-h-[70px] flex flex-col items-center justify-center p-2 rounded-xl border shadow-2xs group relative cursor-help ${
-                                    statusDocente.reason?.includes('Indisponibilidade')
-                                      ? 'border-rose-300/80 bg-[repeating-linear-gradient(135deg,#fff1f2,#fff1f2_8px,#ffe4e6_8px,#ffe4e6_16px)] text-rose-800'
-                                      : 'border-slate-300/80 bg-[repeating-linear-gradient(135deg,#f8fafc,#f8fafc_8px,#f1f5f9_8px,#f1f5f9_16px)] text-slate-500'
-                                  }`}
-                                  title={statusDocente.reason}
-                                >
-                                  <div className="flex items-center gap-1.5 font-extrabold text-[11px] uppercase tracking-tight">
-                                    <i className={`fa-solid ${statusDocente.reason?.includes('Indisponibilidade') ? 'fa-ban text-rose-500' : 'fa-clock-slash text-slate-400'}`}></i>
-                                    <span className={statusDocente.reason?.includes('Indisponibilidade') ? 'text-rose-700' : 'text-slate-600'}>
-                                      {statusDocente.reason?.includes('Indisponibilidade') ? 'Indisponível' : 'Fora do Horário'}
+                              )}
+
+                              {aulasNoSlot.length === 0 ? (
+                                isIntervalo ? (
+                                  <div className="h-full min-h-[60px] flex flex-col items-center justify-center p-2 rounded-xl border border-dashed border-amber-200/80 bg-amber-50/40 text-amber-800">
+                                    <span className="text-[11px] font-semibold text-amber-800 flex items-center gap-1.5">
+                                      <i className="fa-solid fa-mug-hot text-amber-600 text-xs"></i>
+                                      <span>{periodo.rotulo}</span>
                                     </span>
+                                    <span className="text-[10px] text-amber-600/80 font-mono tabular-nums mt-0.5">{periodo.horario}</span>
                                   </div>
-                                  <span className="text-[10px] font-medium text-center mt-0.5 line-clamp-2 px-1 opacity-90">
-                                    {statusDocente.reason}
-                                  </span>
-                                  {podeEditar && (
-                                    <button
-                                      onClick={() => modoPlanilha ? handleCriarNovaAulaPlanilha(dia.id, periodo.id) : handleAbrirModalNovo(dia.id, periodo.id)}
-                                      className="text-[9px] font-bold text-blue-700 hover:text-blue-900 mt-1 opacity-0 group-hover:opacity-100 transition flex items-center gap-1 bg-white/90 px-1.5 py-0.5 rounded border border-blue-200"
-                                    >
-                                      <i className="fa-solid fa-plus text-[8px]"></i> + Inserir
-                                    </button>
-                                  )}
-                                </div>
-                              ) : (
-                                <div className="h-full min-h-[70px] flex flex-col items-center justify-center p-2 rounded-xl border border-dashed border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/30 transition group">
-                                  <span className="text-[11px] font-bold text-slate-400 group-hover:text-emerald-700 flex items-center gap-1">
-                                    <i className="fa-regular fa-circle-check text-emerald-500/80 group-hover:text-emerald-600 text-[10px]"></i>
-                                    <span>Vazio (Disponível)</span>
-                                  </span>
-                                  {podeEditar && (
-                                    <button
-                                      onClick={() => modoPlanilha ? handleCriarNovaAulaPlanilha(dia.id, periodo.id) : handleAbrirModalNovo(dia.id, periodo.id)}
-                                      className={`text-[10px] font-bold mt-1 flex items-center gap-1 hover:underline cursor-pointer ${
-                                        modoPlanilha
-                                          ? 'text-emerald-800 opacity-100 bg-emerald-100/90 hover:bg-emerald-200 px-2.5 py-1 rounded-lg border border-emerald-300 shadow-2xs font-extrabold'
-                                          : 'text-emerald-700 opacity-0 group-hover:opacity-100'
-                                      }`}
-                                    >
-                                      <i className="fa-solid fa-plus text-[9px]"></i> {modoPlanilha ? 'Inserir' : 'Alocar Aula'}
-                                    </button>
-                                  )}
-                                </div>
-                              )
-                            ) : (
-                              <div className="space-y-1.5">
-                                {aulasNoSlot.map((aula) => {
-                                  const draft = inlineDrafts[aula.id] || {};
-                                  const currentDisciplina = draft.disciplina !== undefined ? draft.disciplina : aula.disciplina;
-                                  const currentProfessor = draft.professor !== undefined ? draft.professor : aula.professor;
-                                  const currentSala = draft.sala !== undefined ? draft.sala : aula.sala;
-                                  const currentTurma = draft.turma !== undefined ? draft.turma : aula.turma;
-
-                                  // Visualização em Modo Planilha (Edição Direta)
-                                  if (modoPlanilha && podeEditar) {
-                                    return (
-                                      <div
-                                        key={aula.id}
-                                        className="p-2 bg-emerald-50/90 border-2 border-emerald-400 rounded-xl shadow-xs space-y-1.5 text-xs animate-fadeIn"
+                                ) : statusDocente && !statusDocente.atSchool ? (
+                                  <div
+                                    className={`h-full min-h-[72px] flex flex-col items-center justify-center p-2 rounded-xl border group relative cursor-help ${
+                                      statusDocente.reason?.includes('Indisponibilidade')
+                                        ? 'border-rose-200/80 bg-rose-50/70 text-rose-800'
+                                        : 'border-slate-200/80 bg-slate-100/70 text-slate-500'
+                                    }`}
+                                    title={statusDocente.reason}
+                                  >
+                                    <div className="flex items-center gap-1.5 font-semibold text-[11px]">
+                                      <i className={`fa-solid ${statusDocente.reason?.includes('Indisponibilidade') ? 'fa-ban text-rose-500' : 'fa-clock text-slate-400'}`}></i>
+                                      <span className={statusDocente.reason?.includes('Indisponibilidade') ? 'text-rose-700' : 'text-slate-600'}>
+                                        {statusDocente.reason?.includes('Indisponibilidade') ? 'Indisponível' : 'Fora do Horário'}
+                                      </span>
+                                    </div>
+                                    <span className="text-[10px] font-medium text-center mt-0.5 line-clamp-2 px-1 opacity-85">
+                                      {statusDocente.reason}
+                                    </span>
+                                    {podeEditar && (
+                                      <button
+                                        type="button"
+                                        onClick={() => modoPlanilha ? handleCriarNovaAulaPlanilha(dia.id, periodo.id) : handleAbrirModalNovo(dia.id, periodo.id)}
+                                        className="text-[10px] font-semibold text-indigo-700 hover:text-indigo-900 mt-1 opacity-0 group-hover:opacity-100 transition inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded-md border border-indigo-200 cursor-pointer"
                                       >
-                                        {/* Campo Disciplina */}
-                                        <div>
-                                          <label className="text-[9px] font-black uppercase text-emerald-950 block mb-0.5">
-                                            Matéria / Disciplina
-                                          </label>
-                                          <select
-                                            value={currentDisciplina}
-                                            onChange={(e) => handleDraftChange(aula.id, 'disciplina', e.target.value)}
-                                            className="w-full p-1 bg-white border border-emerald-300 rounded-lg text-[11px] font-extrabold text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer"
-                                          >
-                                            {LISTA_DISCIPLINAS_SUGERIDAS.map((d) => (
-                                              <option key={d} value={d}>{d}</option>
-                                            ))}
-                                            {!LISTA_DISCIPLINAS_SUGERIDAS.includes(currentDisciplina) && (
-                                              <option value={currentDisciplina}>{currentDisciplina}</option>
-                                            )}
-                                          </select>
-                                        </div>
+                                        <i className="fa-solid fa-plus text-[9px]"></i> Inserir
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div className="h-full min-h-[72px] flex flex-col items-center justify-center p-2 rounded-xl border border-dashed border-slate-200/80 hover:border-indigo-300 hover:bg-indigo-50/30 transition group">
+                                    <span className="text-[11px] font-medium text-slate-400 group-hover:text-indigo-700 flex items-center gap-1">
+                                      <i className="fa-regular fa-circle-check text-emerald-500/80 text-[10px]"></i>
+                                      <span>Disponível</span>
+                                    </span>
+                                    {podeEditar && (
+                                      <button
+                                        type="button"
+                                        onClick={() => modoPlanilha ? handleCriarNovaAulaPlanilha(dia.id, periodo.id) : handleAbrirModalNovo(dia.id, periodo.id)}
+                                        className={`text-[11px] font-semibold mt-1 inline-flex items-center gap-1 cursor-pointer transition ${
+                                          modoPlanilha
+                                            ? 'text-emerald-800 opacity-100 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg border border-emerald-200'
+                                            : 'text-indigo-700 bg-white px-2 py-0.5 rounded-lg border border-indigo-200/80 opacity-0 group-hover:opacity-100'
+                                        }`}
+                                      >
+                                        <i className="fa-solid fa-plus text-[9px]"></i> {modoPlanilha ? 'Inserir' : 'Alocar Aula'}
+                                      </button>
+                                    )}
+                                  </div>
+                                )
+                              ) : (
+                                <div className="space-y-1.5">
+                                  {aulasNoSlot.map((aula) => {
+                                    const draft = inlineDrafts[aula.id] || {};
+                                    const currentDisciplina = draft.disciplina !== undefined ? draft.disciplina : aula.disciplina;
+                                    const currentProfessor = draft.professor !== undefined ? draft.professor : aula.professor;
+                                    const currentSala = draft.sala !== undefined ? draft.sala : aula.sala;
+                                    const currentTurma = draft.turma !== undefined ? draft.turma : aula.turma;
 
-                                        {/* Campo Professor */}
-                                        <div>
-                                          <label className="text-[9px] font-black uppercase text-emerald-950 block mb-0.5">
-                                            Professor Responsável
-                                          </label>
-                                          <select
-                                            value={currentProfessor}
-                                            onChange={(e) => handleDraftChange(aula.id, 'professor', e.target.value)}
-                                            className="w-full p-1 bg-white border border-emerald-300 rounded-lg text-[10px] font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer"
-                                          >
-                                            {listaProfessores.map((p) => (
-                                              <option key={p} value={p}>{p}</option>
-                                            ))}
-                                            {!listaProfessores.includes(currentProfessor) && (
-                                              <option value={currentProfessor}>{currentProfessor}</option>
-                                            )}
-                                          </select>
-                                        </div>
-
-                                        {/* Campo Sala */}
-                                        <div>
-                                          <label className="text-[9px] font-black uppercase text-emerald-950 block mb-0.5">
-                                            Sala / Espaço
-                                          </label>
-                                          <select
-                                            value={currentSala}
-                                            onChange={(e) => handleDraftChange(aula.id, 'sala', e.target.value)}
-                                            className="w-full p-1 bg-white border border-emerald-300 rounded-lg text-[10px] font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer"
-                                          >
-                                            {listaSalas.map((s) => (
-                                              <option key={s} value={s}>{s}</option>
-                                            ))}
-                                            {!listaSalas.includes(currentSala) && (
-                                              <option value={currentSala}>{currentSala}</option>
-                                            )}
-                                          </select>
-                                        </div>
-
-                                        {/* Campo Turma (se não for visualização por turma) */}
-                                        {modoVisao !== 'por_turma' && (
+                                    if (modoPlanilha && podeEditar) {
+                                      return (
+                                        <div
+                                          key={aula.id}
+                                          className="p-2.5 bg-emerald-50/80 border border-emerald-300 rounded-xl space-y-1.5 text-xs"
+                                        >
                                           <div>
-                                            <label className="text-[9px] font-black uppercase text-emerald-950 block mb-0.5">
-                                              Turma
-                                            </label>
+                                            <label className="text-[10px] font-semibold text-emerald-900 block mb-0.5">Disciplina</label>
                                             <select
-                                              value={currentTurma}
-                                              onChange={(e) => handleDraftChange(aula.id, 'turma', e.target.value)}
-                                              className="w-full p-1 bg-white border border-emerald-300 rounded-lg text-[10px] font-bold text-blue-900 focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer"
+                                              value={currentDisciplina}
+                                              onChange={(e) => handleDraftChange(aula.id, 'disciplina', e.target.value)}
+                                              className="w-full p-1.5 bg-white border border-emerald-200 rounded-lg text-[11px] font-semibold text-slate-800 focus:ring-2 focus:ring-emerald-500/20 outline-none cursor-pointer"
                                             >
-                                              {listaTurmas.map((t) => (
-                                                <option key={t} value={t}>{t}</option>
+                                              {LISTA_DISCIPLINAS_SUGERIDAS.map((d) => (
+                                                <option key={d} value={d}>{d}</option>
                                               ))}
-                                              {!listaTurmas.includes(currentTurma) && (
-                                                <option value={currentTurma}>{currentTurma}</option>
+                                              {!LISTA_DISCIPLINAS_SUGERIDAS.includes(currentDisciplina) && (
+                                                <option value={currentDisciplina}>{currentDisciplina}</option>
                                               )}
                                             </select>
                                           </div>
-                                        )}
 
-                                        {/* Campo Contar no saldo / Status */}
-                                        <div>
-                                          <label className="text-[9px] font-black uppercase text-emerald-950 block mb-0.5">
-                                            Contar no Saldo?
-                                          </label>
-                                          <select
-                                            value={draft.contarSaldo !== undefined ? (draft.contarSaldo ? 'true' : 'false') : ((aula.contarSaldo !== false && aula.ativo !== false) ? 'true' : 'false')}
-                                            onChange={(e) => handleDraftChange(aula.id, 'contarSaldo', e.target.value === 'true')}
-                                            className="w-full p-1 bg-white border border-emerald-300 rounded-lg text-[10px] font-bold text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer"
-                                          >
-                                            <option value="true">Ativo (Conta Saldo)</option>
-                                            <option value="false">Inativo (Bloqueia p/ Subst.)</option>
-                                          </select>
-                                        </div>
-
-                                        {/* Botões da Célula Planilha */}
-                                        <div className="flex items-center justify-between pt-1 border-t border-emerald-200/80 gap-1">
-                                          <div className="flex items-center gap-1">
-                                            <button
-                                              onClick={() => handleSalvarCelulaDireta(aula)}
-                                              className="px-2 py-1 bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold text-[10px] rounded-lg flex items-center gap-1 shadow-2xs cursor-pointer transition"
-                                              title="Salvar alterações no Firestore"
+                                          <div>
+                                            <label className="text-[10px] font-semibold text-emerald-900 block mb-0.5">Professor</label>
+                                            <select
+                                              value={currentProfessor}
+                                              onChange={(e) => handleDraftChange(aula.id, 'professor', e.target.value)}
+                                              className="w-full p-1.5 bg-white border border-emerald-200 rounded-lg text-[11px] font-medium text-slate-800 focus:ring-2 focus:ring-emerald-500/20 outline-none cursor-pointer"
                                             >
-                                              <i className="fa-solid fa-floppy-disk text-[10px]"></i>
-                                              <span>Salvar</span>
-                                            </button>
-                                            <button
-                                              onClick={() => handleDuplicarHorario(aula)}
-                                              className="px-2 py-1 bg-teal-600 hover:bg-teal-700 text-white font-extrabold text-[10px] rounded-lg flex items-center gap-1 shadow-2xs cursor-pointer transition"
-                                              title="Duplicar esta aula"
-                                            >
-                                              <i className="fa-solid fa-clone text-[10px]"></i>
-                                              <span>Copiar</span>
-                                            </button>
+                                              {listaProfessores.map((p) => (
+                                                <option key={p} value={p}>{p}</option>
+                                              ))}
+                                              {!listaProfessores.includes(currentProfessor) && (
+                                                <option value={currentProfessor}>{currentProfessor}</option>
+                                              )}
+                                            </select>
                                           </div>
 
-                                          <button
-                                            onClick={() => handleExcluirHorario(aula.id)}
-                                            className="p-1 text-rose-600 hover:bg-rose-100 rounded-md transition cursor-pointer"
-                                            title="Excluir aula"
-                                          >
-                                            <i className="fa-solid fa-trash text-[10px]"></i>
-                                          </button>
+                                          <div>
+                                            <label className="text-[10px] font-semibold text-emerald-900 block mb-0.5">Sala / Espaço</label>
+                                            <select
+                                              value={currentSala}
+                                              onChange={(e) => handleDraftChange(aula.id, 'sala', e.target.value)}
+                                              className="w-full p-1.5 bg-white border border-emerald-200 rounded-lg text-[11px] font-medium text-slate-800 focus:ring-2 focus:ring-emerald-500/20 outline-none cursor-pointer"
+                                            >
+                                              {listaSalas.map((s) => (
+                                                <option key={s} value={s}>{s}</option>
+                                              ))}
+                                              {!listaSalas.includes(currentSala) && (
+                                                <option value={currentSala}>{currentSala}</option>
+                                              )}
+                                            </select>
+                                          </div>
+
+                                          {modoVisao !== 'por_turma' && (
+                                            <div>
+                                              <label className="text-[10px] font-semibold text-emerald-900 block mb-0.5">Turma</label>
+                                              <select
+                                                value={currentTurma}
+                                                onChange={(e) => handleDraftChange(aula.id, 'turma', e.target.value)}
+                                                className="w-full p-1.5 bg-white border border-emerald-200 rounded-lg text-[11px] font-semibold text-indigo-900 focus:ring-2 focus:ring-emerald-500/20 outline-none cursor-pointer"
+                                              >
+                                                {listaTurmas.map((t) => (
+                                                  <option key={t} value={t}>{t}</option>
+                                                ))}
+                                                {!listaTurmas.includes(currentTurma) && (
+                                                  <option value={currentTurma}>{currentTurma}</option>
+                                                )}
+                                              </select>
+                                            </div>
+                                          )}
+
+                                          <div>
+                                            <label className="text-[10px] font-semibold text-emerald-900 block mb-0.5">Contar no Saldo?</label>
+                                            <select
+                                              value={draft.contarSaldo !== undefined ? (draft.contarSaldo ? 'true' : 'false') : ((aula.contarSaldo !== false && aula.ativo !== false) ? 'true' : 'false')}
+                                              onChange={(e) => handleDraftChange(aula.id, 'contarSaldo', e.target.value === 'true')}
+                                              className="w-full p-1.5 bg-white border border-emerald-200 rounded-lg text-[11px] font-medium text-slate-800 focus:ring-2 focus:ring-emerald-500/20 outline-none cursor-pointer"
+                                            >
+                                              <option value="true">Ativo (Conta Saldo)</option>
+                                              <option value="false">Inativo (Bloqueia p/ Subst.)</option>
+                                            </select>
+                                          </div>
+
+                                          <div className="flex items-center justify-between pt-1.5 border-t border-emerald-200/70 gap-1">
+                                            <div className="flex items-center gap-1">
+                                              <button
+                                                type="button"
+                                                onClick={() => handleSalvarCelulaDireta(aula)}
+                                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] rounded-lg inline-flex items-center gap-1 cursor-pointer transition"
+                                                title="Salvar alterações no banco de dados"
+                                              >
+                                                <i className="fa-solid fa-floppy-disk text-[10px]"></i>
+                                                <span>Salvar</span>
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => handleDuplicarHorario(aula)}
+                                                className="px-2 py-1 bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold text-[11px] rounded-lg inline-flex items-center gap-1 cursor-pointer transition"
+                                                title="Duplicar esta aula"
+                                              >
+                                                <i className="fa-solid fa-clone text-[10px]"></i>
+                                                <span>Copiar</span>
+                                              </button>
+                                            </div>
+
+                                            <button
+                                              type="button"
+                                              onClick={() => handleExcluirHorario(aula.id)}
+                                              className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg transition cursor-pointer"
+                                              title="Excluir aula"
+                                            >
+                                              <i className="fa-solid fa-trash-can text-xs"></i>
+                                            </button>
+                                          </div>
                                         </div>
+                                      );
+                                    }
+
+                                    const cores = getCorDisciplina(aula.disciplina);
+                                    const isInativo = aula.contarSaldo === false || aula.ativo === false;
+                                    const isBeingDragged = draggedAula?.id === aula.id;
+
+                                    return (
+                                      <div
+                                        key={aula.id}
+                                        draggable={podeEditar}
+                                        onDragStart={(e) => handleDragStart(e, aula)}
+                                        className={`p-2.5 rounded-xl border ${cores.bg} relative group transition-all hover:shadow-xs ${
+                                          podeEditar ? 'cursor-grab active:cursor-grabbing' : ''
+                                        } ${isBeingDragged ? 'opacity-30 scale-95 border-dashed border-indigo-500' : ''}`}
+                                      >
+                                        <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
+                                          <div className="flex items-center gap-1 min-w-0">
+                                            {podeEditar && (
+                                              <span className="text-slate-400 group-hover:text-indigo-600 cursor-grab active:cursor-grabbing transition shrink-0" title="Arraste para mover ou duplicar">
+                                                <i className="fa-solid fa-grip-vertical text-[10px]"></i>
+                                              </span>
+                                            )}
+                                            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md truncate ${cores.badge}`}>
+                                              {aula.disciplina}
+                                            </span>
+                                            {isInativo && (
+                                              <span className="text-[10px] font-semibold px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-200/80 rounded-md inline-flex items-center gap-1" title="Inativo: Não conta no saldo de aulas">
+                                                <i className="fa-solid fa-circle-pause text-[9px]"></i>
+                                                Inativo
+                                              </span>
+                                            )}
+                                          </div>
+
+                                          {podeEditar && (
+                                            <div className="opacity-80 group-hover:opacity-100 transition flex items-center gap-0.5 print:hidden shrink-0">
+                                              <button
+                                                type="button"
+                                                onClick={() => handleDuplicarHorario(aula)}
+                                                className="p-1 hover:bg-white/80 text-indigo-700 rounded-md transition cursor-pointer"
+                                                title="Duplicar esta aula"
+                                              >
+                                                <i className="fa-solid fa-clone text-[10px]"></i>
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => handleAbrirModalEdicao(aula)}
+                                                className="p-1 hover:bg-white/80 text-slate-700 rounded-md transition cursor-pointer"
+                                                title="Editar Aula"
+                                              >
+                                                <i className="fa-solid fa-pen-to-square text-[10px]"></i>
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() => handleExcluirHorario(aula.id)}
+                                                className="p-1 hover:bg-rose-100 text-rose-600 rounded-md transition cursor-pointer"
+                                                title="Excluir Aula"
+                                              >
+                                                <i className="fa-solid fa-trash-can text-[10px]"></i>
+                                              </button>
+                                            </div>
+                                          )}
+                                        </div>
+
+                                        <div className="space-y-0.5 text-slate-700">
+                                          {modoVisao !== 'por_professor' && (
+                                            <p className="font-semibold text-[11px] leading-tight flex items-center gap-1.5 text-slate-800">
+                                              <i className="fa-solid fa-user-tie text-[10px] text-slate-400 shrink-0"></i>
+                                              <span className="truncate">{aula.professor}</span>
+                                            </p>
+                                          )}
+
+                                          {modoVisao !== 'por_turma' && (
+                                            <p className="font-semibold text-[11px] text-indigo-800 flex items-center gap-1.5">
+                                              <i className="fa-solid fa-users text-[10px] text-indigo-500 shrink-0"></i>
+                                              <span>{aula.turma}</span>
+                                            </p>
+                                          )}
+
+                                          {modoVisao !== 'por_sala' && (
+                                            <p className="text-[10px] font-medium text-slate-600 flex items-center gap-1.5 mt-0.5">
+                                              <i className="fa-solid fa-location-dot text-[9px] text-rose-500 shrink-0"></i>
+                                              <span className="truncate">{aula.sala}</span>
+                                            </p>
+                                          )}
+                                        </div>
+
+                                        {ehAulaAgora && (
+                                          <div className="mt-1.5 pt-1 border-t border-indigo-200/70 flex items-center gap-1.5 text-[10px] font-semibold text-indigo-700">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                                            <span>Em andamento</span>
+                                          </div>
+                                        )}
                                       </div>
                                     );
-                                  }
-
-                                  // Visualização Padrão da Aula (Com Suporte a Drag and Drop & Duplicação Rápida)
-                                  const cores = getCorDisciplina(aula.disciplina);
-                                  const isInativo = aula.contarSaldo === false || aula.ativo === false;
-                                  const isBeingDragged = draggedAula?.id === aula.id;
-
-                                  return (
-                                    <div
-                                      key={aula.id}
-                                      draggable={podeEditar}
-                                      onDragStart={(e) => handleDragStart(e, aula)}
-                                      className={`p-2.5 rounded-xl border ${cores.bg} shadow-2xs relative group transition-all hover:shadow-md ${
-                                        podeEditar ? 'cursor-grab active:cursor-grabbing hover:border-cyan-500' : ''
-                                      } ${isBeingDragged ? 'opacity-30 scale-95 border-dashed border-cyan-600' : ''}`}
-                                    >
-                                      {/* Badge Disciplina & Status */}
-                                      <div className="flex flex-wrap items-center justify-between gap-1 mb-1">
-                                        <div className="flex items-center gap-1">
-                                          {podeEditar && (
-                                            <span className="text-slate-400 group-hover:text-cyan-700 cursor-grab active:cursor-grabbing transition" title="Clique e arraste para mover de horário ou duplicar">
-                                              <i className="fa-solid fa-grip-vertical text-[10px]"></i>
-                                            </span>
-                                          )}
-                                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${cores.badge}`}>
-                                            {aula.disciplina}
-                                          </span>
-                                          {isInativo && (
-                                            <span className="text-[9px] font-extrabold px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-300 rounded-md flex items-center gap-1" title="Inativo: Não conta no saldo de aulas, mas bloqueia o professor no motor de substituição">
-                                              <i className="fa-solid fa-circle-pause text-[8px]"></i>
-                                              Inativo
-                                            </span>
-                                          )}
-                                        </div>
-
-                                        {podeEditar && (
-                                          <div className="opacity-85 sm:opacity-70 group-hover:opacity-100 transition flex items-center gap-1 print:hidden">
-                                            <button
-                                              onClick={() => handleDuplicarHorario(aula)}
-                                              className="p-1 hover:bg-cyan-100 text-cyan-800 rounded transition cursor-pointer"
-                                              title="Duplicar esta aula instantaneamente"
-                                            >
-                                              <i className="fa-solid fa-clone text-[10px]"></i>
-                                            </button>
-                                            <button
-                                              onClick={() => handleAbrirModalEdicao(aula)}
-                                              className="p-1 hover:bg-white/80 text-slate-700 rounded transition cursor-pointer"
-                                              title="Editar Aula"
-                                            >
-                                              <i className="fa-solid fa-pen-to-square text-[10px]"></i>
-                                            </button>
-                                            <button
-                                              onClick={() => handleExcluirHorario(aula.id)}
-                                              className="p-1 hover:bg-rose-200 text-rose-700 rounded transition cursor-pointer"
-                                              title="Excluir Aula"
-                                            >
-                                              <i className="fa-solid fa-trash text-[10px]"></i>
-                                            </button>
-                                          </div>
-                                        )}
-                                      </div>
-
-                                      {/* Informações da Aula */}
-                                      <div className="space-y-0.5">
-                                        {modoVisao !== 'por_professor' && (
-                                          <p className="font-extrabold text-[11px] leading-tight flex items-center gap-1">
-                                            <i className="fa-solid fa-user-tie text-[10px] text-slate-500"></i>
-                                            <span>{aula.professor}</span>
-                                          </p>
-                                        )}
-
-                                        {modoVisao !== 'por_turma' && (
-                                          <p className="font-bold text-[11px] text-blue-900 flex items-center gap-1">
-                                            <i className="fa-solid fa-users text-[10px] text-blue-600"></i>
-                                            <span>{aula.turma}</span>
-                                          </p>
-                                        )}
-
-                                        {modoVisao !== 'por_sala' && (
-                                          <p className="text-[10px] font-semibold text-slate-600 flex items-center gap-1 mt-0.5">
-                                            <i className="fa-solid fa-location-dot text-[9px] text-rose-500"></i>
-                                            <span>{aula.sala}</span>
-                                          </p>
-                                        )}
-
-
-                                      </div>
-
-                                      {ehAulaAgora && (
-                                        <div className="mt-1.5 pt-1 border-t border-cyan-300 flex items-center gap-1 text-[9px] font-black text-cyan-900 uppercase tracking-tight">
-                                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
-                                          <span>Em Andamento</span>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                                  })}
+                                </div>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
 
         {/* VISUALIZAÇÃO MOBILE (Telas pequenas - Cards / Accordions Verticais) */}
         <div className="block md:hidden space-y-3">
           {/* Header Informativo Mobile */}
-          <div className="bg-gradient-to-r from-blue-950 via-slate-900 to-blue-900 text-white p-3.5 rounded-2xl border border-blue-800 shadow-sm flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-cyan-100 text-cyan-300 border border-cyan-400 flex items-center justify-center font-bold text-sm">
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm shrink-0">
                 <i className="fa-solid fa-mobile-screen"></i>
               </div>
               <div>
-                <p className="font-extrabold text-white text-xs">Grade de Horários Mobile</p>
-                <p className="text-[10px] text-cyan-200 font-medium">Iniciando por {DIAS_SEMANA.find(d => d.id === diaHojeId)?.label}</p>
+                <p className="font-semibold text-slate-900 text-xs tracking-tight">Grade de Horários Mobile</p>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Iniciando por {DIAS_SEMANA.find(d => d.id === diaHojeId)?.label}
+                </p>
               </div>
             </div>
-            <span className="bg-cyan-400 text-blue-950 font-black text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wider shadow-xs">
+            <span className="bg-indigo-50 text-indigo-700 border border-indigo-200/70 font-semibold text-[11px] px-2.5 py-1 rounded-lg shrink-0">
               {agoraInfo.diaId === diaHojeId ? 'Dia Atual' : 'Semana'}
             </span>
           </div>
@@ -4533,10 +4566,10 @@ export default function Horarios() {
               return (
                 <div
                   key={diaObj.id}
-                  className={`rounded-2xl transition-all duration-200 overflow-hidden ${
+                  className={`rounded-2xl transition-all duration-200 overflow-hidden bg-white ${
                     isHoje
-                      ? 'bg-white border-2 border-cyan-400 ring-2 ring-cyan-400/30 shadow-md'
-                      : 'bg-white border border-slate-200 shadow-sm'
+                      ? 'border border-indigo-300 ring-2 ring-indigo-500/15 shadow-[0_4px_20px_-4px_rgba(79,70,229,0.12)]'
+                      : 'border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)]'
                   }`}
                 >
                   {/* Cabeçalho do Cartão do Dia (Clicável) */}
@@ -4544,15 +4577,15 @@ export default function Horarios() {
                     type="button"
                     onClick={() => toggleDiaMobile(diaObj.id)}
                     className={`w-full p-3.5 flex items-center justify-between transition cursor-pointer select-none text-left ${
-                      isHoje ? 'bg-gradient-to-r from-cyan-50/80 via-white to-blue-50/30' : 'hover:bg-slate-50'
+                      isHoje ? 'bg-indigo-50/40' : 'hover:bg-slate-50/70'
                     }`}
                   >
                     <div className="flex items-center gap-3">
                       <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs shadow-2xs ${
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center font-semibold text-xs ${
                           isHoje
-                            ? 'bg-cyan-400 text-blue-950 ring-2 ring-cyan-300'
-                            : 'bg-slate-100 text-slate-700 border border-slate-200'
+                            ? 'bg-indigo-600 text-white shadow-xs'
+                            : 'bg-slate-100 text-slate-700 border border-slate-200/70'
                         }`}
                       >
                         {diaObj.short}
@@ -4560,25 +4593,25 @@ export default function Horarios() {
 
                       <div>
                         <div className="flex items-center gap-2">
-                          <h3 className={`font-black text-sm ${isHoje ? 'text-blue-950' : 'text-slate-800'}`}>
+                          <h3 className={`font-semibold text-sm tracking-tight ${isHoje ? 'text-indigo-950' : 'text-slate-900'}`}>
                             {diaObj.label}
                           </h3>
                           {isHoje && (
-                            <span className="bg-cyan-400 text-blue-950 font-black text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-2xs">
-                              HOJE
+                            <span className="bg-indigo-100 text-indigo-700 border border-indigo-200/80 font-semibold text-[10px] px-2 py-0.5 rounded-md">
+                              Hoje
                             </span>
                           )}
                         </div>
 
-                        <p className="text-[11px] font-semibold text-slate-500 mt-0.5 flex items-center gap-2">
+                        <p className="text-[11px] font-medium text-slate-500 mt-0.5 tabular-nums flex items-center gap-2">
                           <span>{totalAulasDia === 1 ? '1 aula alocada' : `${totalAulasDia} aulas alocadas`}</span>
                         </p>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold transition ${
-                        isExpanded ? 'bg-slate-200 text-slate-800' : 'bg-slate-100 text-slate-600'
+                      <span className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs transition ${
+                        isExpanded ? 'bg-slate-200/80 text-slate-800' : 'bg-slate-100 text-slate-500'
                       }`}>
                         <i className={`fa-solid ${isExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`}></i>
                       </span>
@@ -4587,7 +4620,7 @@ export default function Horarios() {
 
                   {/* Conteúdo Expandido do Dia */}
                   {isExpanded && (
-                    <div className="p-3 pt-0 border-t border-slate-100 divide-y divide-slate-100 space-y-2">
+                    <div className="p-3 pt-1 border-t border-slate-100 space-y-2.5 bg-slate-50/40">
                       {periodosToRender.map((periodo) => {
                         const isIntervalo = periodo.tipo === 'intervalo';
                         const isAulaAtual = isHoje && infoAulaAtualMobile.periodoAtualId === periodo.id;
@@ -4612,44 +4645,44 @@ export default function Horarios() {
                         return (
                           <div
                             key={periodo.id}
-                            className={`pt-2.5 pb-1 transition-all rounded-xl p-2.5 mt-2 ${
+                            className={`transition-all rounded-xl p-2.5 ${
                               isAulaAtual
-                                ? 'bg-cyan-50/90 border-2 border-cyan-400 ring-2 ring-cyan-400/20 shadow-xs'
+                                ? 'bg-indigo-50/80 border border-indigo-300 ring-2 ring-indigo-500/15 shadow-2xs'
                                 : isProximaAula
-                                ? 'bg-amber-50/80 border border-amber-300'
+                                ? 'bg-amber-50/70 border border-amber-200/90'
                                 : isIntervalo
-                                ? 'bg-amber-50/30 border border-amber-100'
-                                : 'bg-slate-50 border border-slate-100'
+                                ? 'bg-amber-50/40 border border-amber-200/60'
+                                : 'bg-white border border-slate-200/80'
                             }`}
                           >
                             {/* Cabeçalho do Período */}
-                            <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
+                            <div className="flex items-center justify-between mb-2 flex-wrap gap-1.5">
                               <div className="flex items-center gap-2">
-                                <span className="font-extrabold text-xs text-blue-950 bg-white px-2 py-0.5 rounded border border-slate-200 shadow-2xs">
+                                <span className="font-semibold text-xs text-slate-800 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200/70">
                                   {periodo.rotulo}
                                 </span>
-                                <span className="text-[11px] font-mono text-slate-500 font-bold">
+                                <span className="text-[11px] font-mono tabular-nums text-slate-500 font-medium">
                                   {periodo.horario}
                                 </span>
                               </div>
 
                               {/* Badges de Estado Visual Mobile */}
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-1.5">
                                 {isAulaAtual && (
-                                  <span className="bg-emerald-600 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-2xs animate-pulse">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
-                                    AULA ATUAL
+                                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold text-[10px] px-2 py-0.5 rounded-lg flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                                    Aula Atual
                                   </span>
                                 )}
                                 {isProximaAula && !isAulaAtual && (
-                                  <span className="bg-amber-500 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-2xs">
-                                    <i className="fa-solid fa-clock text-[9px]"></i>
-                                    PRÓXIMA AULA
+                                  <span className="bg-amber-50 text-amber-800 border border-amber-200 font-semibold text-[10px] px-2 py-0.5 rounded-lg flex items-center gap-1">
+                                    <i className="fa-solid fa-clock text-[9px] text-amber-600"></i>
+                                    Próxima
                                   </span>
                                 )}
                                 {isIntervalo && (
-                                  <span className="bg-amber-100 text-amber-800 font-bold text-[10px] px-2 py-0.5 rounded border border-amber-200 flex items-center gap-1">
-                                    <i className="fa-solid fa-mug-hot text-[9px]"></i>
+                                  <span className="bg-amber-50 text-amber-800 font-medium text-[10px] px-2 py-0.5 rounded-lg border border-amber-200/80 flex items-center gap-1">
+                                    <i className="fa-solid fa-mug-hot text-[9px] text-amber-600"></i>
                                     Intervalo
                                   </span>
                                 )}
@@ -4659,16 +4692,16 @@ export default function Horarios() {
                             {/* Aulas no Período */}
                             {aulasNoSlot.length === 0 ? (
                               isIntervalo ? (
-                                <div className="p-2.5 rounded-xl border border-dashed border-amber-200 bg-amber-50/40 text-center text-xs text-amber-800 flex items-center justify-between">
-                                  <span className="flex items-center gap-1.5 font-bold text-amber-800">
+                                <div className="p-2.5 rounded-xl border border-dashed border-amber-200 bg-amber-50/30 text-xs text-amber-800 flex items-center justify-between">
+                                  <span className="flex items-center gap-1.5 font-medium text-amber-800">
                                     <i className="fa-solid fa-mug-hot text-amber-600 text-[10px]"></i>
                                     <span>{periodo.rotulo}</span>
                                   </span>
-                                  <span className="text-[10px] text-amber-600 font-mono">{periodo.horario}</span>
+                                  <span className="text-[10px] text-amber-700 font-mono tabular-nums">{periodo.horario}</span>
                                 </div>
                               ) : statusDocente && !statusDocente.atSchool ? (
-                                <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-100/70 text-slate-700 text-center text-xs space-y-0.5">
-                                  <span className="font-extrabold text-slate-700 flex items-center justify-center gap-1">
+                                <div className="p-2.5 rounded-xl border border-slate-200/80 bg-slate-50 text-slate-700 text-center text-xs space-y-1">
+                                  <span className="font-semibold text-slate-700 flex items-center justify-center gap-1.5">
                                     <i className={`fa-solid ${statusDocente.reason?.includes('Indisponibilidade') ? 'fa-ban text-rose-500' : 'fa-clock-slash text-slate-400'} text-[10px]`}></i>
                                     <span>{statusDocente.reason?.includes('Indisponibilidade') ? 'Indisponível' : 'Fora do Horário'}</span>
                                   </span>
@@ -4677,23 +4710,23 @@ export default function Horarios() {
                                     <button
                                       type="button"
                                       onClick={() => modoPlanilha ? handleCriarNovaAulaPlanilha(diaObj.id, periodo.id) : handleAbrirModalNovo(diaObj.id, periodo.id)}
-                                      className="text-[10px] font-bold text-blue-700 bg-white hover:bg-blue-100 border border-blue-300 px-2 py-0.5 rounded-md mt-1 cursor-pointer"
+                                      className="text-[11px] font-medium text-indigo-700 bg-white hover:bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-lg mt-1 cursor-pointer transition"
                                     >
                                       + Inserir
                                     </button>
                                   )}
                                 </div>
                               ) : (
-                                <div className="p-2 rounded-xl border border-dashed border-emerald-200 bg-emerald-50/20 text-center text-xs text-slate-500 flex items-center justify-between">
-                                  <span className="flex items-center gap-1 font-semibold text-emerald-800">
-                                    <i className="fa-regular fa-circle-check text-emerald-600 text-[10px]"></i>
-                                    <span>Vazio (Disponível)</span>
+                                <div className="p-2.5 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 text-xs text-slate-500 flex items-center justify-between">
+                                  <span className="flex items-center gap-1.5 font-medium text-emerald-700">
+                                    <i className="fa-regular fa-circle-check text-emerald-500 text-[11px]"></i>
+                                    <span>Horário Livre</span>
                                   </span>
                                   {podeEditar && (
                                     <button
                                       type="button"
                                       onClick={() => modoPlanilha ? handleCriarNovaAulaPlanilha(diaObj.id, periodo.id) : handleAbrirModalNovo(diaObj.id, periodo.id)}
-                                      className="text-[10px] font-black text-emerald-700 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 px-2 py-1 rounded-lg cursor-pointer"
+                                      className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200/80 px-2.5 py-1 rounded-lg cursor-pointer transition"
                                     >
                                       + Alocar
                                     </button>
@@ -4709,19 +4742,19 @@ export default function Horarios() {
                                   return (
                                     <div
                                       key={aula.id}
-                                      className={`p-3 rounded-xl border ${cores.bg} shadow-2xs relative space-y-1`}
+                                      className={`p-3 rounded-xl border border-l-4 ${cores.bg} shadow-2xs relative space-y-1.5`}
                                     >
-                                      <div className="flex items-center justify-between gap-1">
-                                        <span className={`text-xs font-black uppercase px-2 py-0.5 rounded-md ${cores.badge}`}>
+                                      <div className="flex items-start justify-between gap-2">
+                                        <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${cores.badge}`}>
                                           {aula.disciplina}
                                         </span>
 
                                         {podeEditar && (
-                                          <div className="flex items-center gap-1">
+                                          <div className="flex items-center gap-1 shrink-0">
                                             <button
                                               type="button"
                                               onClick={() => handleDuplicarHorario(aula)}
-                                              className="p-1 hover:bg-cyan-100 text-cyan-800 rounded transition cursor-pointer"
+                                              className="w-8 h-8 flex items-center justify-center bg-white/80 hover:bg-indigo-50 text-indigo-700 border border-slate-200/80 rounded-lg transition cursor-pointer"
                                               title="Duplicar"
                                             >
                                               <i className="fa-solid fa-clone text-xs"></i>
@@ -4729,7 +4762,7 @@ export default function Horarios() {
                                             <button
                                               type="button"
                                               onClick={() => handleAbrirModalEdicao(aula)}
-                                              className="p-1 hover:bg-white/80 text-slate-700 rounded transition cursor-pointer"
+                                              className="w-8 h-8 flex items-center justify-center bg-white/80 hover:bg-slate-100 text-slate-700 border border-slate-200/80 rounded-lg transition cursor-pointer"
                                               title="Editar"
                                             >
                                               <i className="fa-solid fa-pen-to-square text-xs"></i>
@@ -4737,7 +4770,7 @@ export default function Horarios() {
                                             <button
                                               type="button"
                                               onClick={() => handleExcluirHorario(aula.id)}
-                                              className="p-1 hover:bg-rose-200 text-rose-700 rounded transition cursor-pointer"
+                                              className="w-8 h-8 flex items-center justify-center bg-white/80 hover:bg-rose-50 text-rose-600 border border-rose-200/80 rounded-lg transition cursor-pointer"
                                               title="Excluir"
                                             >
                                               <i className="fa-solid fa-trash text-xs"></i>
@@ -4746,21 +4779,21 @@ export default function Horarios() {
                                         )}
                                       </div>
 
-                                      <div className="text-xs space-y-0.5 pt-0.5">
+                                      <div className="text-xs space-y-1 pt-0.5">
                                         {modoVisao !== 'por_professor' && (
-                                          <p className="font-extrabold text-slate-900 flex items-center gap-1.5">
-                                            <i className="fa-solid fa-user-tie text-slate-500 text-[10px]"></i>
+                                          <p className="font-semibold text-slate-900 flex items-center gap-1.5">
+                                            <i className="fa-solid fa-user-tie text-slate-400 text-[10px]"></i>
                                             <span>{aula.professor}</span>
                                           </p>
                                         )}
                                         {modoVisao !== 'por_turma' && (
-                                          <p className="font-bold text-blue-900 flex items-center gap-1.5">
-                                            <i className="fa-solid fa-users text-blue-600 text-[10px]"></i>
+                                          <p className="font-medium text-indigo-800 flex items-center gap-1.5">
+                                            <i className="fa-solid fa-users text-indigo-500 text-[10px]"></i>
                                             <span>{aula.turma}</span>
                                           </p>
                                         )}
                                         {modoVisao !== 'por_sala' && (
-                                          <p className="font-semibold text-slate-600 flex items-center gap-1.5">
+                                          <p className="font-medium text-slate-600 flex items-center gap-1.5">
                                             <i className="fa-solid fa-location-dot text-rose-500 text-[10px]"></i>
                                             <span>{aula.sala}</span>
                                           </p>
@@ -4768,7 +4801,7 @@ export default function Horarios() {
                                       </div>
 
                                       {isInativo && (
-                                        <span className="inline-block text-[9px] font-extrabold px-1.5 py-0.5 bg-amber-100 text-amber-800 border border-amber-300 rounded mt-1">
+                                        <span className="inline-block text-[10px] font-semibold px-2 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-md mt-1">
                                           Inativo (Não conta no saldo)
                                         </span>
                                       )}
@@ -4790,24 +4823,24 @@ export default function Horarios() {
 
         {/* PAINEL DE AUDITORIA E GESTÃO DE GRADE EXCLUSIVO DO DIRETOR (VISUALIZAÇÃO POR PROFESSOR) */}
         {modoVisao === 'por_professor' && (typeof window.obterRoleAtual === 'function' ? window.obterRoleAtual() === 'DIRETOR' : isDiretor) && (
-          <div className="mt-8 bg-white border-2 border-amber-300 rounded-2xl shadow-md overflow-hidden animate-fadeIn print:hidden">
+          <div className="mt-6 bg-white border border-slate-200/80 rounded-2xl shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] overflow-hidden animate-fadeIn print:hidden">
             {/* Header do Painel Diretor */}
-            <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 p-4 sm:p-5 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-amber-400/40">
+            <div className="bg-slate-50/70 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black text-lg shadow-sm shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-base shrink-0">
                   <i className="fa-solid fa-clipboard-check"></i>
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-extrabold text-sm sm:text-base text-white tracking-wide">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-semibold text-sm sm:text-base text-slate-900 tracking-tight">
                       Painel de Auditoria e Gestão de Grade
                     </h3>
-                    <span className="text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 px-2 py-0.5 rounded-md shadow-xs">
+                    <span className="text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200/80 px-2 py-0.5 rounded-lg">
                       Exclusivo Diretor
                     </span>
                   </div>
-                  <p className="text-xs text-slate-300 font-medium mt-0.5">
-                    Trilha de auditoria das aulas de <strong className="text-amber-300">{professorSelecionado}</strong> com comandos de exclusão direta.
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    Trilha de auditoria das aulas de <strong className="text-slate-800 font-semibold">{professorSelecionado}</strong> com comandos de exclusão direta.
                   </p>
                 </div>
               </div>
@@ -4817,14 +4850,14 @@ export default function Horarios() {
                   type="button"
                   onClick={() => handleLimparGradeProfessorDiretor(professorSelecionado)}
                   disabled={aulasDoProfessorOrdenadas.length === 0 || salvando}
-                  className={`px-4 py-2.5 rounded-xl text-xs font-extrabold flex items-center gap-2 transition cursor-pointer shadow-sm ${
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition cursor-pointer ${
                     aulasDoProfessorOrdenadas.length === 0
-                      ? 'bg-slate-700 text-slate-400 cursor-not-allowed opacity-60'
-                      : 'bg-rose-600 hover:bg-rose-700 active:scale-95 text-white border border-rose-400'
+                      ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
+                      : 'bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 border border-rose-200'
                   }`}
                   title={`Remover permanentemente todas as ${aulasDoProfessorOrdenadas.length} aulas de ${professorSelecionado} da grade`}
                 >
-                  <i className="fa-solid fa-trash-can-arrow-up text-sm"></i>
+                  <i className="fa-solid fa-trash-can-arrow-up text-xs"></i>
                   <span>Limpar Toda a Grade deste Professor</span>
                 </button>
               </div>
@@ -4833,28 +4866,28 @@ export default function Horarios() {
             {/* Conteúdo / Tabela de Aulas do Professor */}
             <div className="p-4 sm:p-5">
               {aulasDoProfessorOrdenadas.length === 0 ? (
-                <div className="p-8 text-center bg-slate-50 border border-dashed border-slate-300 rounded-xl text-slate-500">
-                  <i className="fa-solid fa-calendar-xmark text-3xl mb-2 text-slate-400"></i>
-                  <p className="font-bold text-sm text-slate-700">Nenhuma aula atribuída no momento</p>
+                <div className="p-8 text-center bg-slate-50/70 border border-dashed border-slate-200 rounded-2xl text-slate-500">
+                  <i className="fa-solid fa-calendar-xmark text-3xl mb-2 text-slate-300"></i>
+                  <p className="font-semibold text-sm text-slate-700">Nenhuma aula atribuída no momento</p>
                   <p className="text-xs text-slate-500 mt-1">
-                    O docente <strong>{professorSelecionado}</strong> não possui aulas registradas na grade horária semanal.
+                    O docente <strong className="font-semibold text-slate-700">{professorSelecionado}</strong> não possui aulas registradas na grade horária semanal.
                   </p>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto rounded-xl border border-slate-200/80">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="bg-slate-100 text-slate-700 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[11px]">
-                        <th className="p-3 rounded-l-xl">Dia da Semana</th>
+                      <tr className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200/80 text-[11px]">
+                        <th className="p-3">Dia da Semana</th>
                         <th className="p-3">Período / Horário</th>
                         <th className="p-3">Disciplina</th>
                         <th className="p-3">Turma</th>
                         <th className="p-3">Sala</th>
                         <th className="p-3 text-center">Tipo / Carga</th>
-                        <th className="p-3 text-right rounded-r-xl">Ação do Diretor</th>
+                        <th className="p-3 text-right">Ação do Diretor</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-slate-100 bg-white">
                       {aulasDoProfessorOrdenadas.map((aula) => {
                         const estiloCor = getCorDisciplina(aula.disciplina);
                         const diaObj = DIAS_SEMANA.find(d => normalizarDia(d.id) === normalizarDia(aula.dia));
@@ -4865,47 +4898,49 @@ export default function Horarios() {
                         return (
                           <tr
                             key={aula.id || `${aula.dia}_${aula.periodoId}_${aula.turma}`}
-                            className="hover:bg-slate-50/90 transition group"
+                            className="hover:bg-slate-50/80 transition group"
                           >
-                            <td className="p-3 font-extrabold text-slate-900 flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-cyan-600"></span>
-                              <span>{diaObj?.label || aula.dia}</span>
+                            <td className="p-3 font-semibold text-slate-800">
+                              <div className="flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                                <span>{diaObj?.label || aula.dia}</span>
+                              </div>
                             </td>
-                            <td className="p-3 font-bold text-slate-700">
+                            <td className="p-3 font-medium text-slate-700">
                               <div className="flex items-center gap-1.5">
-                                <span className="px-2 py-0.5 bg-blue-100 text-blue-900 rounded font-black text-[11px]">
+                                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-800 border border-indigo-200/60 rounded-md font-semibold text-[11px]">
                                   {rotuloP}
                                 </span>
                                 {slotObj && (
-                                  <span className="text-[11px] text-slate-500 font-normal">
+                                  <span className="text-[11px] text-slate-500 font-mono tabular-nums">
                                     ({slotObj.inicio} - {slotObj.fim})
                                   </span>
                                 )}
                               </div>
                             </td>
                             <td className="p-3">
-                              <span className={`px-2.5 py-1 rounded-lg border text-xs inline-flex items-center gap-1.5 shadow-2xs ${estiloCor.bg}`}>
+                              <span className={`px-2.5 py-1 rounded-lg border border-l-4 text-xs font-medium inline-flex items-center gap-1.5 ${estiloCor.bg}`}>
                                 <span>{aula.disciplina}</span>
                               </span>
                             </td>
-                            <td className="p-3 font-black text-blue-950">
-                              <span className="px-2 py-0.5 bg-slate-100 text-slate-800 rounded border border-slate-200">
+                            <td className="p-3 font-semibold text-slate-800">
+                              <span className="px-2 py-0.5 bg-slate-100 text-slate-800 rounded-md border border-slate-200/70">
                                 {aula.turma}
                               </span>
                             </td>
-                            <td className="p-3 font-semibold text-slate-600">
-                              <span className="flex items-center gap-1">
+                            <td className="p-3 font-medium text-slate-600">
+                              <span className="flex items-center gap-1.5">
                                 <i className="fa-solid fa-location-dot text-rose-500 text-[10px]"></i>
                                 <span>{aula.sala || 'Sala Padrão'}</span>
                               </span>
                             </td>
                             <td className="p-3 text-center">
                               {isInativo ? (
-                                <span className="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded text-[10px] font-bold">
+                                <span className="px-2 py-0.5 bg-amber-50 text-amber-800 border border-amber-200/80 rounded-md text-[10px] font-semibold">
                                   Inativo / Formação
                                 </span>
                               ) : (
-                                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded text-[10px] font-bold">
+                                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200/80 rounded-md text-[10px] font-semibold">
                                   Aula Regular (+1)
                                 </span>
                               )}
@@ -4914,7 +4949,7 @@ export default function Horarios() {
                               <button
                                 type="button"
                                 onClick={() => handleExcluirAulaAuditoria(aula)}
-                                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 hover:border-rose-300 rounded-xl text-xs font-extrabold transition cursor-pointer inline-flex items-center gap-1.5 shadow-2xs"
+                                className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 rounded-xl text-xs font-semibold transition cursor-pointer inline-flex items-center gap-1.5"
                                 title={`Excluir esta aula de ${aula.disciplina} (${aula.turma})`}
                               >
                                 <i className="fa-solid fa-trash-can text-rose-600 text-xs"></i>
@@ -4936,234 +4971,269 @@ export default function Horarios() {
 
       {/* MODAL ADICIONAR / EDITAR HORÁRIO */}
       {isModalOpen && podeEditar && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-fadeIn">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200/80 shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
             {/* Modal Header */}
-            <div className="bg-blue-950 p-4 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <i className="fa-solid fa-clock text-cyan-300"></i>
-                <h3 className="font-extrabold text-sm uppercase">
-                  {itemEdicao ? 'Editar Aula no Horário' : 'Alocar Nova Aula na Grade'}
-                </h3>
+            <div className="bg-white/95 backdrop-blur-md px-5 py-4 border-b border-slate-200/80 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm shrink-0">
+                  <i className="fa-solid fa-clock"></i>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm sm:text-base text-slate-900 tracking-tight">
+                    {itemEdicao ? 'Editar Aula no Horário' : 'Alocar Nova Aula na Grade'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Preencha os dados de dia, período, turma, docente e ambiente
+                  </p>
+                </div>
               </div>
               <button
+                type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-300 hover:text-white p-1 cursor-pointer"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 flex items-center justify-center transition cursor-pointer"
               >
-                <i className="fa-solid fa-xmark text-lg"></i>
+                <i className="fa-solid fa-xmark text-sm"></i>
               </button>
             </div>
 
             {/* Modal Body / Form */}
-            <form onSubmit={handleSalvarHorario} className="p-5 space-y-4 overflow-y-auto flex-1">
-              <div className="grid grid-cols-2 gap-3">
-                {/* Dia da Semana */}
-                <div>
-                  <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Dia da Semana</label>
-                  <select
-                    value={form.dia}
-                    onChange={(e) => setForm({ ...form, dia: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-cyan-400"
-                    required
-                  >
-                    {DIAS_SEMANA.map((d) => (
-                      <option key={d.id} value={d.id}>{d.label}</option>
-                    ))}
-                  </select>
-                </div>
+            <form onSubmit={handleSalvarHorario} className="flex flex-col flex-1 overflow-hidden">
+              <div className="p-5 space-y-4 overflow-y-auto flex-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Dia da Semana */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">Dia da Semana</label>
+                    <select
+                      value={form.dia}
+                      onChange={(e) => setForm({ ...form, dia: e.target.value })}
+                      className="w-full p-2.5 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition"
+                      required
+                    >
+                      {DIAS_SEMANA.map((d) => (
+                        <option key={d.id} value={d.id}>{d.label}</option>
+                      ))}
+                    </select>
+                  </div>
 
-                {/* Período / Horário */}
-                <div>
-                  <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Período / Horário</label>
-                  <select
-                    value={form.periodoId}
-                    onChange={(e) => setForm({ ...form, periodoId: Number(e.target.value) })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-cyan-400"
-                    required
-                  >
-                    {periodosAula.filter(p => p.tipo === 'aula').map((p) => (
-                      <option key={p.id} value={p.id}>{p.rotulo} ({p.horario})</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Turma */}
-              <div>
-                <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Turma PEI</label>
-                <input
-                  type="text"
-                  list="lista-turmas-datalist"
-                  value={form.turma}
-                  onChange={(e) => setForm({ ...form, turma: e.target.value })}
-                  placeholder="Ex: 6º Ano A"
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-cyan-400"
-                  required
-                />
-                <datalist id="lista-turmas-datalist">
-                  {TURMAS_PADRAO.map(t => <option key={t} value={t} />)}
-                </datalist>
-              </div>
-
-              {/* Disciplina */}
-              <div>
-                <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Disciplina</label>
-                <input
-                  type="text"
-                  list="lista-disciplinas-datalist"
-                  value={form.disciplina}
-                  onChange={(e) => setForm({ ...form, disciplina: e.target.value })}
-                  placeholder="Ex: Língua Portuguesa"
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-cyan-400"
-                  required
-                />
-                <datalist id="lista-disciplinas-datalist">
-                  {Object.keys(DISCIPLINAS_CORES).map(d => <option key={d} value={d} />)}
-                </datalist>
-              </div>
-
-              {/* Professor */}
-              <div>
-                <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Professor(a) Responsável</label>
-                <input
-                  type="text"
-                  list="lista-profs-datalist"
-                  value={form.professor}
-                  onChange={(e) => setForm({ ...form, professor: e.target.value })}
-                  placeholder="Ex: Profª Maria Silva"
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-cyan-400"
-                  required
-                />
-                <datalist id="lista-profs-datalist">
-                  {PROFESSORES_PADRAO.map(p => <option key={p} value={p} />)}
-                </datalist>
-              </div>
-
-              {/* Sala / Espaço */}
-              <div>
-                <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Sala / Ambiente de Aprendizagem</label>
-                <input
-                  type="text"
-                  list="lista-salas-datalist"
-                  value={form.sala}
-                  onChange={(e) => setForm({ ...form, sala: e.target.value })}
-                  placeholder="Ex: Sala 01 (6ºA) ou Laboratório de Ciências"
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-cyan-400"
-                  required
-                />
-                <datalist id="lista-salas-datalist">
-                  {SALAS_PADRAO.map(s => <option key={s} value={s} />)}
-                </datalist>
-              </div>
-
-              {/* Contar no saldo de aulas? (Ativo / Inativo) */}
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
-                <label className="block text-xs font-extrabold text-slate-800 uppercase flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <i className="fa-solid fa-calculator text-cyan-600"></i>
-                    <span>Contar no saldo de aulas? (Carga Horária)</span>
-                  </span>
-                  <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                    form.contarSaldo !== false
-                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                      : 'bg-amber-100 text-amber-800 border border-amber-300'
-                  }`}>
-                    {form.contarSaldo !== false ? 'Ativo (Conta Saldo)' : 'Inativo (Bloqueia p/ Substituição)'}
-                  </span>
-                </label>
-
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, contarSaldo: true })}
-                    className={`p-2 rounded-xl font-bold flex items-center justify-center gap-2 border transition cursor-pointer ${
-                      form.contarSaldo !== false
-                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-xs'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    <i className="fa-solid fa-circle-check"></i>
-                    <span>Ativo (Aula Regular)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setForm({ ...form, contarSaldo: false })}
-                    className={`p-2 rounded-xl font-bold flex items-center justify-center gap-2 border transition cursor-pointer ${
-                      form.contarSaldo === false
-                        ? 'bg-amber-600 text-white border-amber-700 shadow-xs'
-                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    <i className="fa-solid fa-circle-pause"></i>
-                    <span>Inativo (Atendimento/Reunião)</span>
-                  </button>
-                </div>
-                <p className="text-[10px] text-slate-500 italic">
-                  {form.contarSaldo !== false
-                    ? 'Aulas ativas somam no saldo de regência semanal do professor e o ocupam no motor de substituição.'
-                    : 'Atividades inativas NÃO somam no saldo semanal de aulas, mas mantêm o professor ocupado (impedindo substituição neste horário).'}
-                </p>
-              </div>
-
-              {/* Duplicação Rápida para Outros Dias */}
-              {podeEditar && (
-                <div className="bg-cyan-50 border border-cyan-200 p-3 rounded-xl space-y-2">
-                  <label className="text-xs font-black uppercase text-cyan-950 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5">
-                      <i className="fa-solid fa-clone text-cyan-600"></i>
-                      <span>Duplicar esta Aula para Outro Dia</span>
-                    </span>
-                    <span className="text-[10px] text-cyan-700 bg-cyan-100 px-2 py-0.5 rounded font-bold">Ação Rápida</span>
-                  </label>
-                  <p className="text-[10px] text-cyan-900 leading-tight">
-                    Aulas repetidas podem ser copiadas instantaneamente mantendo a mesma matéria, professor, turma e sala:
-                  </p>
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {DIAS_SEMANA.filter(d => d.id !== form.dia).map(d => (
-                      <button
-                        key={d.id}
-                        type="button"
-                        onClick={() => {
-                          handleDuplicarHorario(form, d.id, form.periodoId);
-                          setIsModalOpen(false);
-                        }}
-                        className="px-2.5 py-1.5 bg-white hover:bg-cyan-100 text-cyan-950 border border-cyan-300 rounded-lg text-[10px] font-extrabold shadow-2xs transition cursor-pointer flex items-center gap-1 hover:border-cyan-400"
-                      >
-                        <i className="fa-solid fa-plus text-[9px] text-cyan-600"></i>
-                        <span>Copiar para {d.label}</span>
-                      </button>
-                    ))}
+                  {/* Período / Horário */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">Período / Horário</label>
+                    <select
+                      value={form.periodoId}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setForm({ ...form, periodoId: isNaN(Number(val)) ? val : Number(val) });
+                      }}
+                      className="w-full p-2.5 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition"
+                      required
+                    >
+                      {periodosAula.filter(p => p.tipo === 'aula').map((p) => (
+                        <option key={p.id} value={p.id}>{p.rotulo} ({p.horario})</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
-              )}
 
-              {/* Modal Footer */}
-              <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={salvando}
-                  className="px-5 py-2.5 bg-cyan-400 hover:bg-cyan-300 text-blue-950 text-xs font-black rounded-xl transition shadow-sm cursor-pointer flex items-center gap-2"
-                >
-                  {salvando ? (
-                    <>
-                      <i className="fa-solid fa-spinner fa-spin"></i>
-                      <span>Salvando...</span>
-                    </>
-                  ) : (
-                    <>
-                      <i className="fa-solid fa-check"></i>
-                      <span>Salvar Aula</span>
-                    </>
+                {/* Turma */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Turma PEI</label>
+                  <input
+                    type="text"
+                    list="lista-turmas-datalist"
+                    value={form.turma}
+                    onChange={(e) => setForm({ ...form, turma: e.target.value })}
+                    placeholder="Ex: 6º Ano A"
+                    className="w-full p-2.5 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition"
+                    required
+                  />
+                  <datalist id="lista-turmas-datalist">
+                    {TURMAS_PADRAO.map(t => <option key={t} value={t} />)}
+                  </datalist>
+                </div>
+
+                {/* Disciplina */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Disciplina</label>
+                  <input
+                    type="text"
+                    list="lista-disciplinas-datalist"
+                    value={form.disciplina}
+                    onChange={(e) => setForm({ ...form, disciplina: e.target.value })}
+                    placeholder="Ex: Língua Portuguesa"
+                    className="w-full p-2.5 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition"
+                    required
+                  />
+                  <datalist id="lista-disciplinas-datalist">
+                    {Object.keys(DISCIPLINAS_CORES).map(d => <option key={d} value={d} />)}
+                  </datalist>
+                </div>
+
+                {/* Professor */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Professor(a) Responsável</label>
+                  <input
+                    type="text"
+                    list="lista-profs-datalist"
+                    value={form.professor}
+                    onChange={(e) => setForm({ ...form, professor: e.target.value })}
+                    placeholder="Ex: Profª Maria Silva"
+                    className="w-full p-2.5 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition"
+                    required
+                  />
+                  <datalist id="lista-profs-datalist">
+                    {PROFESSORES_PADRAO.map(p => <option key={p} value={p} />)}
+                  </datalist>
+                </div>
+
+                {/* Sala / Espaço */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">Sala / Ambiente de Aprendizagem</label>
+                  <input
+                    type="text"
+                    list="lista-salas-datalist"
+                    value={form.sala}
+                    onChange={(e) => setForm({ ...form, sala: e.target.value })}
+                    placeholder="Ex: Sala 01 (6ºA) ou Laboratório de Ciências"
+                    className="w-full p-2.5 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition"
+                    required
+                  />
+                  <datalist id="lista-salas-datalist">
+                    {SALAS_PADRAO.map(s => <option key={s} value={s} />)}
+                  </datalist>
+                </div>
+
+                {/* Contar no saldo de aulas? (Ativo / Inativo) */}
+                <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                      <i className="fa-solid fa-calculator text-indigo-600"></i>
+                      <span>Contar no saldo de aulas?</span>
+                    </span>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border ${
+                      form.contarSaldo !== false
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80'
+                        : 'bg-amber-50 text-amber-800 border-amber-200/80'
+                    }`}>
+                      {form.contarSaldo !== false ? 'Ativo (Conta Saldo)' : 'Inativo (Bloqueia Substituição)'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, contarSaldo: true })}
+                      className={`p-2.5 rounded-xl font-semibold flex items-center justify-center gap-2 border transition cursor-pointer ${
+                        form.contarSaldo !== false
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200/80 hover:bg-slate-100'
+                      }`}
+                    >
+                      <i className="fa-solid fa-circle-check"></i>
+                      <span>Ativo (Aula Regular)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, contarSaldo: false })}
+                      className={`p-2.5 rounded-xl font-semibold flex items-center justify-center gap-2 border transition cursor-pointer ${
+                        form.contarSaldo === false
+                          ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-200/80 hover:bg-slate-100'
+                      }`}
+                    >
+                      <i className="fa-solid fa-circle-pause"></i>
+                      <span>Inativo (Atendimento/Reunião)</span>
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    {form.contarSaldo !== false
+                      ? 'Aulas ativas somam no saldo de regência semanal do professor e o ocupam no motor de substituição.'
+                      : 'Atividades inativas não somam no saldo semanal, mas mantêm o professor ocupado (impedindo substituição neste horário).'}
+                  </p>
+                </div>
+
+                {/* Duplicação Rápida para Outros Dias */}
+                {podeEditar && (
+                  <div className="bg-indigo-50/50 border border-indigo-200/70 p-3.5 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-indigo-950 flex items-center gap-1.5">
+                        <i className="fa-solid fa-clone text-indigo-600"></i>
+                        <span>Duplicar esta Aula para Outro Dia</span>
+                      </span>
+                      <span className="text-[10px] text-indigo-700 bg-indigo-100/80 px-2 py-0.5 rounded-md font-semibold">
+                        Ação Rápida
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 leading-relaxed">
+                      Copie instantaneamente mantendo a mesma disciplina, professor, turma e sala:
+                    </p>
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {DIAS_SEMANA.filter(d => d.id !== form.dia).map(d => (
+                        <button
+                          key={d.id}
+                          type="button"
+                          onClick={() => {
+                            handleDuplicarHorario(form, d.id, form.periodoId);
+                            setIsModalOpen(false);
+                          }}
+                          className="px-2.5 py-1.5 bg-white hover:bg-indigo-50 text-indigo-900 border border-indigo-200/80 rounded-xl text-[11px] font-medium transition cursor-pointer flex items-center gap-1.5"
+                        >
+                          <i className="fa-solid fa-plus text-[9px] text-indigo-600"></i>
+                          <span>Copiar para {d.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer Fixo */}
+              <div className="px-5 py-3.5 bg-slate-50/90 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-2 shrink-0">
+                <div>
+                  {itemEdicao && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetId = itemEdicao.id;
+                        setIsModalOpen(false);
+                        handleExcluirHorario(targetId);
+                      }}
+                      className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 text-xs font-semibold rounded-xl transition cursor-pointer flex items-center gap-1.5"
+                    >
+                      <i className="fa-solid fa-trash-can text-xs"></i>
+                      <span>Excluir Aula</span>
+                    </button>
                   )}
-                </button>
+                </div>
+
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/80 text-xs font-semibold rounded-xl transition cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={salvando}
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition shadow-xs cursor-pointer flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {salvando ? (
+                      <>
+                        <i className="fa-solid fa-spinner fa-spin"></i>
+                        <span>Salvando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <i className="fa-solid fa-check"></i>
+                        <span>Salvar Aula</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -5172,69 +5242,90 @@ export default function Horarios() {
 
       {/* MODAL GERENCIAR GRADE & CONFIGURAÇÕES / EXCLUSÃO EM CASCATA (EXCLUSIVO DIRETOR) */}
       {isGerenciarModalOpen && podeEditar && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[92vh]">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-fadeIn">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200/80 shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[92vh]">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
             {/* Modal Header */}
-            <div className="bg-blue-950 p-4 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-cyan-100 text-cyan-300 flex items-center justify-center">
+            <div className="bg-white/95 backdrop-blur-md px-5 py-4 border-b border-slate-200/80 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
                   <i className="fa-solid fa-sliders text-sm"></i>
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-sm uppercase tracking-tight">Administração & Exclusão em Cascata</h3>
-                  <p className="text-[10px] text-cyan-200 font-medium">Gestão de Turmas, Docentes, Salas e Dados da Grade PEI</p>
+                  <h3 className="font-semibold text-sm sm:text-base text-slate-900 tracking-tight">
+                    Administração & Exclusão em Cascata
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Gestão de Turmas, Docentes, Salas e Dados da Grade PEI
+                  </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setIsGerenciarModalOpen(false)}
-                className="text-slate-300 hover:text-white p-1 cursor-pointer"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 flex items-center justify-center transition cursor-pointer"
               >
-                <i className="fa-solid fa-xmark text-lg"></i>
+                <i className="fa-solid fa-xmark text-sm"></i>
               </button>
             </div>
 
             {/* Sub-abas do Modal */}
-            <div className="bg-slate-100 p-2 border-b border-slate-200 flex flex-wrap gap-1 text-xs font-bold">
+            <div className="bg-slate-50/80 px-4 py-2.5 border-b border-slate-200/80 flex items-center gap-1.5 overflow-x-auto no-scrollbar text-xs font-medium shrink-0">
               <button
+                type="button"
                 onClick={() => setAbaGerenciar('grade')}
-                className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                  abaGerenciar === 'grade' ? 'bg-blue-950 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200'
+                className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+                  abaGerenciar === 'grade'
+                    ? 'bg-slate-900 text-white shadow-xs font-semibold'
+                    : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-100'
                 }`}
               >
-                <i className="fa-solid fa-calendar-days text-cyan-400"></i>
+                <i className={`fa-solid fa-calendar-days ${abaGerenciar === 'grade' ? 'text-indigo-300' : 'text-indigo-500'}`}></i>
                 <span>Dados da Grade PEI ({horarios.length})</span>
               </button>
               <button
+                type="button"
                 onClick={() => setAbaGerenciar('csv')}
-                className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                  abaGerenciar === 'csv' ? 'bg-blue-950 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200'
+                className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+                  abaGerenciar === 'csv'
+                    ? 'bg-slate-900 text-white shadow-xs font-semibold'
+                    : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-100'
                 }`}
               >
                 <i className="fa-solid fa-file-csv"></i>
                 <span>CSV & Importação</span>
               </button>
               <button
+                type="button"
                 onClick={() => setAbaGerenciar('turmas')}
-                className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                  abaGerenciar === 'turmas' ? 'bg-blue-950 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200'
+                className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+                  abaGerenciar === 'turmas'
+                    ? 'bg-slate-900 text-white shadow-xs font-semibold'
+                    : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-100'
                 }`}
               >
                 <i className="fa-solid fa-users"></i>
                 <span>Turmas ({listaTurmas.length})</span>
               </button>
               <button
+                type="button"
                 onClick={() => setAbaGerenciar('professores')}
-                className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                  abaGerenciar === 'professores' ? 'bg-blue-950 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200'
+                className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+                  abaGerenciar === 'professores'
+                    ? 'bg-slate-900 text-white shadow-xs font-semibold'
+                    : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-100'
                 }`}
               >
                 <i className="fa-solid fa-chalkboard-user"></i>
                 <span>Professores ({listaProfessores.length})</span>
               </button>
               <button
+                type="button"
                 onClick={() => setAbaGerenciar('salas')}
-                className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5 ${
-                  abaGerenciar === 'salas' ? 'bg-blue-950 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200'
+                className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
+                  abaGerenciar === 'salas'
+                    ? 'bg-slate-900 text-white shadow-xs font-semibold'
+                    : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-100'
                 }`}
               >
                 <i className="fa-solid fa-door-open"></i>
@@ -5243,16 +5334,16 @@ export default function Horarios() {
             </div>
 
             {/* Modal Body */}
-            <div className="p-5 space-y-5 overflow-y-auto flex-1 text-xs">
+            <div className="p-4 sm:p-5 space-y-5 overflow-y-auto flex-1 text-xs">
               {abaGerenciar === 'grade' && (
                 <div className="space-y-4">
                   {/* Top Header & Actions */}
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80">
                     <div>
-                      <div className="flex items-center gap-2">
-                        <i className="fa-solid fa-calendar-days text-blue-900 text-sm"></i>
-                        <h4 className="font-black text-slate-900 text-sm">Edição dos Dados da Grade PEI</h4>
-                        <span className="bg-blue-100 text-blue-900 font-extrabold text-[10px] px-2 py-0.5 rounded-full">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <i className="fa-solid fa-calendar-days text-indigo-600 text-sm"></i>
+                        <h4 className="font-semibold text-slate-900 text-sm tracking-tight">Edição dos Dados da Grade PEI</h4>
+                        <span className="bg-indigo-50 text-indigo-700 border border-indigo-200/70 font-semibold text-[11px] px-2 py-0.5 rounded-md tabular-nums">
                           {aulasFiltradasGradeAdmin.length} de {horarios.length} aulas
                         </span>
                       </div>
@@ -5264,7 +5355,7 @@ export default function Horarios() {
                     <button
                       type="button"
                       onClick={handleIniciarCriacaoAulaGradeAdmin}
-                      className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-extrabold rounded-xl transition flex items-center gap-2 cursor-pointer shadow-sm text-xs shrink-0"
+                      className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl transition flex items-center gap-2 cursor-pointer shadow-xs text-xs shrink-0"
                     >
                       <i className="fa-solid fa-plus text-xs"></i>
                       <span>Nova Aula na Grade</span>
@@ -5273,16 +5364,16 @@ export default function Horarios() {
 
                   {/* Form de Edição / Criação de Aula na Grade */}
                   {(aulaEmEdicaoGradeAdmin || isCriandoAulaGradeAdmin) && (
-                    <form onSubmit={handleSalvarAulaGradeAdmin} className="bg-gradient-to-b from-blue-50/70 to-slate-50 p-4 rounded-xl border-2 border-blue-400 shadow-md space-y-3 animate-fadeIn">
-                      <div className="flex items-center justify-between pb-2 border-b border-blue-200">
-                        <span className="font-black text-blue-950 text-xs flex items-center gap-2">
-                          <i className={`fa-solid ${isCriandoAulaGradeAdmin ? 'fa-plus-circle text-emerald-600' : 'fa-pen-to-square text-blue-700'}`}></i>
+                    <form onSubmit={handleSalvarAulaGradeAdmin} className="bg-indigo-50/40 p-4 rounded-2xl border border-indigo-200/80 shadow-xs space-y-3 animate-fadeIn">
+                      <div className="flex items-center justify-between pb-2.5 border-b border-indigo-200/70">
+                        <span className="font-semibold text-slate-900 text-xs flex items-center gap-2">
+                          <i className={`fa-solid ${isCriandoAulaGradeAdmin ? 'fa-plus-circle text-emerald-600' : 'fa-pen-to-square text-indigo-600'}`}></i>
                           <span>{isCriandoAulaGradeAdmin ? 'Inserir Nova Aula na Grade PEI' : `Editar Aula Atribuída (${aulaEmEdicaoGradeAdmin?.disciplina || 'Aula'})`}</span>
                         </span>
                         <button
                           type="button"
                           onClick={() => { setAulaEmEdicaoGradeAdmin(null); setIsCriandoAulaGradeAdmin(false); }}
-                          className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                          className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
                         >
                           <i className="fa-solid fa-xmark text-sm"></i>
                         </button>
@@ -5290,11 +5381,11 @@ export default function Horarios() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Dia da Semana</label>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Dia da Semana</label>
                           <select
                             value={formEdicaoGradeAdmin.dia}
                             onChange={(e) => setFormEdicaoGradeAdmin({ ...formEdicaoGradeAdmin, dia: e.target.value })}
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
+                            className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
                           >
                             <option value="segunda">Segunda-feira</option>
                             <option value="terca">Terça-feira</option>
@@ -5305,11 +5396,14 @@ export default function Horarios() {
                         </div>
 
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Período / Aula</label>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Período / Aula</label>
                           <select
                             value={formEdicaoGradeAdmin.periodoId}
-                            onChange={(e) => setFormEdicaoGradeAdmin({ ...formEdicaoGradeAdmin, periodoId: Number(e.target.value) })}
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setFormEdicaoGradeAdmin({ ...formEdicaoGradeAdmin, periodoId: isNaN(Number(val)) ? val : Number(val) });
+                            }}
+                            className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
                           >
                             {periodosAula.filter(p => p.tipo === 'aula').map(p => (
                               <option key={p.id} value={p.id}>
@@ -5320,14 +5414,14 @@ export default function Horarios() {
                         </div>
 
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Turma PEI</label>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Turma PEI</label>
                           <input
                             type="text"
                             list="lista-turmas-grade-admin"
                             value={formEdicaoGradeAdmin.turma}
                             onChange={(e) => setFormEdicaoGradeAdmin({ ...formEdicaoGradeAdmin, turma: e.target.value })}
                             placeholder="Ex: 6º Ano A"
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
+                            className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
                             required
                           />
                           <datalist id="lista-turmas-grade-admin">
@@ -5336,14 +5430,14 @@ export default function Horarios() {
                         </div>
 
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Professor(a)</label>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Professor(a)</label>
                           <input
                             type="text"
                             list="lista-profs-grade-admin"
                             value={formEdicaoGradeAdmin.professor}
                             onChange={(e) => setFormEdicaoGradeAdmin({ ...formEdicaoGradeAdmin, professor: e.target.value })}
                             placeholder="Ex: Profª Maria Silva"
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
+                            className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
                             required
                           />
                           <datalist id="lista-profs-grade-admin">
@@ -5352,14 +5446,14 @@ export default function Horarios() {
                         </div>
 
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Disciplina</label>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Disciplina</label>
                           <input
                             type="text"
                             list="lista-disc-grade-admin"
                             value={formEdicaoGradeAdmin.disciplina}
                             onChange={(e) => setFormEdicaoGradeAdmin({ ...formEdicaoGradeAdmin, disciplina: e.target.value })}
                             placeholder="Ex: Língua Portuguesa"
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
+                            className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
                             required
                           />
                           <datalist id="lista-disc-grade-admin">
@@ -5368,14 +5462,14 @@ export default function Horarios() {
                         </div>
 
                         <div>
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">Sala / Ambiente</label>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Sala / Ambiente</label>
                           <input
                             type="text"
                             list="lista-salas-grade-admin"
                             value={formEdicaoGradeAdmin.sala}
                             onChange={(e) => setFormEdicaoGradeAdmin({ ...formEdicaoGradeAdmin, sala: e.target.value })}
                             placeholder="Ex: Sala 01 ou Lab"
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
+                            className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
                           />
                           <datalist id="lista-salas-grade-admin">
                             {listaSalas.map(s => <option key={s} value={s} />)}
@@ -5383,20 +5477,20 @@ export default function Horarios() {
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-blue-200">
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-indigo-200/70">
                         <button
                           type="button"
                           onClick={() => { setAulaEmEdicaoGradeAdmin(null); setIsCriandoAulaGradeAdmin(false); }}
-                          className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-lg text-xs transition cursor-pointer"
+                          className="px-3.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/80 font-semibold rounded-xl text-xs transition cursor-pointer"
                         >
                           Cancelar
                         </button>
                         <button
                           type="submit"
                           disabled={salvando}
-                          className="px-4 py-1.5 bg-blue-900 hover:bg-blue-950 text-white font-extrabold rounded-lg text-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
+                          className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-xs"
                         >
-                          <i className="fa-solid fa-check text-emerald-400"></i>
+                          <i className="fa-solid fa-check"></i>
                           <span>{salvando ? 'Salvando...' : 'Salvar Aula na Grade'}</span>
                         </button>
                       </div>
@@ -5404,24 +5498,24 @@ export default function Horarios() {
                   )}
 
                   {/* Barra de Filtros e Busca */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 bg-white p-3 rounded-xl border border-slate-200">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 bg-white p-3.5 rounded-2xl border border-slate-200/80">
                     <div>
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Buscar (Texto)</label>
+                      <label className="block text-[11px] font-semibold text-slate-500 mb-1">Buscar (Texto)</label>
                       <input
                         type="text"
                         value={filtroGradeAdminBusca}
                         onChange={(e) => setFiltroGradeAdminBusca(e.target.value)}
                         placeholder="Prof, turma, disciplina..."
-                        className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:ring-1 focus:ring-blue-400"
+                        className="w-full p-2 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Dia da Semana</label>
+                      <label className="block text-[11px] font-semibold text-slate-500 mb-1">Dia da Semana</label>
                       <select
                         value={filtroGradeAdminDia}
                         onChange={(e) => setFiltroGradeAdminDia(e.target.value)}
-                        className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
+                        className="w-full p-2 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
                       >
                         <option value="TODOS">Todos os Dias</option>
                         <option value="segunda">Segunda-feira</option>
@@ -5433,11 +5527,11 @@ export default function Horarios() {
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Turma</label>
+                      <label className="block text-[11px] font-semibold text-slate-500 mb-1">Turma</label>
                       <select
                         value={filtroGradeAdminTurma}
                         onChange={(e) => setFiltroGradeAdminTurma(e.target.value)}
-                        className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
+                        className="w-full p-2 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
                       >
                         <option value="TODAS">Todas as Turmas ({listaTurmas.length})</option>
                         {listaTurmas.map(t => <option key={t} value={t}>{t}</option>)}
@@ -5445,11 +5539,11 @@ export default function Horarios() {
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">Docente</label>
+                      <label className="block text-[11px] font-semibold text-slate-500 mb-1">Docente</label>
                       <select
                         value={filtroGradeAdminProf}
                         onChange={(e) => setFiltroGradeAdminProf(e.target.value)}
-                        className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800"
+                        className="w-full p-2 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
                       >
                         <option value="TODOS">Todos os Docentes ({listaProfessores.length})</option>
                         {listaProfessores.map(p => <option key={p} value={p}>{p}</option>)}
@@ -5458,20 +5552,20 @@ export default function Horarios() {
                   </div>
 
                   {/* Tabela de Aulas na Grade */}
-                  <div className="border border-slate-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto bg-white shadow-2xs">
-                    <table className="w-full text-left border-collapse text-xs">
+                  <div className="border border-slate-200/80 rounded-2xl overflow-x-auto max-h-96 overflow-y-auto bg-white">
+                    <table className="w-full text-left border-collapse text-xs min-w-[680px]">
                       <thead>
-                        <tr className="bg-slate-100 text-slate-700 uppercase font-black text-[11px] sticky top-0 z-10 border-b border-slate-200">
-                          <th className="p-2.5">Dia</th>
-                          <th className="p-2.5 text-center">Período</th>
-                          <th className="p-2.5">Turma</th>
-                          <th className="p-2.5">Disciplina</th>
-                          <th className="p-2.5">Professor(a)</th>
-                          <th className="p-2.5">Sala</th>
-                          <th className="p-2.5 text-center">Ações</th>
+                        <tr className="bg-slate-50 text-slate-500 font-semibold text-[11px] sticky top-0 z-10 border-b border-slate-200/80">
+                          <th className="p-3">Dia</th>
+                          <th className="p-3 text-center">Período</th>
+                          <th className="p-3">Turma</th>
+                          <th className="p-3">Disciplina</th>
+                          <th className="p-3">Professor(a)</th>
+                          <th className="p-3">Sala</th>
+                          <th className="p-3 text-center">Ações</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-200">
+                      <tbody className="divide-y divide-slate-100">
                         {aulasFiltradasGradeAdmin.length === 0 ? (
                           <tr>
                             <td colSpan={7} className="p-8 text-center text-slate-400 font-medium">
@@ -5491,19 +5585,19 @@ export default function Horarios() {
                               sabado: 'Sábado'
                             };
                             return (
-                              <tr key={aula.id || `${aula.dia}-${aula.periodoId}-${aula.turma}-${aula.professor}`} className="hover:bg-slate-50 transition">
-                                <td className="p-2.5 font-bold text-blue-950 uppercase tracking-tight">
+                              <tr key={aula.id || `${aula.dia}-${aula.periodoId}-${aula.turma}-${aula.professor}`} className="hover:bg-slate-50/80 transition">
+                                <td className="p-2.5 font-semibold text-slate-800">
                                   {diaLabels[aula.dia] || aula.dia}
                                 </td>
-                                <td className="p-2.5 text-center font-mono font-bold text-slate-700">
-                                  <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                                <td className="p-2.5 text-center font-mono tabular-nums font-medium text-slate-700">
+                                  <span className="bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/70">
                                     {rotuloP}
                                   </span>
                                 </td>
-                                <td className="p-2.5 font-extrabold text-blue-900">
+                                <td className="p-2.5 font-semibold text-indigo-800">
                                   {aula.turma}
                                 </td>
-                                <td className="p-2.5 font-bold text-slate-800">
+                                <td className="p-2.5 font-medium text-slate-800">
                                   {aula.disciplina}
                                 </td>
                                 <td className="p-2.5 text-slate-700 font-medium">
@@ -5517,7 +5611,7 @@ export default function Horarios() {
                                     <button
                                       type="button"
                                       onClick={() => handleIniciarEdicaoAulaGradeAdmin(aula)}
-                                      className="px-2.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-900 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer text-xs"
+                                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/70 rounded-lg font-semibold transition flex items-center gap-1 cursor-pointer text-xs"
                                       title="Editar esta aula atribuída"
                                     >
                                       <i className="fa-solid fa-pen-to-square text-[10px]"></i>
@@ -5526,7 +5620,7 @@ export default function Horarios() {
                                     <button
                                       type="button"
                                       onClick={() => handleExcluirAulaGradeAdmin(aula)}
-                                      className="px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer text-xs"
+                                      className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/70 rounded-lg font-semibold transition flex items-center gap-1 cursor-pointer text-xs"
                                       title="Excluir aula da grade"
                                     >
                                       <i className="fa-solid fa-trash-can text-[10px]"></i>
@@ -5546,18 +5640,18 @@ export default function Horarios() {
               {abaGerenciar === 'csv' && (
                 <div className="space-y-4">
                   {/* Bloco 1: Upload e Importação de CSV */}
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                    <div className="flex items-center gap-2 text-blue-950 font-black text-xs uppercase tracking-wide">
-                      <i className="fa-solid fa-file-csv text-cyan-600 text-sm"></i>
+                  <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80 space-y-3">
+                    <div className="flex items-center gap-2 text-slate-900 font-semibold text-xs">
+                      <i className="fa-solid fa-file-csv text-indigo-600 text-sm"></i>
                       <span>Importação & Upload de Arquivo CSV</span>
                     </div>
                     <p className="text-slate-600 leading-relaxed">
-                      Carregue uma planilha CSV contendo a estrutura da grade horária da escola. O arquivo deve conter os campos: <code className="bg-slate-200 px-1 py-0.5 rounded text-[11px] font-mono text-slate-800">dia, periodoId, turma, professor, disciplina, sala</code>.
+                      Carregue uma planilha CSV contendo a estrutura da grade horária da escola. O arquivo deve conter os campos: <code className="bg-slate-200/70 px-1.5 py-0.5 rounded-md text-[11px] font-mono text-slate-800">dia, periodoId, turma, professor, disciplina, sala</code>.
                     </p>
 
-                    <div className="flex flex-wrap items-center gap-3 pt-1">
-                      <label className="flex items-center gap-2 bg-gradient-to-r from-blue-900 to-blue-950 hover:from-blue-800 hover:to-blue-900 text-white font-bold px-4 py-2.5 rounded-xl transition cursor-pointer shadow-sm">
-                        <i className="fa-solid fa-upload text-cyan-400"></i>
+                    <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                      <label className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-xl transition cursor-pointer shadow-xs">
+                        <i className="fa-solid fa-upload"></i>
                         <span>Selecionar e Importar CSV</span>
                         <input
                           type="file"
@@ -5568,8 +5662,9 @@ export default function Horarios() {
                       </label>
 
                       <button
+                        type="button"
                         onClick={handleBaixarModeloCSV}
-                        className="flex items-center gap-2 bg-white hover:bg-slate-100 text-slate-700 font-bold px-3.5 py-2.5 rounded-xl border border-slate-300 transition cursor-pointer"
+                        className="flex items-center gap-2 bg-white hover:bg-slate-100 text-slate-700 font-semibold px-3.5 py-2 rounded-xl border border-slate-200/80 transition cursor-pointer"
                       >
                         <i className="fa-solid fa-download text-slate-500"></i>
                         <span>Baixar Modelo CSV</span>
@@ -5578,8 +5673,8 @@ export default function Horarios() {
                   </div>
 
                   {/* Bloco 2: Exportação de Dados */}
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                    <div className="flex items-center gap-2 text-blue-950 font-black text-xs uppercase tracking-wide">
+                  <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80 space-y-3">
+                    <div className="flex items-center gap-2 text-slate-900 font-semibold text-xs">
                       <i className="fa-solid fa-file-export text-emerald-600 text-sm"></i>
                       <span>Exportação da Grade Atual</span>
                     </div>
@@ -5588,8 +5683,9 @@ export default function Horarios() {
                     </p>
 
                     <button
+                      type="button"
                       onClick={handleExportarCSV}
-                      className="flex items-center gap-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-4 py-2.5 rounded-xl transition cursor-pointer shadow-sm"
+                      className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2 rounded-xl transition cursor-pointer shadow-xs"
                     >
                       <i className="fa-solid fa-file-excel"></i>
                       <span>Exportar Grade para CSV</span>
@@ -5597,24 +5693,26 @@ export default function Horarios() {
                   </div>
 
                   {/* Bloco 3: Operações em Lote */}
-                  <div className="bg-rose-50/60 p-4 rounded-xl border border-rose-200/80 space-y-3">
-                    <div className="flex items-center gap-2 text-rose-950 font-black text-xs uppercase tracking-wide">
+                  <div className="bg-rose-50/60 p-4 rounded-2xl border border-rose-200/80 space-y-3">
+                    <div className="flex items-center gap-2 text-rose-900 font-semibold text-xs">
                       <i className="fa-solid fa-triangle-exclamation text-rose-600 text-sm"></i>
                       <span>Ações e Redefinições em Lote</span>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <div className="flex flex-wrap items-center gap-2.5 pt-1">
                       <button
+                        type="button"
                         onClick={handleRestaurarPadrao}
-                        className="flex items-center gap-2 bg-blue-900 hover:bg-blue-800 text-white font-bold px-3.5 py-2.5 rounded-xl transition cursor-pointer"
+                        className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold px-3.5 py-2 rounded-xl transition cursor-pointer"
                       >
-                        <i className="fa-solid fa-rotate text-cyan-300"></i>
+                        <i className="fa-solid fa-rotate text-indigo-300"></i>
                         <span>Restaurar Matriz PEI Padrão</span>
                       </button>
 
                       <button
+                        type="button"
                         onClick={handleLimparGrade}
-                        className="flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-bold px-3.5 py-2.5 rounded-xl transition cursor-pointer"
+                        className="flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold px-3.5 py-2 rounded-xl transition cursor-pointer"
                       >
                         <i className="fa-solid fa-trash-can"></i>
                         <span>Limpar Toda a Grade</span>
@@ -5626,46 +5724,46 @@ export default function Horarios() {
 
               {abaGerenciar === 'turmas' && (
                 <div className="space-y-4">
-                  <form onSubmit={handleAdicionarTurma} className="flex gap-2">
+                  <form onSubmit={handleAdicionarTurma} className="flex flex-col sm:flex-row gap-2">
                     <input
                       type="text"
                       value={novoTurmaInput}
                       onChange={(e) => setNovoTurmaInput(e.target.value)}
                       placeholder="Ex: 8º Ano C"
-                      className="flex-1 p-2 bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                      className="flex-1 p-2.5 bg-slate-50/80 border border-slate-200/80 rounded-xl font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
                     />
                     <button
                       type="submit"
-                      className="px-4 py-2 bg-blue-950 hover:bg-blue-900 text-white font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                      className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0 shadow-xs"
                     >
-                      <i className="fa-solid fa-plus text-cyan-400"></i>
+                      <i className="fa-solid fa-plus text-xs"></i>
                       <span>Cadastrar Turma</span>
                     </button>
                   </form>
 
-                  <div className="border border-slate-200 rounded-xl overflow-hidden">
-                    <table className="w-full text-left border-collapse">
+                  <div className="border border-slate-200/80 rounded-2xl overflow-x-auto bg-white">
+                    <table className="w-full text-left border-collapse min-w-[460px]">
                       <thead>
-                        <tr className="bg-slate-100 text-slate-700 uppercase font-black">
-                          <th className="p-2.5">Turma PEI</th>
-                          <th className="p-2.5 text-center">Aulas na Grade</th>
-                          <th className="p-2.5 text-center">Ação</th>
+                        <tr className="bg-slate-50 text-slate-500 font-semibold text-[11px] border-b border-slate-200/80">
+                          <th className="p-3">Turma PEI</th>
+                          <th className="p-3 text-center">Aulas na Grade</th>
+                          <th className="p-3 text-center">Ação</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-200">
+                      <tbody className="divide-y divide-slate-100">
                         {listaTurmas.map((t) => {
                           const numAulas = horarios.filter(h => h.turma === t).length;
                           const isEditando = turmaEmEdicao === t;
                           return (
-                            <tr key={t} className="hover:bg-slate-50">
-                              <td className="p-2.5 font-bold text-slate-900">
+                            <tr key={t} className="hover:bg-slate-50/80 transition">
+                              <td className="p-3 font-semibold text-slate-900">
                                 {isEditando ? (
                                   <div className="flex items-center gap-1.5 max-w-sm">
                                     <input
                                       type="text"
                                       value={novoNomeTurma}
                                       onChange={(e) => setNovoNomeTurma(e.target.value)}
-                                      className="p-1.5 bg-white border border-blue-400 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-500 w-full"
+                                      className="p-1.5 bg-white border border-indigo-400 rounded-lg text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500/20 outline-none w-full"
                                       autoFocus
                                       disabled={salvandoEdicao}
                                       onKeyDown={(e) => {
@@ -5677,7 +5775,7 @@ export default function Horarios() {
                                       type="button"
                                       onClick={() => handleSalvarEdicaoTurma(t)}
                                       disabled={salvandoEdicao}
-                                      className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50 shrink-0"
+                                      className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1 cursor-pointer disabled:opacity-50 shrink-0"
                                       title="Salvar novo nome da turma"
                                     >
                                       <i className="fa-solid fa-check"></i>
@@ -5687,7 +5785,7 @@ export default function Horarios() {
                                       type="button"
                                       onClick={() => { setTurmaEmEdicao(null); setNovoNomeTurma(''); }}
                                       disabled={salvandoEdicao}
-                                      className="px-2 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold transition cursor-pointer shrink-0"
+                                      className="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition cursor-pointer shrink-0"
                                       title="Cancelar"
                                     >
                                       <i className="fa-solid fa-xmark"></i>
@@ -5703,7 +5801,7 @@ export default function Horarios() {
                                           setTurmaEmEdicao(t);
                                           setNovoNomeTurma(t);
                                         }}
-                                        className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded-md transition text-xs font-bold flex items-center gap-1 cursor-pointer"
+                                        className="text-indigo-600 hover:text-indigo-800 p-1 hover:bg-indigo-50 rounded-md transition text-xs font-medium flex items-center gap-1 cursor-pointer"
                                         title="Editar nome desta turma"
                                       >
                                         <i className="fa-solid fa-pen-to-square"></i>
@@ -5713,8 +5811,8 @@ export default function Horarios() {
                                   </div>
                                 )}
                               </td>
-                              <td className="p-2.5 text-center font-bold text-slate-600">{numAulas} aula(s)</td>
-                              <td className="p-2.5 text-center">
+                              <td className="p-3 text-center font-medium text-slate-600 tabular-nums">{numAulas} aula(s)</td>
+                              <td className="p-3 text-center">
                                 <div className="flex items-center justify-center gap-1.5">
                                   {podeEditar && !isEditando && (
                                     <button
@@ -5723,7 +5821,7 @@ export default function Horarios() {
                                         setTurmaEmEdicao(t);
                                         setNovoNomeTurma(t);
                                       }}
-                                      className="px-2.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-900 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer text-xs"
+                                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/70 rounded-lg font-semibold transition flex items-center gap-1 cursor-pointer text-xs"
                                       title="Editar nome da turma"
                                     >
                                       <i className="fa-solid fa-pen-to-square text-xs"></i>
@@ -5731,8 +5829,9 @@ export default function Horarios() {
                                     </button>
                                   )}
                                   <button
+                                    type="button"
                                     onClick={() => handleExcluirTurmaCascata(t)}
-                                    className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer text-xs"
+                                    className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/70 rounded-lg font-semibold transition flex items-center gap-1 cursor-pointer text-xs"
                                     title="Excluir turma e remover todas as suas aulas em cascata"
                                   >
                                     <i className="fa-solid fa-trash-can text-xs"></i>
@@ -5751,44 +5850,44 @@ export default function Horarios() {
 
               {abaGerenciar === 'professores' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between bg-blue-50 p-3 rounded-xl border border-blue-200">
-                    <div className="text-xs font-bold text-blue-950">
-                      <i className="fa-solid fa-sync text-cyan-600 mr-2 animate-spin"></i>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-indigo-50/50 p-3.5 rounded-2xl border border-indigo-200/70">
+                    <div className="text-xs font-semibold text-slate-800 flex items-center gap-2">
+                      <i className="fa-solid fa-sync text-indigo-600 animate-spin"></i>
                       <span>Sincronização Automática com Substituição PEI</span>
                     </div>
                     <button
                       type="button"
                       onClick={() => handleMigrarDocentesDoHorario(false)}
-                      className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white text-xs font-black px-3 py-1.5 rounded-lg transition shadow-xs cursor-pointer border border-emerald-500"
+                      className="flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3.5 py-2 rounded-xl transition shadow-xs cursor-pointer"
                       title="Extrai todos os docentes da grade atual e migra para o cadastro de Substituição PEI"
                     >
-                      <i className="fa-solid fa-bolt text-yellow-300"></i>
+                      <i className="fa-solid fa-bolt text-amber-200"></i>
                       <span>Sincronizar/Migrar Docentes da Grade</span>
                     </button>
                   </div>
 
                   {/* Form de Cadastro Completo de Docente & Área */}
-                  <form onSubmit={handleAdicionarDocenteCompleto} className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-3">
-                    <div className="flex items-center gap-2 text-blue-950 font-black text-xs uppercase tracking-wide">
-                      <i className="fa-solid fa-user-plus text-cyan-600"></i>
+                  <form onSubmit={handleAdicionarDocenteCompleto} className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/80 space-y-3">
+                    <div className="flex items-center gap-2 text-slate-900 font-semibold text-xs">
+                      <i className="fa-solid fa-user-plus text-indigo-600"></i>
                       <span>Novo Docente — Cadastrar no Corpo Docente Central</span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2.5">
                       <div>
-                        <label className="text-[10px] font-black uppercase text-slate-500 block mb-0.5">Nome do Docente</label>
+                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">Nome do Docente</label>
                         <input
                           type="text"
                           required
                           value={novoDocenteForm.nome}
                           onChange={(e) => setNovoDocenteForm(prev => ({ ...prev, nome: e.target.value }))}
                           placeholder="Ex: Profª Patricia Lima"
-                          className="w-full p-2 bg-white border border-slate-300 rounded-lg font-bold text-xs text-slate-800"
+                          className="w-full p-2 bg-white border border-slate-200/80 rounded-xl font-medium text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
                         />
                       </div>
 
                       <div>
-                        <label className="text-[10px] font-black uppercase text-slate-500 block mb-0.5">Disciplina Principal</label>
+                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">Disciplina Principal</label>
                         <input
                           type="text"
                           value={novoDocenteForm.disciplina}
@@ -5798,16 +5897,16 @@ export default function Horarios() {
                             setNovoDocenteForm(prev => ({ ...prev, disciplina: disc, area: areaSugerida }));
                           }}
                           placeholder="Ex: Matemática"
-                          className="w-full p-2 bg-white border border-slate-300 rounded-lg font-bold text-xs text-slate-800"
+                          className="w-full p-2 bg-white border border-slate-200/80 rounded-xl font-medium text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
                         />
                       </div>
 
                       <div>
-                        <label className="text-[10px] font-black uppercase text-slate-500 block mb-0.5">Área do Conhecimento PEI</label>
+                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">Área do Conhecimento PEI</label>
                         <select
                           value={novoDocenteForm.area}
                           onChange={(e) => setNovoDocenteForm(prev => ({ ...prev, area: e.target.value }))}
-                          className="w-full p-2 bg-white border border-slate-300 rounded-lg font-bold text-xs text-slate-800 cursor-pointer"
+                          className="w-full p-2 bg-white border border-slate-200/80 rounded-xl font-medium text-xs text-slate-800 cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500/20"
                         >
                           {OPCOES_AREAS_PEI.map(opt => (
                             <option key={opt} value={opt}>{opt}</option>
@@ -5816,11 +5915,11 @@ export default function Horarios() {
                       </div>
 
                       <div>
-                        <label className="text-[10px] font-black uppercase text-slate-500 block mb-0.5">Jornada / Turno</label>
+                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">Jornada / Turno</label>
                         <select
                           value={novoDocenteForm.turno || 'INTEGRAL'}
                           onChange={(e) => setNovoDocenteForm(prev => ({ ...prev, turno: e.target.value }))}
-                          className="w-full p-2 bg-white border border-slate-300 rounded-lg font-bold text-xs text-slate-800 cursor-pointer"
+                          className="w-full p-2 bg-white border border-slate-200/80 rounded-xl font-medium text-xs text-slate-800 cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500/20"
                         >
                           <option value="INTEGRAL">INTEGRAL (1ª a 9ª aula)</option>
                           <option value="MANHA">MANHÃ (1ª a 6ª aula)</option>
@@ -5830,11 +5929,11 @@ export default function Horarios() {
                       </div>
 
                       <div>
-                        <label className="text-[10px] font-black uppercase text-slate-500 block mb-0.5">Cargo / Vínculo</label>
+                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">Cargo / Vínculo</label>
                         <select
                           value={novoDocenteForm.tipo}
                           onChange={(e) => setNovoDocenteForm(prev => ({ ...prev, tipo: e.target.value }))}
-                          className="w-full p-2 bg-white border border-slate-300 rounded-lg font-bold text-xs text-slate-800 cursor-pointer"
+                          className="w-full p-2 bg-white border border-slate-200/80 rounded-xl font-medium text-xs text-slate-800 cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500/20"
                         >
                           <option value="EFETIVO">Docente Efetivo PEI (Regente)</option>
                           <option value="PAAC">PAAC / Eventual / Apoio</option>
@@ -5848,30 +5947,30 @@ export default function Horarios() {
                     <div className="flex justify-end pt-1">
                       <button
                         type="submit"
-                        className="px-4 py-2 bg-blue-950 hover:bg-blue-900 text-white font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer text-xs"
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition flex items-center gap-1.5 cursor-pointer text-xs shadow-xs"
                       >
-                        <i className="fa-solid fa-plus text-cyan-400"></i>
+                        <i className="fa-solid fa-plus"></i>
                         <span>Salvar Docente & Sincronizar</span>
                       </button>
                     </div>
                   </form>
 
                   {/* Tabela de Docentes Cadastrados e Áreas do Conhecimento */}
-                  <div className="border border-slate-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto">
-                    <table className="w-full text-left border-collapse">
-                      <thead className="sticky top-0 bg-slate-100 text-slate-700 uppercase font-black text-[11px] z-10 shadow-xs">
+                  <div className="border border-slate-200/80 rounded-2xl overflow-x-auto max-h-96 overflow-y-auto bg-white">
+                    <table className="w-full text-left border-collapse min-w-[820px]">
+                      <thead className="sticky top-0 bg-slate-50 text-slate-500 font-semibold text-[11px] z-10 border-b border-slate-200/80">
                         <tr>
-                          <th className="p-2.5">Nome do Docente</th>
-                          <th className="p-2.5">Disciplina</th>
-                          <th className="p-2.5">Área do Conhecimento PEI</th>
-                          <th className="p-2.5">Jornada / Turno</th>
-                          <th className="p-2.5 text-center">Aulas na Grade</th>
-                          <th className="p-2.5 text-center">Substituções (+/-)</th>
-                          <th className="p-2.5 text-center">Saldo Acumulado</th>
-                          <th className="p-2.5 text-center">Ação</th>
+                          <th className="p-3">Nome do Docente</th>
+                          <th className="p-3">Disciplina</th>
+                          <th className="p-3">Área do Conhecimento PEI</th>
+                          <th className="p-3">Jornada / Turno</th>
+                          <th className="p-3 text-center">Aulas na Grade</th>
+                          <th className="p-3 text-center">Substituições (+/-)</th>
+                          <th className="p-3 text-center">Saldo Acumulado</th>
+                          <th className="p-3 text-center">Ação</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-200">
+                      <tbody className="divide-y divide-slate-100">
                         {listaProfessores.map((p) => {
                           const profObj = cadastroProfessores.find(doc => isSameProfessor(doc.nome, p)) || {};
                           const areaAtual = profObj.area || normalizarArea(encontrarAreaDisciplina(profObj.disciplina));
@@ -5919,17 +6018,17 @@ export default function Horarios() {
                           const isEditandoProf = profEmEdicao === p;
 
                           return (
-                            <tr key={p} className="hover:bg-slate-50 transition text-xs">
-                              <td className="p-2.5 font-bold text-slate-900">
+                            <tr key={p} className="hover:bg-slate-50/80 transition text-xs">
+                              <td className="p-2.5 font-semibold text-slate-900">
                                 {isEditandoProf ? (
-                                  <div className="space-y-1.5 p-2 bg-blue-50/90 rounded-lg border border-blue-300 min-w-[200px]">
+                                  <div className="space-y-1.5 p-2.5 bg-indigo-50/80 rounded-xl border border-indigo-200 min-w-[200px]">
                                     <div>
-                                      <label className="text-[9px] font-black uppercase text-blue-950 block">Nome do Docente:</label>
+                                      <label className="text-[10px] font-semibold text-indigo-950 block mb-0.5">Nome do Docente:</label>
                                       <input
                                         type="text"
                                         value={novoNomeProf}
                                         onChange={(e) => setNovoNomeProf(e.target.value)}
-                                        className="w-full p-1 bg-white border border-blue-400 rounded text-xs font-black text-slate-900 outline-none focus:ring-1 focus:ring-blue-500"
+                                        className="w-full p-1.5 bg-white border border-indigo-300 rounded-lg text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                         placeholder="Nome do docente"
                                         autoFocus
                                         disabled={salvandoEdicao}
@@ -5940,22 +6039,22 @@ export default function Horarios() {
                                       />
                                     </div>
                                     <div>
-                                      <label className="text-[9px] font-black uppercase text-blue-950 block">Disciplina Principal:</label>
+                                      <label className="text-[10px] font-semibold text-indigo-950 block mb-0.5">Disciplina Principal:</label>
                                       <input
                                         type="text"
                                         value={novaDiscProf}
                                         onChange={(e) => setNovaDiscProf(e.target.value)}
-                                        className="w-full p-1 bg-white border border-slate-300 rounded text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-blue-500"
+                                        className="w-full p-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                         placeholder="Ex: Matemática"
                                         disabled={salvandoEdicao}
                                       />
                                     </div>
-                                    <div className="flex items-center gap-1 pt-1">
+                                    <div className="flex items-center gap-1.5 pt-1">
                                       <button
                                         type="button"
                                         onClick={() => handleSalvarEdicaoProfessor(p)}
                                         disabled={salvandoEdicao}
-                                        className="flex-1 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[10px] font-black uppercase transition flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                                        className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-semibold transition flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
                                       >
                                         <i className="fa-solid fa-check"></i>
                                         <span>{salvandoEdicao ? 'Salvando...' : 'Salvar'}</span>
@@ -5964,7 +6063,7 @@ export default function Horarios() {
                                         type="button"
                                         onClick={() => { setProfEmEdicao(null); setNovoNomeProf(''); setNovaDiscProf(''); }}
                                         disabled={salvandoEdicao}
-                                        className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[10px] font-bold transition cursor-pointer"
+                                        className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-[11px] font-semibold transition cursor-pointer"
                                       >
                                         <i className="fa-solid fa-xmark"></i>
                                       </button>
@@ -5973,7 +6072,7 @@ export default function Horarios() {
                                 ) : (
                                   <div className="flex flex-col gap-1">
                                     <div className="flex items-center justify-between gap-1">
-                                      <span className="font-extrabold">{p}</span>
+                                      <span className="font-semibold text-slate-900">{p}</span>
                                       {podeEditar && (
                                         <button
                                           type="button"
@@ -5982,7 +6081,7 @@ export default function Horarios() {
                                             setNovoNomeProf(p);
                                             setNovaDiscProf(disciplinaAtual);
                                           }}
-                                          className="text-blue-600 hover:text-blue-800 p-0.5 hover:bg-blue-50 rounded transition text-[11px] font-bold cursor-pointer"
+                                          className="text-indigo-600 hover:text-indigo-800 p-1 hover:bg-indigo-50 rounded-md transition text-[11px] font-medium cursor-pointer"
                                           title="Editar nome e disciplina do docente"
                                         >
                                           <i className="fa-solid fa-pen-to-square"></i>
@@ -5992,7 +6091,7 @@ export default function Horarios() {
                                     <select
                                       value={tipoAtual}
                                       onChange={(e) => handleAlterarTipoDocenteInline(p, e.target.value)}
-                                      className="p-0.5 bg-slate-100 border border-slate-200 rounded text-[10px] font-bold text-slate-700 cursor-pointer"
+                                      className="p-1 bg-slate-50 border border-slate-200/80 rounded-lg text-[10px] font-semibold text-slate-700 cursor-pointer outline-none"
                                     >
                                       <option value="EFETIVO">EFETIVO PEI</option>
                                       <option value="PAAC">PAAC / EVENTUAL</option>
@@ -6012,7 +6111,7 @@ export default function Horarios() {
                                 <select
                                   value={areaAtual}
                                   onChange={(e) => handleAlterarAreaDocenteInline(p, e.target.value)}
-                                  className="w-full p-1 bg-white border border-slate-300 rounded-md font-bold text-[11px] text-slate-800 cursor-pointer hover:border-blue-400 focus:ring-1 focus:ring-blue-500"
+                                  className="w-full p-1.5 bg-white border border-slate-200/80 rounded-lg font-medium text-[11px] text-slate-800 cursor-pointer hover:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 outline-none"
                                 >
                                   {OPCOES_AREAS_PEI.map(opt => (
                                     <option key={opt} value={opt}>{opt}</option>
@@ -6024,7 +6123,7 @@ export default function Horarios() {
                                 <select
                                   value={['FOLGA', 'OFF', '-', 'S', 'INATIVO'].includes(turnoAtual) ? 'FOLGA' : turnoAtual}
                                   onChange={(e) => handleAlterarTurnoDocenteInline(p, e.target.value)}
-                                  className="w-full p-1 bg-white border border-slate-300 rounded-md font-bold text-[11px] text-slate-800 cursor-pointer hover:border-blue-400 focus:ring-1 focus:ring-blue-500"
+                                  className="w-full p-1.5 bg-white border border-slate-200/80 rounded-lg font-medium text-[11px] text-slate-800 cursor-pointer hover:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 outline-none"
                                 >
                                   <option value="INTEGRAL">INTEGRAL (1ª-9ª)</option>
                                   <option value="MANHA">MANHÃ (1ª-6ª)</option>
@@ -6033,30 +6132,30 @@ export default function Horarios() {
                                 </select>
                               </td>
 
-                              <td className="p-2.5 text-center font-bold text-slate-700">
+                              <td className="p-2.5 text-center font-semibold text-slate-700 tabular-nums">
                                 {numAulas} aula(s)
                               </td>
 
-                              <td className="p-2.5 text-center text-[11px] font-mono font-bold">
-                                <span className="text-emerald-700 font-extrabold">+{creditosRow}</span>
-                                <span className="text-slate-400 mx-1">/</span>
-                                <span className="text-rose-700 font-extrabold">-{debitosRow}</span>
+                              <td className="p-2.5 text-center text-[11px] font-mono tabular-nums font-semibold">
+                                <span className="text-emerald-700">+{creditosRow}</span>
+                                <span className="text-slate-300 mx-1">/</span>
+                                <span className="text-rose-700">-{debitosRow}</span>
                               </td>
 
                               <td className="p-2.5 text-center">
-                                <span className={`inline-block font-mono font-black text-[11px] px-2.5 py-0.5 rounded-full border ${
+                                <span className={`inline-block font-mono tabular-nums font-semibold text-[11px] px-2.5 py-0.5 rounded-md border ${
                                   saldoAcumuladoRow > 0
-                                    ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200/80'
                                     : saldoAcumuladoRow < 0
-                                    ? 'bg-rose-100 text-rose-900 border-rose-300'
-                                    : 'bg-slate-100 text-slate-700 border-slate-300'
+                                    ? 'bg-rose-50 text-rose-800 border-rose-200/80'
+                                    : 'bg-slate-50 text-slate-700 border-slate-200/80'
                                 }`}>
                                   {saldoAcumuladoRow > 0 ? `+${saldoAcumuladoRow}` : saldoAcumuladoRow} aula(s)
                                 </span>
                               </td>
 
                               <td className="p-2.5 text-center">
-                                <div className="flex items-center justify-center gap-1">
+                                <div className="flex items-center justify-center gap-1.5">
                                   {podeEditar && !isEditandoProf && (
                                     <button
                                       type="button"
@@ -6065,7 +6164,7 @@ export default function Horarios() {
                                         setNovoNomeProf(p);
                                         setNovaDiscProf(disciplinaAtual);
                                       }}
-                                      className="px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-900 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer text-xs"
+                                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/70 rounded-lg font-semibold transition flex items-center gap-1 cursor-pointer text-xs"
                                       title="Editar nome e disciplina do docente"
                                     >
                                       <i className="fa-solid fa-pen-to-square text-xs"></i>
@@ -6073,8 +6172,9 @@ export default function Horarios() {
                                     </button>
                                   )}
                                   <button
+                                    type="button"
                                     onClick={() => handleExcluirProfessorCascata(p)}
-                                    className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer text-xs"
+                                    className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/70 rounded-lg font-semibold transition flex items-center gap-1 cursor-pointer text-xs"
                                     title="Excluir docente e remover todas as suas aulas na grade em cascata"
                                   >
                                     <i className="fa-solid fa-trash-can text-xs"></i>
@@ -6093,46 +6193,46 @@ export default function Horarios() {
 
               {abaGerenciar === 'salas' && (
                 <div className="space-y-4">
-                  <form onSubmit={handleAdicionarSala} className="flex gap-2">
+                  <form onSubmit={handleAdicionarSala} className="flex flex-col sm:flex-row gap-2">
                     <input
                       type="text"
                       value={novaSalaInput}
                       onChange={(e) => setNovaSalaInput(e.target.value)}
                       placeholder="Ex: Laboratório de Informática"
-                      className="flex-1 p-2 bg-slate-50 border border-slate-200 rounded-xl font-bold"
+                      className="flex-1 p-2.5 bg-slate-50/80 border border-slate-200/80 rounded-xl font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
                     />
                     <button
                       type="submit"
-                      className="px-4 py-2 bg-blue-950 hover:bg-blue-900 text-white font-bold rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                      className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0 shadow-xs"
                     >
-                      <i className="fa-solid fa-plus text-cyan-400"></i>
+                      <i className="fa-solid fa-plus text-xs"></i>
                       <span>Cadastrar Sala/Espaço</span>
                     </button>
                   </form>
 
-                  <div className="border border-slate-200 rounded-xl overflow-hidden max-h-80 overflow-y-auto">
-                    <table className="w-full text-left border-collapse">
+                  <div className="border border-slate-200/80 rounded-2xl overflow-x-auto max-h-80 overflow-y-auto bg-white">
+                    <table className="w-full text-left border-collapse min-w-[460px]">
                       <thead>
-                        <tr className="bg-slate-100 text-slate-700 uppercase font-black">
-                          <th className="p-2.5">Nome do Espaço / Sala</th>
-                          <th className="p-2.5 text-center">Aulas na Sala</th>
-                          <th className="p-2.5 text-center">Ação</th>
+                        <tr className="bg-slate-50 text-slate-500 font-semibold text-[11px] border-b border-slate-200/80">
+                          <th className="p-3">Nome do Espaço / Sala</th>
+                          <th className="p-3 text-center">Aulas na Sala</th>
+                          <th className="p-3 text-center">Ação</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-200">
+                      <tbody className="divide-y divide-slate-100">
                         {listaSalas.map((s) => {
                           const numAulas = horarios.filter(h => h.sala === s).length;
                           const isEditandoSala = salaEmEdicao === s;
                           return (
-                            <tr key={s} className="hover:bg-slate-50">
-                              <td className="p-2.5 font-bold text-slate-900">
+                            <tr key={s} className="hover:bg-slate-50/80 transition">
+                              <td className="p-3 font-semibold text-slate-900">
                                 {isEditandoSala ? (
                                   <div className="flex items-center gap-1.5 max-w-sm">
                                     <input
                                       type="text"
                                       value={novoNomeSala}
                                       onChange={(e) => setNovoNomeSala(e.target.value)}
-                                      className="p-1.5 bg-white border border-blue-400 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-500 w-full"
+                                      className="p-1.5 bg-white border border-indigo-400 rounded-lg text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-indigo-500/20 outline-none w-full"
                                       autoFocus
                                       disabled={salvandoEdicao}
                                       onKeyDown={(e) => {
@@ -6144,7 +6244,7 @@ export default function Horarios() {
                                       type="button"
                                       onClick={() => handleSalvarEdicaoSala(s)}
                                       disabled={salvandoEdicao}
-                                      className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50 shrink-0"
+                                      className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1 cursor-pointer disabled:opacity-50 shrink-0"
                                       title="Salvar novo nome da sala"
                                     >
                                       <i className="fa-solid fa-check"></i>
@@ -6154,7 +6254,7 @@ export default function Horarios() {
                                       type="button"
                                       onClick={() => { setSalaEmEdicao(null); setNovoNomeSala(''); }}
                                       disabled={salvandoEdicao}
-                                      className="px-2 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold transition cursor-pointer shrink-0"
+                                      className="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition cursor-pointer shrink-0"
                                       title="Cancelar"
                                     >
                                       <i className="fa-solid fa-xmark"></i>
@@ -6170,7 +6270,7 @@ export default function Horarios() {
                                           setSalaEmEdicao(s);
                                           setNovoNomeSala(s);
                                         }}
-                                        className="text-blue-600 hover:text-blue-800 p-1 hover:bg-blue-50 rounded-md transition text-xs font-bold flex items-center gap-1 cursor-pointer"
+                                        className="text-indigo-600 hover:text-indigo-800 p-1 hover:bg-indigo-50 rounded-md transition text-xs font-medium flex items-center gap-1 cursor-pointer"
                                         title="Editar nome da sala/ambiente"
                                       >
                                         <i className="fa-solid fa-pen-to-square"></i>
@@ -6180,8 +6280,8 @@ export default function Horarios() {
                                   </div>
                                 )}
                               </td>
-                              <td className="p-2.5 text-center font-bold text-slate-600">{numAulas} aula(s)</td>
-                              <td className="p-2.5 text-center">
+                              <td className="p-3 text-center font-medium text-slate-600 tabular-nums">{numAulas} aula(s)</td>
+                              <td className="p-3 text-center">
                                 <div className="flex items-center justify-center gap-1.5">
                                   {podeEditar && !isEditandoSala && (
                                     <button
@@ -6190,7 +6290,7 @@ export default function Horarios() {
                                         setSalaEmEdicao(s);
                                         setNovoNomeSala(s);
                                       }}
-                                      className="px-2.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-900 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer text-xs"
+                                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/70 rounded-lg font-semibold transition flex items-center gap-1 cursor-pointer text-xs"
                                       title="Editar nome do espaço/sala"
                                     >
                                       <i className="fa-solid fa-pen-to-square text-xs"></i>
@@ -6198,8 +6298,9 @@ export default function Horarios() {
                                     </button>
                                   )}
                                   <button
+                                    type="button"
                                     onClick={() => handleExcluirSalaCascata(s)}
-                                    className="px-2.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg font-bold transition flex items-center gap-1 cursor-pointer text-xs"
+                                    className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/70 rounded-lg font-semibold transition flex items-center gap-1 cursor-pointer text-xs"
                                     title="Excluir sala e limpar atribuições na grade"
                                   >
                                     <i className="fa-solid fa-trash-can text-xs"></i>
@@ -6218,10 +6319,11 @@ export default function Horarios() {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 bg-slate-100 border-t border-slate-200 flex justify-end">
+            <div className="px-5 py-3.5 bg-slate-50/90 border-t border-slate-200/80 flex justify-end shrink-0">
               <button
+                type="button"
                 onClick={() => setIsGerenciarModalOpen(false)}
-                className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl transition cursor-pointer"
+                className="px-5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/80 text-xs font-semibold rounded-xl transition cursor-pointer"
               >
                 Fechar
               </button>
@@ -6232,49 +6334,55 @@ export default function Horarios() {
 
       {/* MODAL 1: CONFIGURAÇÃO DE SLOTS DE TEMPO (HORÁRIOS DAS AULAS E INTERVALOS) */}
       {isConfigHorariosModalOpen && podeEditar && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="bg-indigo-950 p-4 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-cyan-100 text-cyan-300 flex items-center justify-center">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-fadeIn">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200/80 shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
+            <div className="bg-white/95 backdrop-blur-md px-5 py-4 border-b border-slate-200/80 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
                   <i className="fa-solid fa-clock text-sm"></i>
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-sm uppercase tracking-tight">Configurar Slots de Tempo / Horários</h3>
-                  <p className="text-[10px] text-indigo-200 font-medium">Altere os intervalos de tempo, adicione ou remova períodos da grade</p>
+                  <h3 className="font-semibold text-sm sm:text-base text-slate-900 tracking-tight">
+                    Configurar Slots de Tempo / Horários
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Altere intervalos, adicione ou remova períodos da grade
+                  </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setIsConfigHorariosModalOpen(false)}
-                className="text-slate-300 hover:text-white p-1 cursor-pointer"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 flex items-center justify-center transition cursor-pointer"
               >
-                <i className="fa-solid fa-xmark text-lg"></i>
+                <i className="fa-solid fa-xmark text-sm"></i>
               </button>
             </div>
 
-            <div className="p-5 space-y-4 overflow-y-auto flex-1">
-              <div className="bg-indigo-50 border border-indigo-200 p-3.5 rounded-xl text-xs text-indigo-950 space-y-1">
-                <p className="font-bold flex items-center gap-1.5">
+            <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
+              <div className="bg-indigo-50/60 border border-indigo-200/70 p-3.5 rounded-2xl text-xs text-slate-700 space-y-1">
+                <p className="font-semibold text-indigo-950 flex items-center gap-1.5">
                   <i className="fa-solid fa-circle-info text-indigo-600"></i>
                   <span>Instruções de Configuração</span>
                 </p>
-                <p className="text-[11px] text-indigo-800">
-                  Edite os rótulos (ex: "1ª Aula"), o intervalo de tempo (ex: "07:00 - 07:50") e o tipo (Aula ou Intervalo/Café). As alterações afetam a grade horária e o motor de substituição em tempo real.
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  Edite os rótulos (ex: "1ª Aula"), o intervalo de tempo (ex: "07:00 - 07:50") e o tipo (Aula ou Intervalo). Após remover ou editar slots, clique em <strong className="font-semibold text-slate-800">Salvar Slots de Horário</strong> para persistir na grade.
                 </p>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 {periodosAula.map((slot, index) => (
                   <div
                     key={slot.id}
-                    className="flex flex-wrap md:flex-nowrap items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl hover:border-indigo-300 transition"
+                    className="flex flex-wrap md:flex-nowrap items-end md:items-center gap-2.5 p-3 bg-slate-50/80 border border-slate-200/80 rounded-2xl hover:border-indigo-300 transition"
                   >
-                    <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-950 text-[11px] font-black flex items-center justify-center shrink-0">
+                    <span className="w-7 h-7 rounded-xl bg-indigo-500/10 text-indigo-700 text-xs font-semibold tabular-nums flex items-center justify-center shrink-0">
                       {index + 1}
                     </span>
 
-                    <div className="w-28 shrink-0">
-                      <label className="text-[9px] font-extrabold text-slate-500 uppercase block">Rótulo</label>
+                    <div className="flex-1 min-w-[110px] md:w-28 md:flex-none">
+                      <label className="text-[10px] font-semibold text-slate-500 block mb-1">Rótulo</label>
                       <input
                         type="text"
                         value={slot.rotulo}
@@ -6282,12 +6390,12 @@ export default function Horarios() {
                           const val = e.target.value;
                           setPeriodosAula(prev => prev.map(p => p.id === slot.id ? { ...p, rotulo: val } : p));
                         }}
-                        className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-400"
+                        className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
                       />
                     </div>
 
-                    <div className="w-36 shrink-0">
-                      <label className="text-[9px] font-extrabold text-slate-500 uppercase block">Horário (Início - Fim)</label>
+                    <div className="flex-1 min-w-[135px] md:w-36 md:flex-none">
+                      <label className="text-[10px] font-semibold text-slate-500 block mb-1">Horário (Início - Fim)</label>
                       <input
                         type="text"
                         value={slot.horario}
@@ -6296,29 +6404,30 @@ export default function Horarios() {
                           setPeriodosAula(prev => prev.map(p => p.id === slot.id ? { ...p, horario: val } : p));
                         }}
                         placeholder="Ex: 07:00 - 07:50"
-                        className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-400"
+                        className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-mono tabular-nums font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
                       />
                     </div>
 
                     <div className="w-28 shrink-0">
-                      <label className="text-[9px] font-extrabold text-slate-500 uppercase block">Tipo</label>
+                      <label className="text-[10px] font-semibold text-slate-500 block mb-1">Tipo</label>
                       <select
                         value={slot.tipo}
                         onChange={(e) => {
                           const val = e.target.value;
                           setPeriodosAula(prev => prev.map(p => p.id === slot.id ? { ...p, tipo: val } : p));
                         }}
-                        className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-extrabold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer"
+                        className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 cursor-pointer"
                       >
                         <option value="aula">Aula</option>
                         <option value="intervalo">Intervalo</option>
                       </select>
                     </div>
 
-                    <div className="ml-auto flex items-center gap-1 shrink-0 pt-3 md:pt-0">
+                    <div className="ml-auto flex items-center gap-1 shrink-0">
                       <button
+                        type="button"
                         onClick={() => handleRemoverSlotTempo(slot.id)}
-                        className="p-1.5 text-rose-600 hover:bg-rose-100 rounded-lg transition cursor-pointer"
+                        className="w-9 h-9 flex items-center justify-center bg-white hover:bg-rose-50 text-rose-600 border border-rose-200/80 rounded-xl transition cursor-pointer"
                         title="Remover este slot"
                       >
                         <i className="fa-solid fa-trash text-xs"></i>
@@ -6328,11 +6437,11 @@ export default function Horarios() {
                 ))}
               </div>
 
-              <div className="pt-2 flex items-center justify-between">
+              <div className="pt-2 flex flex-wrap items-center justify-between gap-2">
                 <button
                   type="button"
                   onClick={handleAdicionarSlotTempo}
-                  className="px-3.5 py-2 bg-indigo-100 hover:bg-indigo-200 text-indigo-950 text-xs font-extrabold rounded-xl border border-indigo-300 flex items-center gap-1.5 cursor-pointer transition"
+                  className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-xl border border-indigo-200/80 flex items-center gap-1.5 cursor-pointer transition"
                 >
                   <i className="fa-solid fa-plus text-xs"></i>
                   <span>Adicionar Novo Horário / Aula</span>
@@ -6341,23 +6450,25 @@ export default function Horarios() {
                 <button
                   type="button"
                   onClick={() => setPeriodosAula(PERIODOS_AULA)}
-                  className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl border border-slate-300 cursor-pointer transition"
+                  className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200/80 cursor-pointer transition"
                 >
                   Restaurar Horários PEI Padrão
                 </button>
               </div>
             </div>
 
-            <div className="p-4 bg-slate-100 border-t border-slate-200 flex items-center justify-end gap-2">
+            <div className="px-5 py-3.5 bg-slate-50/90 border-t border-slate-200/80 flex items-center justify-end gap-2 shrink-0">
               <button
+                type="button"
                 onClick={() => setIsConfigHorariosModalOpen(false)}
-                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/80 text-xs font-semibold rounded-xl transition cursor-pointer"
               >
                 Cancelar
               </button>
               <button
+                type="button"
                 onClick={() => handleSalvarSlotsTempo(periodosAula)}
-                className="px-5 py-2 bg-indigo-900 hover:bg-indigo-800 text-white text-xs font-black rounded-xl transition shadow-sm cursor-pointer flex items-center gap-2"
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition shadow-xs cursor-pointer flex items-center gap-2"
               >
                 <i className="fa-solid fa-floppy-disk"></i>
                 <span>Salvar Slots de Horário</span>
@@ -6369,34 +6480,40 @@ export default function Horarios() {
 
       {/* MODAL 2: MATRIZ DE AUSÊNCIA / INDISPONIBILIDADE DE PROFESSORES */}
       {isAusenciaModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="bg-purple-950 p-4 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-rose-400/20 text-rose-300 flex items-center justify-center">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-fadeIn">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200/80 shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
+            <div className="bg-white/95 backdrop-blur-md px-5 py-4 border-b border-slate-200/80 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center shrink-0">
                   <i className="fa-solid fa-user-slash text-sm"></i>
                 </div>
                 <div>
-                  <h3 className="font-extrabold text-sm uppercase tracking-tight">Controle de Indisponibilidade & Ausência Docente</h3>
-                  <p className="text-[10px] text-purple-200 font-medium">Marque horários de folga, saídas antecipadas ou ausências periódicas</p>
+                  <h3 className="font-semibold text-sm sm:text-base text-slate-900 tracking-tight">
+                    Controle de Indisponibilidade & Ausência Docente
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Marque horários de folga, saídas antecipadas ou ausências periódicas
+                  </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setIsAusenciaModalOpen(false)}
-                className="text-slate-300 hover:text-white p-1 cursor-pointer"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 flex items-center justify-center transition cursor-pointer"
               >
-                <i className="fa-solid fa-xmark text-lg"></i>
+                <i className="fa-solid fa-xmark text-sm"></i>
               </button>
             </div>
 
-            <div className="p-5 space-y-4 overflow-y-auto flex-1">
-              <div className="flex flex-wrap items-center justify-between gap-3 bg-purple-50 p-3.5 rounded-xl border border-purple-200">
-                <div className="flex items-center gap-3">
-                  <label className="text-xs font-black uppercase text-purple-950">Selecione o Professor:</label>
+            <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-purple-50/50 p-3.5 rounded-2xl border border-purple-200/70">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <label className="text-xs font-semibold text-purple-950">Selecione o Professor:</label>
                   <select
                     value={profAusenciaSelecionado}
                     onChange={(e) => setProfAusenciaSelecionado(e.target.value)}
-                    className="p-2 bg-white border border-purple-300 rounded-xl text-xs font-extrabold text-slate-800 outline-none focus:ring-2 focus:ring-purple-400 cursor-pointer min-w-[220px]"
+                    className="p-2 bg-white border border-purple-200/80 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-purple-500/20 cursor-pointer min-w-[210px]"
                   >
                     {listaProfessores.map((p) => (
                       <option key={p} value={p}>{p}</option>
@@ -6405,48 +6522,54 @@ export default function Horarios() {
                 </div>
 
                 {podeEditar && (
-                  <div className="flex items-center gap-2">
-                    <label className="text-xs font-bold text-purple-950">Motivo Padrão:</label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="text-xs font-semibold text-purple-950">Motivo Padrão:</label>
                     <input
                       type="text"
                       value={motivoAusenciaInput}
                       onChange={(e) => setMotivoAusenciaInput(e.target.value)}
                       placeholder="Ex: Folga, Janela, ATPC parcial"
-                      className="p-1.5 bg-white border border-purple-300 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-purple-400 w-48"
+                      className="p-2 bg-white border border-purple-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-purple-500/20 w-48"
                     />
                   </div>
                 )}
               </div>
 
-              <div className="text-xs text-slate-600 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <p className="font-bold text-slate-800 mb-1">
-                  {podeEditar ? '💡 Clique nas células abaixo para alternar a disponibilidade do docente:' : 'ℹ️ Consulta de matriz de disponibilidade docente (Modo Somente Leitura):'}
+              <div className="text-xs text-slate-600 bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80">
+                <p className="font-semibold text-slate-800 mb-1.5">
+                  {podeEditar ? 'Clique nas células abaixo para alternar a disponibilidade do docente:' : 'Consulta de matriz de disponibilidade docente (Somente Leitura):'}
                 </p>
-                <div className="flex items-center gap-4 text-[11px]">
-                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-emerald-500"></span> Disponível na Escola</span>
-                  <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-rose-600"></span> FORA DA ESCOLA / INDISPONÍVEL (Desqualificado para substituição)</span>
+                <div className="flex flex-wrap items-center gap-4 text-[11px] font-medium">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                    <span>Disponível na Escola</span>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                    <span>Fora da Escola / Indisponível (Desqualificado para substituição)</span>
+                  </span>
                 </div>
               </div>
 
               {/* Matriz Semanal de Ausências */}
-              <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <div className="overflow-x-auto border border-slate-200/80 rounded-2xl bg-white">
                 <table className="w-full text-left border-collapse min-w-[650px]">
                   <thead>
-                    <tr className="bg-purple-950 text-white text-xs font-black uppercase">
-                      <th className="p-3 border-b border-purple-900 w-32">Horário / Slot</th>
+                    <tr className="bg-slate-50 text-slate-600 text-xs font-semibold border-b border-slate-200/80">
+                      <th className="p-3 w-36">Horário / Slot</th>
                       {DIAS_SEMANA.map((dia) => (
-                        <th key={dia.id} className="p-3 border-b border-purple-900 text-center">
+                        <th key={dia.id} className="p-3 text-center">
                           {dia.label}
                         </th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 text-xs font-medium">
+                  <tbody className="divide-y divide-slate-100 text-xs font-medium">
                     {periodosAula.filter(p => p.tipo === 'aula').map((periodo) => (
-                      <tr key={periodo.id} className="hover:bg-slate-50">
-                        <td className="p-2.5 bg-slate-50 border-r border-slate-200 font-bold text-slate-800">
+                      <tr key={periodo.id} className="hover:bg-slate-50/60">
+                        <td className="p-3 bg-slate-50/60 border-r border-slate-200/80 font-semibold text-slate-800">
                           <div>{periodo.rotulo}</div>
-                          <div className="text-[10px] text-slate-500 font-mono">{periodo.horario}</div>
+                          <div className="text-[11px] text-slate-500 font-mono tabular-nums font-normal">{periodo.horario}</div>
                         </td>
 
                         {DIAS_SEMANA.map((dia) => {
@@ -6459,28 +6582,29 @@ export default function Horarios() {
                             <td
                               key={dia.id}
                               onClick={() => podeEditar && handleToggleIndisponibilidade(profAusenciaSelecionado, dia.id, periodo.id)}
-                              className={`p-2 border-r border-slate-200 text-center align-middle transition select-none ${
+                              className={`p-2.5 border-r border-slate-100 text-center align-middle transition select-none ${
                                 podeEditar ? 'cursor-pointer' : 'cursor-default'
                               } ${
                                 isAusente
-                                  ? 'bg-rose-100 hover:bg-rose-200 text-rose-950 font-extrabold'
-                                  : 'bg-emerald-50/60 hover:bg-emerald-100 text-emerald-950'
+                                  ? 'bg-rose-50/90 hover:bg-rose-100/80 text-rose-900 font-semibold'
+                                  : 'bg-emerald-50/40 hover:bg-emerald-50/90 text-emerald-800'
                               }`}
                             >
                               {isAusente ? (
-                                <div className="space-y-0.5 animate-fadeIn">
-                                  <span className="inline-block px-2 py-0.5 bg-rose-600 text-white rounded text-[10px] font-black uppercase">
-                                    ⛔ Fora da Escola
+                                <div className="space-y-1 animate-fadeIn">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-rose-100 text-rose-800 border border-rose-200/80 rounded-md text-[10px] font-semibold">
+                                    <i className="fa-solid fa-ban text-[9px]"></i>
+                                    <span>Fora da Escola</span>
                                   </span>
                                   {slotInfo.motivo && (
-                                    <p className="text-[9px] text-rose-800 italic truncate max-w-[100px] mx-auto">
+                                    <p className="text-[10px] text-rose-700 truncate max-w-[110px] mx-auto font-normal">
                                       {slotInfo.motivo}
                                     </p>
                                   )}
                                 </div>
                               ) : (
-                                <div className="text-[11px] text-emerald-700 font-bold flex items-center justify-center gap-1">
-                                  <i className="fa-solid fa-circle-check text-emerald-600"></i>
+                                <div className="text-[11px] text-emerald-700 font-medium flex items-center justify-center gap-1.5">
+                                  <i className="fa-solid fa-circle-check text-emerald-500"></i>
                                   <span>Presente</span>
                                 </div>
                               )}
@@ -6494,10 +6618,11 @@ export default function Horarios() {
               </div>
             </div>
 
-            <div className="p-4 bg-slate-100 border-t border-slate-200 flex justify-end">
+            <div className="px-5 py-3.5 bg-slate-50/90 border-t border-slate-200/80 flex justify-end shrink-0">
               <button
+                type="button"
                 onClick={() => setIsAusenciaModalOpen(false)}
-                className="px-5 py-2 bg-purple-950 hover:bg-purple-900 text-white text-xs font-bold rounded-xl transition cursor-pointer"
+                className="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-xl transition cursor-pointer shadow-xs"
               >
                 {podeEditar ? 'Concluir Visualização / Edição' : 'Fechar Visualização'}
               </button>
@@ -6508,77 +6633,81 @@ export default function Horarios() {
 
       {/* Modal de Pré-Visualização e Ajustes Finos do CSV Importado */}
       {isPreviewCsvModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-3 z-50 animate-fadeIn">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[92vh]">
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-3 z-50 animate-fadeIn">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200/80 shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[92vh]">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
             {/* Header */}
-            <div className="bg-gradient-to-r from-blue-950 via-slate-900 to-blue-950 p-4 text-white flex items-center justify-between border-b border-blue-900">
+            <div className="bg-white/95 backdrop-blur-md px-5 py-4 border-b border-slate-200/80 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-cyan-100 text-cyan-300 flex items-center justify-center text-lg font-black border border-cyan-400">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-base shrink-0">
                   <i className="fa-solid fa-file-csv"></i>
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-extrabold text-base tracking-tight">Pré-visualização e Ajustes da Grade CSV</h3>
-                    <span className="bg-cyan-900/80 text-cyan-200 border border-cyan-700/60 px-2.5 py-0.5 rounded-full text-[10px] font-mono">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-semibold text-sm sm:text-base text-slate-900 tracking-tight">
+                      Pré-visualização e Ajustes da Grade CSV
+                    </h3>
+                    <span className="bg-indigo-50 text-indigo-700 border border-indigo-200/70 px-2.5 py-0.5 rounded-md text-[11px] font-mono">
                       {csvImportNomeArquivo || 'matriz_grade.csv'}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-300 font-medium">
-                    Confirme os horários processados automaticamente. Você pode editar qualquer campo antes de salvar na grade oficial.
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    Confirme os horários processados automaticamente antes de salvar na grade oficial.
                   </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setIsPreviewCsvModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800/80 transition cursor-pointer"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 flex items-center justify-center transition cursor-pointer shrink-0"
               >
-                <i className="fa-solid fa-xmark text-xl"></i>
+                <i className="fa-solid fa-xmark text-sm"></i>
               </button>
             </div>
 
             {/* Metrics Bar */}
-            <div className="bg-slate-50 p-3.5 border-b border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center gap-2.5 shadow-xs">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-800 flex items-center justify-center font-bold">
+            <div className="bg-slate-50/70 p-3.5 border-b border-slate-200/80 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs shrink-0">
+              <div className="bg-white p-3 rounded-2xl border border-slate-200/80 flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
                   <i className="fa-solid fa-calendar-check"></i>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-extrabold text-slate-400">Total Aulas Mapeadas</p>
-                  <p className="font-black text-slate-800 text-base">{csvPreviewItems.length}</p>
+                  <p className="text-[11px] font-medium text-slate-500">Total Mapeado</p>
+                  <p className="font-bold text-slate-900 text-base tabular-nums">{csvPreviewItems.length}</p>
                 </div>
               </div>
 
-              <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center gap-2.5 shadow-xs">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+              <div className="bg-white p-3 rounded-2xl border border-slate-200/80 flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
                   <i className="fa-solid fa-chalkboard-user"></i>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-extrabold text-slate-400">Docentes Identificados</p>
-                  <p className="font-black text-slate-800 text-base">
+                  <p className="text-[11px] font-medium text-slate-500">Docentes</p>
+                  <p className="font-bold text-slate-900 text-base tabular-nums">
                     {new Set(csvPreviewItems.map(i => i.professor).filter(Boolean)).size}
                   </p>
                 </div>
               </div>
 
-              <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center gap-2.5 shadow-xs">
-                <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center font-bold">
+              <div className="bg-white p-3 rounded-2xl border border-slate-200/80 flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
                   <i className="fa-solid fa-users"></i>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-extrabold text-slate-400">Turmas Encontradas</p>
-                  <p className="font-black text-slate-800 text-base">
+                  <p className="text-[11px] font-medium text-slate-500">Turmas</p>
+                  <p className="font-bold text-slate-900 text-base tabular-nums">
                     {new Set(csvPreviewItems.map(i => i.turma).filter(t => t && t !== '-')).size}
                   </p>
                 </div>
               </div>
 
-              <div className="bg-white p-2.5 rounded-xl border border-slate-200 flex items-center gap-2.5 shadow-xs">
-                <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-800 flex items-center justify-center font-bold">
+              <div className="bg-white p-3 rounded-2xl border border-slate-200/80 flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center shrink-0">
                   <i className="fa-solid fa-door-open"></i>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase font-extrabold text-slate-400">Salas / Ambientes</p>
-                  <p className="font-black text-slate-800 text-base">
+                  <p className="text-[11px] font-medium text-slate-500">Salas / Ambientes</p>
+                  <p className="font-bold text-slate-900 text-base tabular-nums">
                     {new Set(csvPreviewItems.map(i => i.sala).filter(s => s && s !== '-')).size}
                   </p>
                 </div>
@@ -6586,59 +6715,60 @@ export default function Horarios() {
             </div>
 
             {/* Toolbar: Search and Add */}
-            <div className="p-3 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
-              <div className="relative flex-1 max-w-md">
+            <div className="p-3.5 bg-white border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <div className="relative flex-1 min-w-[200px] max-w-md">
                 <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
                 <input
                   type="text"
                   value={csvFiltroBusca}
                   onChange={(e) => setCsvFiltroBusca(e.target.value)}
                   placeholder="Filtrar por docente, turma, disciplina ou sala..."
-                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-hidden focus:ring-2 focus:ring-cyan-500"
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
                 />
               </div>
 
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={handleAdicionarItemManualPreviewCsv}
-                  className="px-3.5 py-2 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs"
                 >
-                  <i className="fa-solid fa-plus text-cyan-300"></i>
-                  <span>+ Adicionar Aula Manualmente</span>
+                  <i className="fa-solid fa-plus text-xs"></i>
+                  <span>Adicionar Aula Manualmente</span>
                 </button>
 
-                <span className="text-slate-500 text-xs font-semibold bg-slate-100 px-2.5 py-1 rounded-lg">
+                <span className="text-slate-600 text-xs font-medium tabular-nums bg-slate-100 px-2.5 py-1.5 rounded-xl">
                   Exibindo {csvPreviewItemsFiltered.length} de {csvPreviewItems.length}
                 </span>
               </div>
             </div>
 
             {/* Table Body */}
-            <div className="flex-1 overflow-y-auto p-3">
-              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+            <div className="flex-1 overflow-y-auto p-3.5">
+              <div className="border border-slate-200/80 rounded-2xl overflow-x-auto bg-white">
                 <table className="w-full text-left border-collapse min-w-[850px] text-xs">
                   <thead>
-                    <tr className="bg-blue-950 text-white uppercase text-[11px] font-black tracking-wider">
-                      <th className="p-2.5 w-32">Dia</th>
-                      <th className="p-2.5 w-36">Período / Slot</th>
-                      <th className="p-2.5 w-32">Turma</th>
-                      <th className="p-2.5 w-44">Professor</th>
-                      <th className="p-2.5">Disciplina</th>
-                      <th className="p-2.5 w-36">Sala / Local</th>
-                      <th className="p-2.5 w-16 text-center">Ação</th>
+                    <tr className="bg-slate-50 text-slate-500 text-[11px] font-semibold border-b border-slate-200/80">
+                      <th className="p-3 w-32">Dia</th>
+                      <th className="p-3 w-36">Período / Slot</th>
+                      <th className="p-3 w-32">Turma</th>
+                      <th className="p-3 w-44">Professor</th>
+                      <th className="p-3">Disciplina</th>
+                      <th className="p-3 w-36">Sala / Local</th>
+                      <th className="p-3 w-16 text-center">Ação</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-200 bg-white font-medium">
+                  <tbody className="divide-y divide-slate-100 bg-white font-medium">
                     {csvPreviewItemsFiltered.map((item) => {
                       const realIndex = csvPreviewItems.findIndex(i => i.id === item.id);
                       if (realIndex === -1) return null;
                       return (
-                        <tr key={item.id} className="hover:bg-slate-50 transition">
+                        <tr key={item.id} className="hover:bg-slate-50/70 transition">
                           <td className="p-2">
                             <select
                               value={item.dia}
                               onChange={(e) => handleAtualizarItemPreviewCsv(realIndex, 'dia', e.target.value)}
-                              className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800"
+                              className="w-full p-1.5 bg-slate-50/80 border border-slate-200/80 rounded-lg text-xs font-medium text-slate-800 outline-none"
                             >
                               <option value="segunda">Segunda</option>
                               <option value="terca">Terça</option>
@@ -6652,7 +6782,7 @@ export default function Horarios() {
                             <select
                               value={item.periodoId}
                               onChange={(e) => handleAtualizarItemPreviewCsv(realIndex, 'periodoId', isNaN(Number(e.target.value)) ? e.target.value : Number(e.target.value))}
-                              className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800"
+                              className="w-full p-1.5 bg-slate-50/80 border border-slate-200/80 rounded-lg text-xs font-medium text-slate-800 outline-none"
                             >
                               {periodosAula.map(p => (
                                 <option key={p.id} value={p.id}>
@@ -6667,7 +6797,7 @@ export default function Horarios() {
                               type="text"
                               value={item.turma}
                               onChange={(e) => handleAtualizarItemPreviewCsv(realIndex, 'turma', e.target.value)}
-                              className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900"
+                              className="w-full p-1.5 bg-slate-50/80 border border-slate-200/80 rounded-lg text-xs font-semibold text-slate-900 outline-none"
                             />
                           </td>
 
@@ -6676,7 +6806,7 @@ export default function Horarios() {
                               type="text"
                               value={item.professor}
                               onChange={(e) => handleAtualizarItemPreviewCsv(realIndex, 'professor', e.target.value)}
-                              className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-blue-900"
+                              className="w-full p-1.5 bg-slate-50/80 border border-slate-200/80 rounded-lg text-xs font-semibold text-indigo-800 outline-none"
                             />
                           </td>
 
@@ -6685,7 +6815,7 @@ export default function Horarios() {
                               type="text"
                               value={item.disciplina}
                               onChange={(e) => handleAtualizarItemPreviewCsv(realIndex, 'disciplina', e.target.value)}
-                              className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800"
+                              className="w-full p-1.5 bg-slate-50/80 border border-slate-200/80 rounded-lg text-xs font-medium text-slate-800 outline-none"
                             />
                           </td>
 
@@ -6694,17 +6824,18 @@ export default function Horarios() {
                               type="text"
                               value={item.sala}
                               onChange={(e) => handleAtualizarItemPreviewCsv(realIndex, 'sala', e.target.value)}
-                              className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700"
+                              className="w-full p-1.5 bg-slate-50/80 border border-slate-200/80 rounded-lg text-xs font-medium text-slate-700 outline-none"
                             />
                           </td>
 
                           <td className="p-2 text-center">
                             <button
+                              type="button"
                               onClick={() => handleRemoverItemPreviewCsv(realIndex)}
-                              className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                              className="w-8 h-8 inline-flex items-center justify-center text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
                               title="Remover esta linha"
                             >
-                              <i className="fa-solid fa-trash-can text-sm"></i>
+                              <i className="fa-solid fa-trash-can text-xs"></i>
                             </button>
                           </td>
                         </tr>
@@ -6716,24 +6847,26 @@ export default function Horarios() {
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 bg-slate-100 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+            <div className="px-5 py-3.5 bg-slate-50/90 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-3 shrink-0">
               <p className="text-xs text-slate-600 font-medium flex items-center gap-1.5">
-                <i className="fa-solid fa-circle-info text-cyan-600"></i>
+                <i className="fa-solid fa-circle-info text-indigo-600"></i>
                 <span>Os docentes, turmas e salas importados serão cadastrados e sincronizados automaticamente na base da escola.</span>
               </p>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 ml-auto">
                 <button
+                  type="button"
                   onClick={() => setIsPreviewCsvModalOpen(false)}
-                  className="px-4 py-2.5 bg-white hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition cursor-pointer"
+                  className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 font-semibold text-xs rounded-xl border border-slate-200/80 transition cursor-pointer"
                 >
                   Cancelar
                 </button>
 
                 <button
+                  type="button"
                   onClick={handleConfirmarEImportarCsv}
                   disabled={salvando}
-                  className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-extrabold text-xs rounded-xl transition shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl transition shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {salvando ? (
                     <>
@@ -6742,8 +6875,8 @@ export default function Horarios() {
                     </>
                   ) : (
                     <>
-                      <i className="fa-solid fa-cloud-arrow-up text-cyan-200"></i>
-                      <span>Confirmar e Sincronizar na Grade Oficial ({csvPreviewItems.length} Aulas)</span>
+                      <i className="fa-solid fa-cloud-arrow-up"></i>
+                      <span>Confirmar e Sincronizar ({csvPreviewItems.length} Aulas)</span>
                     </>
                   )}
                 </button>
@@ -6755,35 +6888,36 @@ export default function Horarios() {
 
       {/* MODAL DE AUDITORIA E GESTÃO DE AULAS ATRIBUÍDAS */}
       {isAuditoriaAulasModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 animate-fadeIn">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[92vh]">
-            
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 z-50 animate-fadeIn">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200/80 shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[92vh]">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
+
             {/* Modal Header */}
-            <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-blue-950 p-4 sm:p-5 text-white flex items-center justify-between border-b border-amber-500/40">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-lg shadow-md">
+            <div className="bg-white/95 backdrop-blur-md px-5 py-4 border-b border-slate-200/80 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-base shrink-0">
                   <i className="fa-solid fa-clipboard-check"></i>
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-extrabold text-sm sm:text-base uppercase tracking-wide text-white">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-semibold text-sm sm:text-base text-slate-900 tracking-tight truncate">
                       Auditoria de Aulas Atribuídas na Grade
                     </h3>
-                    <span className="text-[10px] font-black uppercase bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full shadow-2xs">
+                    <span className="text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200/80 px-2 py-0.5 rounded-md shrink-0">
                       Exclusivo Diretor
                     </span>
                   </div>
-                  <p className="text-xs text-slate-300 mt-0.5">
+                  <p className="text-xs text-slate-500 font-medium mt-0.5 truncate">
                     Consulte, altere dados ou exclua diretamente qualquer aula atribuída aos professores e turmas.
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => handleIniciarCriacaoAuditoria()}
-                  className="px-3.5 py-2 bg-gradient-to-r from-cyan-400 to-cyan-500 hover:from-cyan-300 hover:to-cyan-400 text-blue-950 font-black text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
                   title="Atribuir uma nova aula manualmente"
                 >
                   <i className="fa-solid fa-plus text-xs"></i>
@@ -6793,39 +6927,40 @@ export default function Horarios() {
                 <button
                   type="button"
                   onClick={() => setIsAuditoriaAulasModalOpen(false)}
-                  className="text-slate-300 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition cursor-pointer"
+                  className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 flex items-center justify-center transition cursor-pointer"
                   title="Fechar"
                 >
-                  <i className="fa-solid fa-xmark text-lg"></i>
+                  <i className="fa-solid fa-xmark text-sm"></i>
                 </button>
               </div>
             </div>
 
             {/* Sub-painel: Se estiver em modo de edição ou criação de uma aula atribuída */}
             {(aulaEmEdicaoAuditoria || isCriandoNovaAulaAuditoria) && (
-              <div className="p-4 sm:p-5 bg-amber-50/90 border-b border-amber-200 animate-fadeIn">
+              <div className="p-4 sm:p-5 bg-amber-50/50 border-b border-amber-200/80 animate-fadeIn shrink-0 overflow-y-auto max-h-[45vh]">
                 <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2 text-xs font-black uppercase text-amber-950">
-                    <i className="fa-solid fa-pen-to-square text-amber-700"></i>
+                  <div className="flex items-center gap-2 text-xs font-semibold text-amber-950">
+                    <i className="fa-solid fa-pen-to-square text-amber-600"></i>
                     <span>{isCriandoNovaAulaAuditoria ? 'Atribuir Nova Aula na Grade' : `Alterar Aula Atribuída #${aulaEmEdicaoAuditoria?.id}`}</span>
                   </div>
                   <button
                     type="button"
                     onClick={() => { setAulaEmEdicaoAuditoria(null); setIsCriandoNovaAulaAuditoria(false); }}
-                    className="text-xs font-bold text-slate-500 hover:text-slate-800 cursor-pointer"
+                    className="text-xs font-semibold text-slate-500 hover:text-slate-800 cursor-pointer flex items-center gap-1"
                   >
-                    <i className="fa-solid fa-xmark mr-1"></i> Cancelar Edição
+                    <i className="fa-solid fa-xmark"></i>
+                    <span>Cancelar Edição</span>
                   </button>
                 </div>
 
                 <form onSubmit={handleSalvarEdicaoAuditoria} className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Professor</label>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Professor</label>
                     <select
                       value={formAuditoria.professor}
                       onChange={(e) => setFormAuditoria({ ...formAuditoria, professor: e.target.value })}
                       required
-                      className="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                      className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 cursor-pointer"
                     >
                       {listaProfessores.map(p => (
                         <option key={p} value={p}>{p}</option>
@@ -6837,7 +6972,7 @@ export default function Horarios() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Disciplina</label>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Disciplina</label>
                     <input
                       type="text"
                       list="lista-disciplinas-auditoria"
@@ -6845,7 +6980,7 @@ export default function Horarios() {
                       onChange={(e) => setFormAuditoria({ ...formAuditoria, disciplina: e.target.value })}
                       required
                       placeholder="Ex: Matemática"
-                      className="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500"
+                      className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400"
                     />
                     <datalist id="lista-disciplinas-auditoria">
                       {Object.keys(DISCIPLINAS_CORES).map(d => <option key={d} value={d} />)}
@@ -6853,12 +6988,12 @@ export default function Horarios() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Turma</label>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Turma</label>
                     <select
                       value={formAuditoria.turma}
                       onChange={(e) => setFormAuditoria({ ...formAuditoria, turma: e.target.value })}
                       required
-                      className="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                      className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 cursor-pointer"
                     >
                       {listaTurmas.map(t => (
                         <option key={t} value={t}>{t}</option>
@@ -6870,12 +7005,12 @@ export default function Horarios() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Dia da Semana</label>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Dia da Semana</label>
                     <select
                       value={formAuditoria.dia}
                       onChange={(e) => setFormAuditoria({ ...formAuditoria, dia: e.target.value })}
                       required
-                      className="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                      className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 cursor-pointer"
                     >
                       {DIAS_SEMANA.map(d => (
                         <option key={d.id} value={d.id}>{d.label}</option>
@@ -6884,12 +7019,15 @@ export default function Horarios() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Período / Aula</label>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Período / Aula</label>
                     <select
                       value={formAuditoria.periodoId}
-                      onChange={(e) => setFormAuditoria({ ...formAuditoria, periodoId: e.target.value })}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormAuditoria({ ...formAuditoria, periodoId: isNaN(Number(val)) ? val : Number(val) });
+                      }}
                       required
-                      className="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                      className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 cursor-pointer"
                     >
                       {periodosAula.map(p => (
                         <option key={p.id} value={p.id}>{p.rotulo} ({p.horario})</option>
@@ -6898,22 +7036,22 @@ export default function Horarios() {
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Sala / Espaço</label>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">Sala / Espaço</label>
                     <input
                       type="text"
                       list="lista-salas-auditoria"
                       value={formAuditoria.sala}
                       onChange={(e) => setFormAuditoria({ ...formAuditoria, sala: e.target.value })}
                       placeholder="Ex: Sala 01"
-                      className="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500"
+                      className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400"
                     />
                     <datalist id="lista-salas-auditoria">
                       {listaSalas.map(s => <option key={s} value={s} />)}
                     </datalist>
                   </div>
 
-                  <div className="sm:col-span-3 lg:col-span-6 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-amber-300">
-                    <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer select-none">
+                  <div className="sm:col-span-3 lg:col-span-6 flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-amber-200/80">
+                    <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none">
                       <input
                         type="checkbox"
                         checked={formAuditoria.contarSaldo}
@@ -6923,18 +7061,18 @@ export default function Horarios() {
                       <span>Contar na carga horária regular do docente</span>
                     </label>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 ml-auto">
                       <button
                         type="button"
                         onClick={() => { setAulaEmEdicaoAuditoria(null); setIsCriandoNovaAulaAuditoria(false); }}
-                        className="px-3.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl transition cursor-pointer"
+                        className="px-3.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/80 text-xs font-semibold rounded-xl transition cursor-pointer"
                       >
                         Cancelar
                       </button>
                       <button
                         type="submit"
                         disabled={salvando}
-                        className="px-4 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        className="px-4 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                       >
                         {salvando ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-check"></i>}
                         <span>{isCriandoNovaAulaAuditoria ? 'Criar Atribuição' : 'Salvar Alteração'}</span>
@@ -6946,15 +7084,15 @@ export default function Horarios() {
             )}
 
             {/* Barra de Filtros e Busca da Auditoria */}
-            <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[280px]">
+            <div className="p-4 bg-slate-50/70 border-b border-slate-200/80 flex flex-wrap items-end justify-between gap-3 shrink-0">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 flex-1 min-w-[260px]">
                 {/* Filtro por Professor */}
-                <div className="min-w-[190px]">
-                  <label className="block text-[10px] font-black uppercase text-slate-500 mb-0.5">Filtrar por Professor</label>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">Filtrar por Professor</label>
                   <select
                     value={auditoriaFiltroProfessor}
                     onChange={(e) => setAuditoriaFiltroProfessor(e.target.value)}
-                    className="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                    className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
                   >
                     <option value="TODOS">Todos os Professores ({listaProfessores.length})</option>
                     {listaProfessores.map(p => (
@@ -6964,12 +7102,12 @@ export default function Horarios() {
                 </div>
 
                 {/* Filtro por Turma */}
-                <div className="min-w-[140px]">
-                  <label className="block text-[10px] font-black uppercase text-slate-500 mb-0.5">Filtrar por Turma</label>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">Filtrar por Turma</label>
                   <select
                     value={auditoriaFiltroTurma}
                     onChange={(e) => setAuditoriaFiltroTurma(e.target.value)}
-                    className="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                    className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
                   >
                     <option value="TODAS">Todas as Turmas ({listaTurmas.length})</option>
                     {listaTurmas.map(t => (
@@ -6979,12 +7117,12 @@ export default function Horarios() {
                 </div>
 
                 {/* Filtro por Dia */}
-                <div className="min-w-[130px]">
-                  <label className="block text-[10px] font-black uppercase text-slate-500 mb-0.5">Filtrar por Dia</label>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">Filtrar por Dia</label>
                   <select
                     value={auditoriaFiltroDia}
                     onChange={(e) => setAuditoriaFiltroDia(e.target.value)}
-                    className="w-full p-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                    className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
                   >
                     <option value="TODOS">Todos os Dias</option>
                     {DIAS_SEMANA.map(d => (
@@ -6994,22 +7132,22 @@ export default function Horarios() {
                 </div>
 
                 {/* Busca Textual */}
-                <div className="flex-1 min-w-[180px]">
-                  <label className="block text-[10px] font-black uppercase text-slate-500 mb-0.5">Buscar Rápida</label>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">Busca Rápida</label>
                   <div className="relative">
                     <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
                     <input
                       type="text"
                       value={auditoriaTermoBusca}
                       onChange={(e) => setAuditoriaTermoBusca(e.target.value)}
-                      placeholder="Buscar por docente, disciplina, sala..."
-                      className="w-full pl-8 pr-7 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-amber-500"
+                      placeholder="Docente, disciplina, sala..."
+                      className="w-full pl-8 pr-7 py-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
                     />
                     {auditoriaTermoBusca && (
                       <button
                         type="button"
                         onClick={() => setAuditoriaTermoBusca('')}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
                       >
                         <i className="fa-solid fa-xmark"></i>
                       </button>
@@ -7019,8 +7157,8 @@ export default function Horarios() {
               </div>
 
               {/* Indicador de Resumo */}
-              <div className="flex items-center gap-2">
-                <span className="px-3 py-1.5 bg-amber-100 text-amber-950 border border-amber-300 rounded-xl text-xs font-black shadow-2xs">
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="px-3 py-2 bg-amber-50 text-amber-800 border border-amber-200/80 rounded-xl text-xs font-semibold tabular-nums">
                   {listaAulasAuditoria.length} Aulas Listadas
                 </span>
                 {(auditoriaFiltroProfessor !== 'TODOS' || auditoriaFiltroTurma !== 'TODAS' || auditoriaFiltroDia !== 'TODOS' || auditoriaTermoBusca) && (
@@ -7032,40 +7170,30 @@ export default function Horarios() {
                       setAuditoriaFiltroDia('TODOS');
                       setAuditoriaTermoBusca('');
                     }}
-                    className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                    className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/80 text-xs font-semibold rounded-xl transition cursor-pointer"
                     title="Limpar todos os filtros"
                   >
-                    <i className="fa-solid fa-filter-circle-xmark mr-1"></i> Limpar
+                    <i className="fa-solid fa-filter-circle-xmark mr-1"></i>
+                    Limpar
                   </button>
                 )}
               </div>
             </div>
 
-            {/* Tabela de Aulas Atribuídas */}
-            <div className="overflow-x-auto overflow-y-auto flex-1 p-4">
+            {/* Tabela / Lista de Aulas Atribuídas */}
+            <div className="overflow-y-auto flex-1 p-4">
               {listaAulasAuditoria.length === 0 ? (
-                <div className="p-12 text-center bg-slate-50 border border-slate-200 rounded-2xl">
-                  <i className="fa-solid fa-calendar-xmark text-4xl text-slate-400 mb-3 block"></i>
-                  <h4 className="text-sm font-black text-slate-800">Nenhuma aula atribuída encontrada com estes filtros</h4>
+                <div className="p-10 text-center bg-slate-50/70 border border-dashed border-slate-200 rounded-2xl">
+                  <i className="fa-solid fa-calendar-xmark text-3xl text-slate-300 mb-2 block"></i>
+                  <h4 className="text-sm font-semibold text-slate-800">Nenhuma aula atribuída encontrada com estes filtros</h4>
                   <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
                     Tente selecionar outro professor, turma ou limpar os termos de busca para visualizar as aulas.
                   </p>
                 </div>
               ) : (
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-slate-100 text-slate-700 font-extrabold uppercase text-[10px] tracking-wider border-b border-slate-200 sticky top-0 z-10">
-                      <th className="p-3">Professor / Docente</th>
-                      <th className="p-3">Disciplina</th>
-                      <th className="p-3">Turma</th>
-                      <th className="p-3">Dia da Semana</th>
-                      <th className="p-3">Período / Horário</th>
-                      <th className="p-3">Sala</th>
-                      <th className="p-3 text-center">Contagem</th>
-                      <th className="p-3 text-right">Ações da Direção</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
+                <>
+                  {/* Cards Mobile */}
+                  <div className="block md:hidden space-y-2.5">
                     {listaAulasAuditoria.map((aula) => {
                       const estiloCor = getCorDisciplina(aula.disciplina);
                       const diaObj = DIAS_SEMANA.find(d => normalizarDia(d.id) === normalizarDia(aula.dia));
@@ -7074,106 +7202,193 @@ export default function Horarios() {
                       const isSendoEditada = aulaEmEdicaoAuditoria?.id === aula.id;
 
                       return (
-                        <tr
+                        <div
                           key={aula.id || `${aula.dia}_${aula.periodoId}_${aula.turma}_${aula.professor}`}
-                          className={`hover:bg-slate-50/90 transition ${isSendoEditada ? 'bg-amber-50/80 ring-1 ring-amber-400' : ''}`}
+                          className={`p-3.5 rounded-2xl border bg-white space-y-2 ${
+                            isSendoEditada ? 'border-amber-400 ring-2 ring-amber-400/20 bg-amber-50/30' : 'border-slate-200/80'
+                          }`}
                         >
-                          <td className="p-3 font-extrabold text-slate-900 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              <i className="fa-solid fa-chalkboard-user text-slate-400"></i>
-                              <span>{aula.professor}</span>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-slate-900 text-xs truncate">{aula.professor}</p>
+                              <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                <span className={`inline-block px-2 py-0.5 rounded-md border border-l-4 text-[11px] font-medium ${estiloCor.bg}`}>
+                                  {aula.disciplina}
+                                </span>
+                                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 border border-indigo-200/70 rounded-md text-[11px] font-semibold">
+                                  {aula.turma}
+                                </span>
+                              </div>
                             </div>
-                          </td>
-
-                          <td className="p-3 whitespace-nowrap">
-                            <span className={`inline-block px-2 py-0.5 rounded-md border text-[11px] font-extrabold ${estiloCor.bg}`}>
-                              {aula.disciplina}
-                            </span>
-                          </td>
-
-                          <td className="p-3 font-bold text-slate-800 whitespace-nowrap">
-                            <span className="px-2 py-0.5 bg-blue-100 text-blue-900 border border-blue-200 rounded-md">
-                              {aula.turma}
-                            </span>
-                          </td>
-
-                          <td className="p-3 font-bold text-slate-700 whitespace-nowrap">
-                            <span className="px-2 py-0.5 bg-slate-100 text-slate-800 rounded-md uppercase text-[10px] font-black">
-                              {diaObj?.label || aula.dia}
-                            </span>
-                          </td>
-
-                          <td className="p-3 font-semibold text-slate-700 whitespace-nowrap">
-                            <div className="flex items-center gap-1.5">
-                              <i className="fa-regular fa-clock text-blue-800 text-[10px]"></i>
-                              <span className="font-bold text-slate-900">{rotuloP}</span>
-                              {slotObj?.horario && (
-                                <span className="text-[10px] text-slate-400">({slotObj.horario})</span>
-                              )}
-                            </div>
-                          </td>
-
-                          <td className="p-3 text-slate-600 whitespace-nowrap">
-                            <span className="text-xs font-semibold">{aula.sala || 'Sala Padrão'}</span>
-                          </td>
-
-                          <td className="p-3 text-center whitespace-nowrap">
                             {aula.contarSaldo !== false && aula.ativo !== false ? (
-                              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-black" title="Conta na carga horária">
+                              <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-md text-[10px] font-semibold shrink-0">
                                 Regular
                               </span>
                             ) : (
-                              <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-md text-[10px] font-bold" title="Não conta na carga horária (ATPC/Inativo)">
-                                Inativo/ATPC
+                              <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md text-[10px] font-medium shrink-0">
+                                Inativo
                               </span>
                             )}
-                          </td>
+                          </div>
 
-                          <td className="p-3 text-right whitespace-nowrap">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleIniciarEdicaoAuditoria(aula)}
-                                className="px-2.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-950 font-bold rounded-lg text-xs transition cursor-pointer border border-amber-300 flex items-center gap-1 shadow-2xs"
-                                title="Alterar informações desta aula atribuída"
-                              >
-                                <i className="fa-solid fa-pen-to-square text-amber-800"></i>
-                                <span>Alterar</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => handleExcluirAulaAuditoria(aula)}
-                                className="px-2.5 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-950 font-bold rounded-lg text-xs transition cursor-pointer border border-rose-300 flex items-center gap-1 shadow-2xs"
-                                title="Excluir esta aula atribuída da grade"
-                              >
-                                <i className="fa-solid fa-trash-can text-rose-800"></i>
-                                <span>Excluir</span>
-                              </button>
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-[11px] text-slate-600">
+                            <div className="flex items-center gap-2 font-medium">
+                              <span>{diaObj?.label || aula.dia}</span>
+                              <span>•</span>
+                              <span className="font-mono tabular-nums">{rotuloP}{slotObj?.horario ? ` (${slotObj.horario})` : ''}</span>
                             </div>
-                          </td>
-                        </tr>
+                            <span className="text-slate-500">{aula.sala || 'Sala Padrão'}</span>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => handleIniciarEdicaoAuditoria(aula)}
+                              className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 font-semibold rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5"
+                            >
+                              <i className="fa-solid fa-pen-to-square"></i>
+                              <span>Alterar</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleExcluirAulaAuditoria(aula)}
+                              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200/80 font-semibold rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5"
+                            >
+                              <i className="fa-solid fa-trash-can"></i>
+                              <span>Excluir</span>
+                            </button>
+                          </div>
+                        </div>
                       );
                     })}
-                  </tbody>
-                </table>
+                  </div>
+
+                  {/* Tabela Desktop */}
+                  <div className="hidden md:block overflow-x-auto border border-slate-200/80 rounded-2xl">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-500 font-semibold text-[11px] border-b border-slate-200/80 sticky top-0 z-10">
+                          <th className="p-3">Professor / Docente</th>
+                          <th className="p-3">Disciplina</th>
+                          <th className="p-3">Turma</th>
+                          <th className="p-3">Dia da Semana</th>
+                          <th className="p-3">Período / Horário</th>
+                          <th className="p-3">Sala</th>
+                          <th className="p-3 text-center">Contagem</th>
+                          <th className="p-3 text-right">Ações da Direção</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 bg-white">
+                        {listaAulasAuditoria.map((aula) => {
+                          const estiloCor = getCorDisciplina(aula.disciplina);
+                          const diaObj = DIAS_SEMANA.find(d => normalizarDia(d.id) === normalizarDia(aula.dia));
+                          const rotuloP = getPeriodoRotulo(aula.periodoId);
+                          const slotObj = periodosAula.find(p => String(p.id) === String(aula.periodoId));
+                          const isSendoEditada = aulaEmEdicaoAuditoria?.id === aula.id;
+
+                          return (
+                            <tr
+                              key={aula.id || `${aula.dia}_${aula.periodoId}_${aula.turma}_${aula.professor}`}
+                              className={`hover:bg-slate-50/80 transition ${isSendoEditada ? 'bg-amber-50/70' : ''}`}
+                            >
+                              <td className="p-3 font-semibold text-slate-900 whitespace-nowrap">
+                                <div className="flex items-center gap-2">
+                                  <i className="fa-solid fa-chalkboard-user text-slate-400"></i>
+                                  <span>{aula.professor}</span>
+                                </div>
+                              </td>
+
+                              <td className="p-3 whitespace-nowrap">
+                                <span className={`inline-block px-2 py-0.5 rounded-md border border-l-4 text-[11px] font-medium ${estiloCor.bg}`}>
+                                  {aula.disciplina}
+                                </span>
+                              </td>
+
+                              <td className="p-3 font-semibold text-slate-800 whitespace-nowrap">
+                                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-800 border border-indigo-200/70 rounded-md">
+                                  {aula.turma}
+                                </span>
+                              </td>
+
+                              <td className="p-3 font-medium text-slate-700 whitespace-nowrap">
+                                <span className="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md text-[11px] font-medium">
+                                  {diaObj?.label || aula.dia}
+                                </span>
+                              </td>
+
+                              <td className="p-3 font-medium text-slate-700 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                  <i className="fa-regular fa-clock text-indigo-500 text-[10px]"></i>
+                                  <span className="font-semibold text-slate-900">{rotuloP}</span>
+                                  {slotObj?.horario && (
+                                    <span className="text-[11px] text-slate-400 font-mono tabular-nums">({slotObj.horario})</span>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="p-3 text-slate-600 whitespace-nowrap">
+                                <span className="text-xs font-medium">{aula.sala || 'Sala Padrão'}</span>
+                              </td>
+
+                              <td className="p-3 text-center whitespace-nowrap">
+                                {aula.contarSaldo !== false && aula.ativo !== false ? (
+                                  <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-md text-[10px] font-semibold" title="Conta na carga horária">
+                                    Regular
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md text-[10px] font-medium" title="Não conta na carga horária (ATPC/Inativo)">
+                                    Inativo/ATPC
+                                  </span>
+                                )}
+                              </td>
+
+                              <td className="p-3 text-right whitespace-nowrap">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleIniciarEdicaoAuditoria(aula)}
+                                    className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold rounded-lg text-xs transition cursor-pointer border border-amber-200/80 flex items-center gap-1"
+                                    title="Alterar informações desta aula atribuída"
+                                  >
+                                    <i className="fa-solid fa-pen-to-square text-amber-600"></i>
+                                    <span>Alterar</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleExcluirAulaAuditoria(aula)}
+                                    className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold rounded-lg text-xs transition cursor-pointer border border-rose-200/80 flex items-center gap-1"
+                                    title="Excluir esta aula atribuída da grade"
+                                  >
+                                    <i className="fa-solid fa-trash-can text-rose-600"></i>
+                                    <span>Excluir</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 bg-slate-100 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
-                <span className="font-semibold flex items-center gap-1.5">
+            <div className="px-5 py-3.5 bg-slate-50/90 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                <span className="font-medium flex items-center gap-1.5">
                   <i className="fa-solid fa-shield-halved text-amber-600"></i>
                   <span>Painel de Auditoria Diretor: Todas as alterações e exclusões são gravadas com rastro de auditoria.</span>
                 </span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 ml-auto">
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="px-3.5 py-2 bg-white hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl border border-slate-300 transition cursor-pointer flex items-center gap-1.5"
+                  className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 font-semibold text-xs rounded-xl border border-slate-200/80 transition cursor-pointer flex items-center gap-1.5"
                 >
                   <i className="fa-solid fa-print"></i>
                   <span>Imprimir Lista</span>
@@ -7182,7 +7397,7 @@ export default function Horarios() {
                 <button
                   type="button"
                   onClick={() => setIsAuditoriaAulasModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-xs rounded-xl transition cursor-pointer"
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl transition cursor-pointer"
                 >
                   Concluir / Fechar
                 </button>
@@ -7195,36 +7410,41 @@ export default function Horarios() {
 
       {/* MODAL IN-APP DE CONFIRMAÇÃO (SUBSTITUI window.confirm) */}
       {confirmDialog.open && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-[80] animate-fadeIn">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden">
-            <div className={`p-4 text-white flex items-center justify-between ${
-              confirmDialog.variant === 'danger' ? 'bg-rose-700' :
-              confirmDialog.variant === 'warning' ? 'bg-amber-600' : 'bg-blue-950'
-            }`}>
-              <div className="flex items-center gap-2.5">
-                <i className={`fa-solid ${
-                  confirmDialog.variant === 'danger' ? 'fa-trash-can' :
-                  confirmDialog.variant === 'warning' ? 'fa-triangle-exclamation' : 'fa-circle-question'
-                }`}></i>
-                <h3 className="font-black text-sm">{confirmDialog.title}</h3>
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 z-[80] animate-fadeIn">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200/80 shadow-2xl w-full max-w-md overflow-hidden">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden"></div>
+            <div className="px-5 py-4 border-b border-slate-200/80 flex items-center justify-between bg-white">
+              <div className="flex items-center gap-3">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm shrink-0 ${
+                  confirmDialog.variant === 'danger' ? 'bg-rose-500/10 text-rose-600' :
+                  confirmDialog.variant === 'warning' ? 'bg-amber-500/10 text-amber-600' : 'bg-indigo-500/10 text-indigo-600'
+                }`}>
+                  <i className={`fa-solid ${
+                    confirmDialog.variant === 'danger' ? 'fa-trash-can' :
+                    confirmDialog.variant === 'warning' ? 'fa-triangle-exclamation' : 'fa-circle-question'
+                  }`}></i>
+                </div>
+                <h3 className="font-semibold text-sm sm:text-base text-slate-900 tracking-tight">
+                  {confirmDialog.title}
+                </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setConfirmDialog(prev => ({ ...prev, open: false, onConfirm: null }))}
-                className="text-white/80 hover:text-white p-1 cursor-pointer"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 flex items-center justify-center transition cursor-pointer"
               >
-                <i className="fa-solid fa-xmark"></i>
+                <i className="fa-solid fa-xmark text-sm"></i>
               </button>
             </div>
             <div className="p-5 space-y-4">
-              <p className="text-xs sm:text-sm text-slate-700 font-medium whitespace-pre-line leading-relaxed">
+              <p className="text-xs sm:text-sm text-slate-600 font-medium whitespace-pre-line leading-relaxed">
                 {confirmDialog.message}
               </p>
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setConfirmDialog(prev => ({ ...prev, open: false, onConfirm: null }))}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                  className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/80 font-semibold text-xs rounded-xl transition cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -7237,9 +7457,9 @@ export default function Horarios() {
                       await cb();
                     }
                   }}
-                  className={`px-4 py-2 text-white font-black text-xs rounded-xl transition shadow-sm cursor-pointer ${
+                  className={`px-4 py-2 text-white font-semibold text-xs rounded-xl transition shadow-xs cursor-pointer ${
                     confirmDialog.variant === 'danger' ? 'bg-rose-600 hover:bg-rose-700' :
-                    confirmDialog.variant === 'warning' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-950 hover:bg-slate-900'
+                    confirmDialog.variant === 'warning' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-indigo-600 hover:bg-indigo-700'
                   }`}
                 >
                   {confirmDialog.confirmLabel || 'Confirmar'}

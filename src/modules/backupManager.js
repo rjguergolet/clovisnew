@@ -136,7 +136,7 @@ export function capturarConfiguracaoCompletaSistema() {
       DIRETOR: ['mural', 'alunos', 'dashboard', 'dashboard-atrasos', 'dashboard-notas', 'sis-panorama', 'professores', 'registros', 'secretaria', 'busca-ativa', 'agenda', 'admin', 'dash-projetos-pei', 'rotina-pdca', 'horarios', 'substituicao-pei'],
       VICE_DIRETOR: ['mural', 'alunos', 'dashboard', 'dashboard-atrasos', 'dashboard-notas', 'sis-panorama', 'professores', 'registros', 'secretaria', 'busca-ativa', 'agenda', 'admin', 'dash-projetos-pei', 'rotina-pdca', 'horarios', 'substituicao-pei'],
       CGPG: ['mural', 'alunos', 'dashboard', 'dashboard-atrasos', 'dashboard-notas', 'sis-panorama', 'professores', 'registros', 'secretaria', 'agenda', 'admin', 'rotina-pdca', 'horarios', 'substituicao-pei'],
-      PROFESSOR: ['mural', 'alunos', 'dashboard', 'dashboard-atrasos', 'dashboard-notas', 'sis-panorama', 'registros', 'agenda', 'admin', 'rotina-pdca', 'horarios', 'substituicao-pei'],
+      PROFESSOR: ['mural', 'alunos', 'dashboard', 'dashboard-atrasos', 'dashboard-notas', 'sis-panorama', 'registros', 'agenda', 'admin', 'rotina-pdca', 'horarios'],
       SECRETARIA: ['mural', 'alunos', 'dashboard', 'dashboard-atrasos', 'dashboard-notas', 'sis-panorama', 'professores', 'registros', 'secretaria', 'busca-ativa', 'agenda', 'admin', 'horarios', 'substituicao-pei']
     },
     configuracoes_locais_chaves: Object.keys(locais),

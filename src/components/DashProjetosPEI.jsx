@@ -684,7 +684,9 @@ export default function DashProjetosPEI() {
   const handleSalvarProjeto = async (e) => {
     e.preventDefault();
     if (!formProjeto.nome.trim()) {
-      alert('Por favor, informe o nome do projeto/disciplina/clube.');
+      if (typeof window.showToast === 'function') {
+        window.showToast('Por favor, informe o nome do projeto/disciplina/clube.', 'warning');
+      }
       return;
     }
 
@@ -755,8 +757,6 @@ export default function DashProjetosPEI() {
   };
 
   const handleExcluirProjeto = async (id, nomeProjeto, eixo) => {
-    if (!window.confirm(`Confirma a exclusão do projeto "${nomeProjeto}"?`)) return;
-
     try {
       if (id && !id.startsWith('local-proj-')) {
         await deleteDoc(doc(db, 'projetos_pei', id));
@@ -770,7 +770,7 @@ export default function DashProjetosPEI() {
       renderizarDashProjetosPEI();
 
       if (typeof window.showToast === 'function') {
-        window.showToast('Projeto excluído com sucesso!', 'info');
+        window.showToast(`Projeto "${nomeProjeto}" excluído com sucesso!`, 'info');
       }
     } catch (err) {
       console.error('Erro ao excluir projeto:', err);
@@ -779,17 +779,17 @@ export default function DashProjetosPEI() {
 
   if (!isAuthorized) {
     return (
-      <div className="p-6 md:p-8 bg-slate-50 min-h-screen flex items-center justify-center">
-        <div className="max-w-md w-full bg-white border border-red-200 rounded-2xl p-6 text-center shadow-lg">
-          <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl font-bold">
+      <div className="p-6 md:p-8 bg-[#F8FAFC] min-h-screen flex items-center justify-center">
+        <div className="max-w-md w-full bg-white border border-slate-200/80 border-l-4 border-l-rose-500 rounded-3xl p-6 text-center shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)]">
+          <div className="w-14 h-14 bg-rose-500/10 text-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-xl">
             <i className="fa-solid fa-lock"></i>
           </div>
-          <h3 className="text-lg font-bold text-slate-800 uppercase tracking-tight">Acesso Restrito ao Módulo</h3>
+          <h3 className="text-lg font-bold text-slate-900 tracking-tight">Acesso Restrito ao Módulo</h3>
           <p className="text-xs text-slate-600 mt-2 leading-relaxed">
-            O painel analítico <strong className="text-red-700">Dash Projetos PEI</strong> é de uso exclusivo da Equipe Gestora (<strong>DIRETOR</strong> e <strong>VICE_DIRETOR</strong>).
+            O painel analítico <strong className="text-rose-700">Dash Projetos PEI</strong> é de uso exclusivo da Equipe Gestora (<strong>DIRETOR</strong> e <strong>VICE_DIRETOR</strong>).
           </p>
-          <div className="mt-5 p-3 bg-slate-100 rounded-xl text-[11px] text-slate-500 font-mono">
-            Perfil Detectado: <span className="font-bold text-slate-800">{userRole}</span>
+          <div className="mt-5 p-3 bg-slate-50 border border-slate-200/80 rounded-xl text-xs text-slate-500">
+            Perfil Detectado: <span className="font-semibold text-slate-800">{userRole}</span>
           </div>
         </div>
       </div>
@@ -798,82 +798,138 @@ export default function DashProjetosPEI() {
 
   // Renderizador de Tabela por Categoria
   const renderTable = (title, iconClass, colorTheme, itemsList, categoryKey) => {
-    const filteredItems = itemsList.filter(item => 
+    const filteredItems = itemsList.filter(item =>
       item.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     const themeMap = {
-      blue: {
-        headerBg: 'bg-blue-900 text-white',
-        border: 'border-blue-200',
-        badge: 'bg-blue-100 text-blue-900',
-        iconBg: 'bg-blue-100 text-blue-700'
-      },
-      emerald: {
-        headerBg: 'bg-emerald-800 text-white',
-        border: 'border-emerald-200',
-        badge: 'bg-emerald-100 text-emerald-900',
-        iconBg: 'bg-emerald-100 text-emerald-700'
-      },
-      purple: {
-        headerBg: 'bg-purple-900 text-white',
-        border: 'border-purple-200',
-        badge: 'bg-purple-100 text-purple-900',
-        iconBg: 'bg-purple-100 text-purple-700'
-      },
-      amber: {
-        headerBg: 'bg-amber-800 text-white',
-        border: 'border-amber-200',
-        badge: 'bg-amber-100 text-amber-900',
-        iconBg: 'bg-amber-100 text-amber-700'
-      },
-      indigo: {
-        headerBg: 'bg-indigo-900 text-white',
-        border: 'border-indigo-200',
-        badge: 'bg-indigo-100 text-indigo-900',
-        iconBg: 'bg-indigo-100 text-indigo-700'
-      }
+      blue: { iconBox: 'bg-indigo-500/10 text-indigo-600', pill: 'bg-indigo-50 text-indigo-700 border-indigo-200/60' },
+      emerald: { iconBox: 'bg-emerald-500/10 text-emerald-600', pill: 'bg-emerald-50 text-emerald-700 border-emerald-200/60' },
+      purple: { iconBox: 'bg-purple-500/10 text-purple-600', pill: 'bg-purple-50 text-purple-700 border-purple-200/60' },
+      amber: { iconBox: 'bg-amber-500/10 text-amber-600', pill: 'bg-amber-50 text-amber-700 border-amber-200/60' },
+      indigo: { iconBox: 'bg-indigo-500/10 text-indigo-600', pill: 'bg-indigo-50 text-indigo-700 border-indigo-200/60' }
     };
 
     const theme = themeMap[colorTheme] || themeMap.blue;
 
     return (
-      <div className={`bg-white rounded-2xl border ${theme.border} shadow-2xs overflow-hidden flex flex-col`}>
-        {/* Header do Card/Tabela */}
-        <div className={`p-4 ${theme.headerBg} flex items-center justify-between gap-3`}>
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-white/20 backdrop-blur-xs flex items-center justify-center text-white text-sm">
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col">
+        <div className="px-4 sm:px-5 py-4 bg-white border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm shrink-0 ${theme.iconBox}`}>
               <i className={iconClass}></i>
             </div>
             <div>
-              <h3 className="font-extrabold text-sm uppercase tracking-wider">{title}</h3>
-              <p className="text-[11px] opacity-80 font-medium">{filteredItems.length} registros mapeados</p>
+              <h3 className="font-bold text-sm text-slate-900">{title}</h3>
+              <p className="text-[11px] text-slate-500 font-medium tabular-nums">{filteredItems.length} registros mapeados</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {(semRegistroMap[categoryKey] || []).length > 0 && (
               <span
-                className="px-2.5 py-1 bg-red-600 text-white font-extrabold text-[10px] rounded-full flex items-center gap-1 shadow-2xs"
+                className="px-2.5 py-1 bg-rose-50/90 text-rose-800 border border-rose-200/60 border-l-4 border-l-rose-500 font-semibold text-[11px] rounded-lg flex items-center gap-1.5 tabular-nums"
                 title="Quantidade de alunos ativos sem registro nesta categoria"
               >
-                <i className="fa-solid fa-user-xmark text-[10px]"></i>
+                <i className="fa-solid fa-user-xmark text-[10px] text-rose-600"></i>
                 <span>{(semRegistroMap[categoryKey] || []).length} Sem Registro</span>
               </span>
             )}
-            <span className="px-2.5 py-1 bg-white/20 rounded-full font-mono text-xs font-bold text-white shrink-0">
+            <span className={`px-2.5 py-1 rounded-lg border text-xs font-semibold tabular-nums shrink-0 ${theme.pill}`}>
               {filteredItems.reduce((acc, curr) => acc + curr.total, 0)} Alunos
             </span>
           </div>
         </div>
 
-        {/* Tabela de Dados */}
-        <div className="overflow-x-auto max-h-[440px] custom-scrollbar flex-1">
+        <div className="sm:hidden divide-y divide-slate-100 max-h-[440px] overflow-y-auto">
+          {filteredItems.length === 0 ? (
+            <div className="p-6 text-center text-slate-400 font-medium text-xs">
+              Nenhum registro encontrado para esta categoria.
+            </div>
+          ) : (
+            filteredItems.map((item) => {
+              const rowKey = `${categoryKey}_${item.name.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+              const cap = getGroupCapacity(rowKey);
+              const isCapacityFull = item.total >= cap;
+              const isExpanded = expandedRowKey === rowKey;
+
+              return (
+                <div key={rowKey} className={`p-3.5 space-y-2.5 ${isCapacityFull ? 'bg-rose-50/40 border-l-4 border-l-rose-500' : ''}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className={`font-semibold text-xs block ${isCapacityFull ? 'text-rose-900' : 'text-slate-900'}`}>
+                        {item.name}
+                      </span>
+                      {item.professorResponsavel && (
+                        <span className="text-[11px] text-slate-500 block">
+                          Prof. {item.professorResponsavel} {item.sala ? `· ${item.sala}` : ''}
+                        </span>
+                      )}
+                    </div>
+                    <span
+                      className={`px-2 py-0.5 rounded-md border-l-2 text-[11px] font-semibold tabular-nums shrink-0 ${
+                        isCapacityFull
+                          ? 'bg-rose-50 text-rose-800 border-l-rose-500'
+                          : 'bg-emerald-50 text-emerald-800 border-l-emerald-500'
+                      }`}
+                    >
+                      {isCapacityFull ? `Lotado (${item.total}/${cap})` : `${item.total}/${cap}`}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                      <span>Cap. Máx:</span>
+                      <input
+                        type="number"
+                        min="1"
+                        max="300"
+                        value={
+                          localCapacidades[rowKey] !== undefined
+                            ? localCapacidades[rowKey]
+                            : (capacidadesMap[rowKey] !== undefined ? capacidadesMap[rowKey] : 25)
+                        }
+                        onChange={(e) => handleCapacidadeChange(rowKey, e.target.value)}
+                        className="w-16 px-2 py-1 bg-white border border-slate-200 rounded-lg text-center font-mono font-semibold text-xs text-slate-800"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedRowKey(isExpanded ? null : rowKey)}
+                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg transition cursor-pointer inline-flex items-center gap-1"
+                    >
+                      <i className={`fa-solid ${isExpanded ? 'fa-chevron-up' : 'fa-users'} text-[10px]`}></i>
+                      <span>{isExpanded ? 'Ocultar' : `Ver Alunos (${item.alunos.length})`}</span>
+                    </button>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="bg-slate-50 rounded-xl border border-slate-200/80 p-2.5 max-h-44 overflow-y-auto space-y-1.5">
+                      {item.alunos.map((aluno, aIdx) => (
+                        <div key={aluno.ra || aIdx} className="flex items-center justify-between text-[11px] py-1 border-b border-slate-100 last:border-b-0">
+                          <div className="min-w-0 pr-2">
+                            <div className="font-semibold text-slate-800 truncate">{aluno.nome}</div>
+                            <div className="text-[10px] text-slate-500 font-mono">RA {aluno.ra} · {aluno.turma}</div>
+                          </div>
+                          <span className="px-1.5 py-0.5 bg-white border border-slate-200 text-slate-600 font-semibold text-[10px] rounded">
+                            {aluno.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <div className="hidden sm:block overflow-x-auto max-h-[440px] custom-scrollbar flex-1">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 uppercase text-[10px] tracking-wider sticky top-0 z-10">
+              <tr className="bg-slate-50/90 text-slate-500 font-semibold border-b border-slate-200/80 text-[11px] sticky top-0 z-10">
                 <th className="p-3">Grupo / Professor ({title})</th>
                 <th className="p-3 text-center">Inscritos</th>
-                <th className="p-3 text-center">Capacidade Máxima</th>
+                <th className="p-3 text-center">Capacidade Máx.</th>
                 <th className="p-3 text-center">Status Lotação</th>
                 <th className="p-3 text-right">Ação</th>
               </tr>
@@ -881,7 +937,7 @@ export default function DashProjetosPEI() {
             <tbody className="divide-y divide-slate-100">
               {filteredItems.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-slate-400 font-semibold uppercase text-xs">
+                  <td colSpan={5} className="p-8 text-center text-slate-400 font-medium text-xs">
                     Nenhum registro encontrado para esta categoria.
                   </td>
                 </tr>
@@ -894,39 +950,36 @@ export default function DashProjetosPEI() {
 
                   return (
                     <React.Fragment key={rowKey}>
-                      <tr 
+                      <tr
                         className={`transition-colors ${
-                          isCapacityFull 
-                            ? 'bg-red-50 hover:bg-red-100 font-semibold border-l-4 border-l-red-600' 
-                            : 'hover:bg-slate-50'
+                          isCapacityFull
+                            ? 'bg-rose-50/50 hover:bg-rose-50/80 border-l-4 border-l-rose-500'
+                            : 'hover:bg-slate-50/80'
                         }`}
                       >
-                        {/* Nome do Grupo */}
                         <td className="p-3">
-                          <span className={`font-bold text-xs uppercase block ${isCapacityFull ? 'text-red-900' : 'text-slate-800'}`}>
+                          <span className={`font-semibold text-xs block ${isCapacityFull ? 'text-rose-900' : 'text-slate-900'}`}>
                             {item.name}
                           </span>
                           {item.professorResponsavel && (
-                            <span className="text-[10px] text-slate-500 font-medium block">
+                            <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
                               Prof. {item.professorResponsavel} {item.sala ? `(${item.sala})` : ''}
                             </span>
                           )}
                         </td>
 
-                        {/* Total de Alunos */}
-                        <td className="p-3 text-center">
-                          <span 
-                            className={`inline-block px-2.5 py-0.5 rounded-full font-mono font-extrabold text-xs ${
-                              isCapacityFull 
-                                ? 'bg-red-600 text-white shadow-2xs' 
-                                : 'bg-slate-200 text-slate-800'
+                        <td className="p-3 text-center tabular-nums">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-lg font-mono font-bold text-xs ${
+                              isCapacityFull
+                                ? 'bg-rose-600 text-white'
+                                : 'bg-slate-100 text-slate-800'
                             }`}
                           >
                             {item.total}
                           </span>
                         </td>
 
-                        {/* Capacidade Individual Dinâmica */}
                         <td className="p-3 text-center">
                           <div className="flex items-center justify-center gap-1">
                             <input
@@ -940,32 +993,30 @@ export default function DashProjetosPEI() {
                               }
                               onChange={(e) => handleCapacidadeChange(rowKey, e.target.value)}
                               title="Alterar limite individual"
-                              className="w-16 px-2 py-1 bg-white border border-slate-300 rounded-lg text-center font-mono font-bold text-xs text-slate-800 outline-none focus:ring-2 focus:ring-cyan-500 shadow-2xs"
+                              className="w-16 px-2 py-1 bg-white border border-slate-200 rounded-xl text-center font-mono font-semibold text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/30 tabular-nums"
                             />
                           </div>
                         </td>
 
-                        {/* Indicador de Status Lotação */}
-                        <td className="p-3 text-center whitespace-nowrap">
+                        <td className="p-3 text-center whitespace-nowrap tabular-nums">
                           {isCapacityFull ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-600 text-white font-extrabold text-[10px] rounded-md shadow-2xs uppercase tracking-tight animate-pulse">
-                              <i className="fa-solid fa-triangle-exclamation"></i>
-                              <span>LOTADO ({item.total}/{cap})</span>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50/90 text-rose-900 border border-rose-200/60 border-l-4 border-l-rose-500 font-semibold text-[11px] rounded-lg">
+                              <i className="fa-solid fa-triangle-exclamation text-rose-600"></i>
+                              <span>Lotado ({item.total}/{cap})</span>
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded uppercase">
-                              <i className="fa-solid fa-circle-check text-[9px]"></i>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50/90 text-emerald-900 border border-emerald-200/60 border-l-4 border-l-emerald-500 font-semibold text-[11px] rounded-lg">
+                              <i className="fa-solid fa-circle-check text-[10px] text-emerald-600"></i>
                               <span>Regular ({item.total}/{cap})</span>
                             </span>
                           )}
                         </td>
 
-                        {/* Ação Expandir Alunos Inline */}
                         <td className="p-3 text-right">
                           <button
                             type="button"
                             onClick={() => setExpandedRowKey(isExpanded ? null : rowKey)}
-                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[10px] rounded-lg transition-colors cursor-pointer inline-flex items-center gap-1 border border-slate-200 shadow-2xs"
+                            className="px-2.5 py-1 bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold text-[11px] rounded-xl transition-colors cursor-pointer inline-flex items-center gap-1 border border-slate-200"
                             title="Expandir ou ocultar lista de alunos nesta tabela"
                           >
                             <i className={`fa-solid ${isExpanded ? 'fa-chevron-up' : 'fa-users'} text-[10px]`}></i>
@@ -974,38 +1025,37 @@ export default function DashProjetosPEI() {
                         </td>
                       </tr>
 
-                      {/* Subtabela de Alunos do Grupo */}
                       {isExpanded && (
-                        <tr className="bg-slate-50 border-b border-slate-200">
+                        <tr className="bg-slate-50/70 border-b border-slate-200">
                           <td colSpan={5} className="p-3">
-                            <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-inner">
+                            <div className="bg-white rounded-2xl border border-slate-200/80 p-3">
                               <div className="flex items-center justify-between mb-2">
-                                <span className="font-bold text-slate-700 text-[11px] uppercase flex items-center gap-1.5">
-                                  <i className="fa-solid fa-users text-blue-600"></i>
+                                <span className="font-semibold text-slate-700 text-xs flex items-center gap-1.5">
+                                  <i className="fa-solid fa-users text-indigo-600"></i>
                                   Lista de Estudantes ({item.alunos.length})
                                 </span>
-                                <span className="text-[10px] font-mono text-slate-400">
+                                <span className="text-[11px] font-mono text-slate-400">
                                   Grupo: {item.name}
                                 </span>
                               </div>
                               <div className="max-h-48 overflow-y-auto custom-scrollbar">
                                 <table className="w-full text-left text-[11px]">
                                   <thead>
-                                    <tr className="text-slate-400 font-bold text-[9px] uppercase border-b border-slate-100">
-                                      <th className="py-1 px-2">RA</th>
-                                      <th className="py-1 px-2">Nome Completo</th>
-                                      <th className="py-1 px-2">Turma</th>
-                                      <th className="py-1 px-2">Status</th>
+                                    <tr className="text-slate-400 font-semibold text-[10px] border-b border-slate-100">
+                                      <th className="py-1.5 px-2">RA</th>
+                                      <th className="py-1.5 px-2">Nome Completo</th>
+                                      <th className="py-1.5 px-2">Turma</th>
+                                      <th className="py-1.5 px-2">Status</th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-100">
                                     {item.alunos.map((aluno, aIdx) => (
                                       <tr key={aluno.ra || aIdx} className="hover:bg-slate-50">
-                                        <td className="py-1 px-2 font-mono text-slate-500">{aluno.ra}</td>
-                                        <td className="py-1 px-2 font-semibold text-slate-800">{aluno.nome}</td>
-                                        <td className="py-1 px-2 font-medium text-slate-600">{aluno.turma}</td>
-                                        <td className="py-1 px-2">
-                                          <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 font-bold text-[9px] rounded uppercase">
+                                        <td className="py-1.5 px-2 font-mono text-slate-500 tabular-nums">{aluno.ra}</td>
+                                        <td className="py-1.5 px-2 font-semibold text-slate-800">{aluno.nome}</td>
+                                        <td className="py-1.5 px-2 font-medium text-slate-600">{aluno.turma}</td>
+                                        <td className="py-1.5 px-2">
+                                          <span className="px-2 py-0.5 bg-slate-100 text-slate-700 font-semibold text-[10px] rounded-md">
                                             {aluno.status}
                                           </span>
                                         </td>
@@ -1030,211 +1080,121 @@ export default function DashProjetosPEI() {
   };
 
   return (
-    <div className="w-full p-4 sm:p-6 bg-slate-50 min-h-screen space-y-6">
-      {/* Cabeçalho Superior do Dashboard (100% de largura) */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 bg-cyan-100 text-blue-900 font-extrabold text-[10px] rounded-full uppercase tracking-wide">
-              Módulo Gestão PEI
-            </span>
-            {lotadosCounts.total > 0 && (
-              <span className="px-2.5 py-0.5 bg-red-600 text-white font-extrabold text-[10px] rounded-full uppercase animate-pulse">
-                {lotadosCounts.total} Grupos Lotados
-              </span>
-            )}
-            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold text-[10px] rounded-full">
-              ⚡ Cache Ativo (Zero Reads)
-            </span>
+    <div className="w-full p-3 sm:p-6 bg-[#F8FAFC] min-h-screen space-y-5">
+      {/* Cabeçalho Superior Glassmorphic */}
+      <header className="bg-white/90 backdrop-blur-md md:sticky md:top-2 z-20 p-4 sm:p-5 rounded-3xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+        <div className="flex items-start gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-lg shrink-0">
+            <i className="fa-solid fa-diagram-project"></i>
           </div>
-          <h1 className="text-xl font-black text-blue-950 uppercase tracking-tight mt-1">
-            Dash Projetos PEI (5 Eixos do Protagonismo)
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Mapeamento analítico e definição individual de capacidade com cálculos 100% em memória.
-          </p>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-100 text-slate-700 font-semibold text-[11px] rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                Gestão PEI · Cache Ativo
+              </span>
+              {lotadosCounts.total > 0 && (
+                <span className="px-2.5 py-0.5 bg-rose-50 text-rose-800 border border-rose-200/60 border-l-4 border-l-rose-500 font-semibold text-[11px] rounded-lg tabular-nums">
+                  {lotadosCounts.total} Grupos Lotados
+                </span>
+              )}
+            </div>
+            <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight mt-1">
+              Dash Projetos PEI · 5 Eixos do Protagonismo
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Mapeamento analítico e definição individual de capacidade com cálculos em memória.
+            </p>
+          </div>
         </div>
 
         {/* Ferramentas de Ação, Pesquisa e Ordenação */}
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          {/* Botão Novo Projeto PEI */}
+        <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
           <button
             type="button"
             onClick={handleAbrirModalNovoProjeto}
-            className="px-3.5 py-2 bg-blue-900 hover:bg-blue-950 text-cyan-300 font-black text-xs rounded-xl shadow-xs transition flex items-center gap-2 cursor-pointer"
+            className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-2xs transition flex items-center gap-2 cursor-pointer"
           >
-            <i className="fa-solid fa-plus"></i>
+            <i className="fa-solid fa-plus text-emerald-400"></i>
             <span>Novo Projeto</span>
           </button>
 
-          {/* Botão Forçar Atualização */}
           <button
             type="button"
             onClick={() => carregarProjetosPEI(true)}
             disabled={loading}
-            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition border border-slate-200 cursor-pointer"
+            className="p-2 bg-white hover:bg-slate-50 text-slate-600 font-semibold text-xs rounded-xl transition border border-slate-200 cursor-pointer"
             title="Recarregar dados do servidor caso necessário"
           >
-            <i className={`fa-solid fa-rotate ${loading ? 'fa-spin text-cyan-600' : ''}`}></i>
+            <i className={`fa-solid fa-rotate ${loading ? 'fa-spin text-indigo-600' : ''}`}></i>
           </button>
 
-          {/* Campo de Busca */}
-          <div className="relative flex-1 md:flex-none">
+          <div className="relative flex-1 lg:flex-none">
             <i className="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
             <input
               type="text"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               placeholder="Buscar grupo ou professor..."
-              className="pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-cyan-400 w-full md:w-56"
+              className="pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/30 w-full lg:w-56"
             />
           </div>
 
-          {/* Seletor de Ordenação */}
           <select
             value={sortBy}
             onChange={e => setSortBy(e.target.value)}
-            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-cyan-400 cursor-pointer"
+            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500/30 cursor-pointer"
           >
             <option value="total-desc">Mais Alunos primeiro</option>
             <option value="total-asc">Menos Alunos primeiro</option>
             <option value="name-asc">Ordem Alfabética</option>
           </select>
         </div>
+      </header>
+
+      {/* Bento Grid: Resumo dos 5 Eixos */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {[
+          { key: 'tutor', title: 'Tutoria', icon: 'fa-solid fa-user-tie', iconBox: 'bg-indigo-500/10 text-indigo-600', count: `${tutoresList.length} Grupos`, total: tutoresList.reduce((a, b) => a + b.total, 0), emptyLabel: 'Sem Tutor', emptyCount: semRegistroMap.tutor.length },
+          { key: 'clube', title: 'Clubes Juvenis', icon: 'fa-solid fa-users-line', iconBox: 'bg-emerald-500/10 text-emerald-600', count: `${clubesList.length} Clubes`, total: clubesList.reduce((a, b) => a + b.total, 0), emptyLabel: 'Sem Clube', emptyCount: semRegistroMap.clube.length },
+          { key: 'eletiva', title: 'Eletivas', icon: 'fa-solid fa-book-open-reader', iconBox: 'bg-purple-500/10 text-purple-600', count: `${eletivasList.length} Eletivas`, total: eletivasList.reduce((a, b) => a + b.total, 0), emptyLabel: 'Sem Eletiva', emptyCount: semRegistroMap.eletiva.length },
+          { key: 'pj', title: 'PJ (Protagonismo)', icon: 'fa-solid fa-rocket', iconBox: 'bg-amber-500/10 text-amber-600', count: `${pjList.length} Grupos`, total: pjList.reduce((a, b) => a + b.total, 0), emptyLabel: 'Sem PJ', emptyCount: semRegistroMap.pj.length },
+          { key: 'pv', title: 'Projeto de Vida', icon: 'fa-solid fa-compass', iconBox: 'bg-sky-500/10 text-sky-600', count: `${pvList.length} Grupos`, total: pvList.reduce((a, b) => a + b.total, 0), emptyLabel: 'Sem PV', emptyCount: semRegistroMap.pv.length }
+        ].map((card) => (
+          <div
+            key={card.key}
+            onClick={() => setActiveInternalTab(card.key)}
+            className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex flex-col justify-between cursor-pointer hover:border-slate-300 transition"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-slate-500">{card.title}</span>
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs shrink-0 ${card.iconBox}`}>
+                <i className={card.icon}></i>
+              </div>
+            </div>
+            <div className="mt-2.5 space-y-1.5">
+              <div className="text-lg font-bold text-slate-900 tabular-nums">{card.count}</div>
+              <div className="text-[11px] font-medium text-slate-500 tabular-nums">
+                {card.total} Alunos Atribuídos
+              </div>
+              <div className="mt-1 text-[11px] font-semibold text-rose-800 bg-rose-50/90 px-2.5 py-1 rounded-lg border border-rose-200/60 border-l-4 border-l-rose-500 w-full flex items-center justify-between tabular-nums">
+                <span>{card.emptyLabel}:</span>
+                <span className="font-bold text-rose-700">{card.emptyCount}</span>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Cards de Resumo dos 5 Eixos (Cálculo 100% Offline) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        {/* Card Tutoria */}
-        <div className="bg-white p-3.5 rounded-xl border border-blue-200 shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-blue-900">
-            <span className="text-[10px] font-black uppercase">Tutoria</span>
-            <i className="fa-solid fa-user-tie text-blue-600"></i>
-          </div>
-          <div className="mt-2 space-y-1">
-            <div className="text-xl font-black text-blue-950 font-mono">{tutoresList.length} Grupos</div>
-            <div className="text-[10px] font-semibold text-slate-500">
-              {tutoresList.reduce((a, b) => a + b.total, 0)} Alunos Atribuídos
-            </div>
-            <div
-              className="mt-1 text-[10px] font-extrabold text-red-700 bg-red-50 px-2 py-1 rounded-md border border-red-200 w-full flex items-center justify-between"
-              title="Quantidade de alunos ativos sem tutor cadastrado"
-            >
-              <span className="flex items-center gap-1">
-                <i className="fa-solid fa-user-xmark text-red-600"></i>
-                <span>Sem Tutor:</span>
-              </span>
-              <span className="font-mono bg-red-600 text-white px-1.5 py-0.2 rounded text-[10px] font-bold">{semRegistroMap.tutor.length}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card Clubes Juvenis */}
-        <div className="bg-white p-3.5 rounded-xl border border-emerald-200 shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-emerald-900">
-            <span className="text-[10px] font-black uppercase">Clubes Juvenis</span>
-            <i className="fa-solid fa-users-line text-emerald-600"></i>
-          </div>
-          <div className="mt-2 space-y-1">
-            <div className="text-xl font-black text-emerald-950 font-mono">{clubesList.length} Clubes</div>
-            <div className="text-[10px] font-semibold text-slate-500">
-              {clubesList.reduce((a, b) => a + b.total, 0)} Alunos Atribuídos
-            </div>
-            <div
-              className="mt-1 text-[10px] font-extrabold text-red-700 bg-red-50 px-2 py-1 rounded-md border border-red-200 w-full flex items-center justify-between"
-              title="Quantidade de alunos ativos sem clube juvenil cadastrado"
-            >
-              <span className="flex items-center gap-1">
-                <i className="fa-solid fa-user-xmark text-red-600"></i>
-                <span>Sem Clube:</span>
-              </span>
-              <span className="font-mono bg-red-600 text-white px-1.5 py-0.2 rounded text-[10px] font-bold">{semRegistroMap.clube.length}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card Eletivas */}
-        <div className="bg-white p-3.5 rounded-xl border border-purple-200 shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-purple-900">
-            <span className="text-[10px] font-black uppercase">Eletivas</span>
-            <i className="fa-solid fa-book-open-reader text-purple-600"></i>
-          </div>
-          <div className="mt-2 space-y-1">
-            <div className="text-xl font-black text-purple-950 font-mono">{eletivasList.length} Eletivas</div>
-            <div className="text-[10px] font-semibold text-slate-500">
-              {eletivasList.reduce((a, b) => a + b.total, 0)} Alunos Atribuídos
-            </div>
-            <div
-              className="mt-1 text-[10px] font-extrabold text-red-700 bg-red-50 px-2 py-1 rounded-md border border-red-200 w-full flex items-center justify-between"
-              title="Quantidade de alunos ativos sem eletiva cadastrada"
-            >
-              <span className="flex items-center gap-1">
-                <i className="fa-solid fa-user-xmark text-red-600"></i>
-                <span>Sem Eletiva:</span>
-              </span>
-              <span className="font-mono bg-red-600 text-white px-1.5 py-0.2 rounded text-[10px] font-bold">{semRegistroMap.eletiva.length}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card PJ */}
-        <div className="bg-white p-3.5 rounded-xl border border-amber-200 shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-amber-900">
-            <span className="text-[10px] font-black uppercase">PJ (Protagonismo)</span>
-            <i className="fa-solid fa-rocket text-amber-600"></i>
-          </div>
-          <div className="mt-2 space-y-1">
-            <div className="text-xl font-black text-amber-950 font-mono">{pjList.length} Grupos</div>
-            <div className="text-[10px] font-semibold text-slate-500">
-              {pjList.reduce((a, b) => a + b.total, 0)} Alunos Atribuídos
-            </div>
-            <div
-              className="mt-1 text-[10px] font-extrabold text-red-700 bg-red-50 px-2 py-1 rounded-md border border-red-200 w-full flex items-center justify-between"
-              title="Quantidade de alunos ativos sem PJ cadastrado"
-            >
-              <span className="flex items-center gap-1">
-                <i className="fa-solid fa-user-xmark text-red-600"></i>
-                <span>Sem PJ:</span>
-              </span>
-              <span className="font-mono bg-red-600 text-white px-1.5 py-0.2 rounded text-[10px] font-bold">{semRegistroMap.pj.length}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Card Projeto de Vida */}
-        <div className="bg-white p-3.5 rounded-xl border border-indigo-200 shadow-2xs flex flex-col justify-between">
-          <div className="flex items-center justify-between text-indigo-900">
-            <span className="text-[10px] font-black uppercase">Projeto de Vida</span>
-            <i className="fa-solid fa-compass text-indigo-600"></i>
-          </div>
-          <div className="mt-2 space-y-1">
-            <div className="text-xl font-black text-indigo-950 font-mono">{pvList.length} Grupos</div>
-            <div className="text-[10px] font-semibold text-slate-500">
-              {pvList.reduce((a, b) => a + b.total, 0)} Alunos Atribuídos
-            </div>
-            <div
-              className="mt-1 text-[10px] font-extrabold text-red-700 bg-red-50 px-2 py-1 rounded-md border border-red-200 w-full flex items-center justify-between"
-              title="Quantidade de alunos ativos sem Projeto de Vida cadastrado"
-            >
-              <span className="flex items-center gap-1">
-                <i className="fa-solid fa-user-xmark text-red-600"></i>
-                <span>Sem PV:</span>
-              </span>
-              <span className="font-mono bg-red-600 text-white px-1.5 py-0.2 rounded text-[10px] font-bold">{semRegistroMap.pv.length}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Navegação de Abas do Próprio Dashboard */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-slate-200">
+      {/* Filter Pills Horizontais Deslizáveis dos Eixos */}
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
         <button
           type="button"
           onClick={() => setActiveInternalTab('grid')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+          className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
             activeInternalTab === 'grid'
-              ? 'bg-blue-900 text-white shadow-xs'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              ? 'bg-slate-900 text-white shadow-2xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
           }`}
         >
           <i className="fa-solid fa-table-cells mr-1.5"></i>
@@ -1244,23 +1204,23 @@ export default function DashProjetosPEI() {
         <button
           type="button"
           onClick={() => setActiveInternalTab('tutor')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+          className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
             activeInternalTab === 'tutor'
-              ? 'bg-blue-900 text-white shadow-xs'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              ? 'bg-slate-900 text-white shadow-2xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
           }`}
         >
-          <i className="fa-solid fa-user-tie mr-1.5 text-blue-500"></i>
+          <i className="fa-solid fa-user-tie mr-1.5 text-indigo-500"></i>
           Tutoria ({tutoresList.length})
         </button>
 
         <button
           type="button"
           onClick={() => setActiveInternalTab('clube')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+          className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
             activeInternalTab === 'clube'
-              ? 'bg-emerald-800 text-white shadow-xs'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              ? 'bg-slate-900 text-white shadow-2xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
           }`}
         >
           <i className="fa-solid fa-users-line mr-1.5 text-emerald-500"></i>
@@ -1270,10 +1230,10 @@ export default function DashProjetosPEI() {
         <button
           type="button"
           onClick={() => setActiveInternalTab('eletiva')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+          className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
             activeInternalTab === 'eletiva'
-              ? 'bg-purple-900 text-white shadow-xs'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              ? 'bg-slate-900 text-white shadow-2xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
           }`}
         >
           <i className="fa-solid fa-book-open-reader mr-1.5 text-purple-500"></i>
@@ -1283,10 +1243,10 @@ export default function DashProjetosPEI() {
         <button
           type="button"
           onClick={() => setActiveInternalTab('pj')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+          className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
             activeInternalTab === 'pj'
-              ? 'bg-amber-800 text-white shadow-xs'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              ? 'bg-slate-900 text-white shadow-2xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
           }`}
         >
           <i className="fa-solid fa-rocket mr-1.5 text-amber-500"></i>
@@ -1296,20 +1256,20 @@ export default function DashProjetosPEI() {
         <button
           type="button"
           onClick={() => setActiveInternalTab('pv')}
-          className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-colors cursor-pointer whitespace-nowrap ${
+          className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
             activeInternalTab === 'pv'
-              ? 'bg-indigo-900 text-white shadow-xs'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+              ? 'bg-slate-900 text-white shadow-2xs'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80'
           }`}
         >
-          <i className="fa-solid fa-compass mr-1.5 text-indigo-500"></i>
+          <i className="fa-solid fa-compass mr-1.5 text-sky-500"></i>
           Projeto de Vida ({pvList.length})
         </button>
       </div>
 
       {/* Exibição das Tabelas */}
       {activeInternalTab === 'grid' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {renderTable('Tutoria', 'fa-solid fa-user-tie', 'blue', tutoresList, 'tutor')}
           {renderTable('Clubes Juvenis', 'fa-solid fa-users-line', 'emerald', clubesList, 'clube')}
           {renderTable('Disciplinas Eletivas', 'fa-solid fa-book-open-reader', 'purple', eletivasList, 'eletiva')}
@@ -1319,59 +1279,59 @@ export default function DashProjetosPEI() {
       )}
 
       {activeInternalTab === 'tutor' && (
-        <div className="space-y-6">
-          {/* Alerta de Gatilho Automático de Atrasos */}
-          <div className="bg-gradient-to-r from-blue-900 to-indigo-900 text-white p-5 rounded-2xl shadow-md border border-blue-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="space-y-5">
+          {/* Alerta Suave de Gatilho Automático de Atrasos */}
+          <div className="bg-indigo-50/80 text-slate-800 p-4 sm:p-5 rounded-2xl border border-indigo-200/60 border-l-4 border-l-indigo-600 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-cyan-400 text-blue-950 flex items-center justify-center font-black text-lg shrink-0 shadow-sm">
+              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-base shrink-0">
                 <i className="fa-solid fa-bolt"></i>
               </div>
               <div>
-                <div className="text-[10px] uppercase font-black text-cyan-300 tracking-wider">
-                  Automação Escolar Ativa &bull; Resolução SEDUC
+                <div className="text-[11px] font-semibold text-indigo-700">
+                  Automação Escolar Ativa · Resolução SEDUC
                 </div>
-                <h2 className="text-base font-black text-white mt-0.5">
-                  Gatilho Automático: 3 Atrasos no Mês ➔ Termo de Ciência & Pauta de Tutoria
+                <h2 className="text-sm sm:text-base font-bold text-slate-900 mt-0.5">
+                  Gatilho Automático: 3 Atrasos no Mês ➔ Termo de Ciência &amp; Pauta de Tutoria
                 </h2>
-                <p className="text-xs text-blue-200 mt-1 leading-relaxed">
-                  O sistema monitora em tempo real a pontualidade dos estudantes. Ao atingir o limiar de <strong>3 atrasos no mês</strong>, o sistema emite imediatamente o <strong>Termo de Ciência de Frequência</strong> e agenda obrigatoriamente a pauta na sessão semanal de Tutoria do estudante.
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  Ao atingir <strong>3 atrasos no mês</strong>, o sistema emite o <strong>Termo de Ciência de Frequência</strong> e agenda obrigatoriamente a pauta na sessão semanal de Tutoria.
                 </p>
               </div>
             </div>
-            <div className="px-4 py-2 bg-blue-950/80 rounded-xl border border-blue-700 text-cyan-300 font-mono text-xs font-bold shrink-0">
-              ⚡ Automação 100% Ativa
+            <div className="px-3.5 py-1.5 bg-white rounded-xl border border-indigo-200/80 text-indigo-700 text-xs font-semibold shrink-0">
+              Automação Ativa
             </div>
           </div>
 
-          {/* Alerta + Fila Automatizada de Pautas Obrigatórias de Tutoria (Gatilho 3+ Atrasos no Mês) */}
+          {/* Fila Automatizada de Pautas Obrigatórias de Tutoria */}
           {paineisTutoriaAutomatizados.pautasGatilho3Atrasos.length > 0 && (
-            <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 shadow-2xs">
+            <div className="bg-amber-50/80 border border-amber-200/70 border-l-4 border-l-amber-500 rounded-2xl p-4">
               <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-1 bg-amber-600 text-white font-black text-xs rounded-lg uppercase tracking-wider">
-                    ⚡ {paineisTutoriaAutomatizados.pautasGatilho3Atrasos.length} Pauta(s) Obrigatória(s) de Tutoria no Mês
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2.5 py-1 bg-amber-100 text-amber-900 font-semibold text-xs rounded-lg tabular-nums">
+                    {paineisTutoriaAutomatizados.pautasGatilho3Atrasos.length} Pauta(s) Obrigatória(s) no Mês
                   </span>
-                  <span className="text-xs font-bold text-amber-900">
-                    Estudantes que atingiram 3+ atrasos no mês vigente (Termo de Ciência + Sessão Semanal de Tutoria)
+                  <span className="text-xs font-medium text-amber-900">
+                    Estudantes com 3+ atrasos no mês vigente
                   </span>
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
                 {paineisTutoriaAutomatizados.pautasGatilho3Atrasos.slice(0, 9).map(item => (
-                  <div key={item.ra} className="bg-white border border-amber-200 rounded-xl p-3 flex items-center justify-between gap-2 shadow-2xs">
+                  <div key={item.ra} className="bg-white border border-amber-200/80 rounded-xl p-3 flex items-center justify-between gap-2 shadow-2xs">
                     <div className="min-w-0">
-                      <div className="font-extrabold text-xs text-slate-800 truncate">{item.nome}</div>
-                      <div className="text-[10px] text-slate-500 font-medium">
-                        Turma: <strong>{item.turma}</strong> &bull; Tutor(a): <strong className="text-blue-700">{item.tutor}</strong>
+                      <div className="font-semibold text-xs text-slate-900 truncate">{item.nome}</div>
+                      <div className="text-[11px] text-slate-500">
+                        Turma: <strong className="text-slate-700">{item.turma}</strong> · Tutor: <strong className="text-indigo-700">{item.tutor}</strong>
                       </div>
-                      <div className="text-[10px] font-black text-red-600 mt-0.5">
+                      <div className="text-[11px] font-semibold text-rose-700 mt-0.5 tabular-nums">
                         {item.atrasosNoMes} atrasos no mês
                       </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => window.emitirTermoCienciaFrequenciaGatilho && window.emitirTermoCienciaFrequenciaGatilho(item.ra, item.atrasosNoMes)}
-                      className="px-2.5 py-1.5 bg-blue-900 hover:bg-blue-800 text-white font-bold text-[10px] rounded-lg uppercase tracking-wider shrink-0 cursor-pointer transition"
+                      className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-[11px] rounded-xl shrink-0 cursor-pointer transition"
                       title="Emitir Termo de Ciência de Frequência"
                     >
                       <i className="fa-solid fa-file-signature mr-1"></i> Termo
@@ -1382,85 +1342,78 @@ export default function DashProjetosPEI() {
             </div>
           )}
 
-          {/* Dash de Tutores Automatizado: Quem Fez e Quantas Fez */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Relação de Tutores Ativos (Com Registros Realizados) */}
-            <div className="bg-white rounded-2xl border border-emerald-200 shadow-2xs overflow-hidden flex flex-col">
-              <div className="p-4 bg-emerald-800 text-white flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center text-white text-sm">
+          {/* Dash de Tutores Automatizado */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col">
+              <div className="px-5 py-4 bg-white border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-sm">
                     <i className="fa-solid fa-circle-check"></i>
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-sm uppercase tracking-wider">✅ Relação de Tutores Ativos</h3>
-                    <p className="text-[11px] opacity-90 font-medium">
-                      Profissionais com lançamentos realizados ({paineisTutoriaAutomatizados.totalRegistrosTutoria} registros acumulados)
+                    <h3 className="font-bold text-sm text-slate-900">Relação de Tutores Ativos</h3>
+                    <p className="text-[11px] text-slate-500 font-medium tabular-nums">
+                      {paineisTutoriaAutomatizados.totalRegistrosTutoria} registros acumulados
                     </p>
                   </div>
                 </div>
-                <span className="px-2.5 py-1 bg-white/20 rounded-full font-mono text-xs font-bold text-white">
+                <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200/60 rounded-lg text-xs font-semibold tabular-nums">
                   {paineisTutoriaAutomatizados.ativos.length} Tutores
                 </span>
               </div>
-              <div className="p-4 max-h-[500px] overflow-y-auto custom-scrollbar divide-y divide-slate-100">
+              <div className="p-3 max-h-[500px] overflow-y-auto custom-scrollbar divide-y divide-slate-100">
                 {paineisTutoriaAutomatizados.ativos.map((t, idx) => (
-                  <div key={t.key} className="py-2.5 flex items-center justify-between text-xs hover:bg-slate-50 px-2 rounded-lg">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 font-mono text-[10px] flex items-center justify-center font-bold shrink-0">
+                  <div key={t.key} className="py-2.5 flex items-center justify-between text-xs hover:bg-slate-50 px-2.5 rounded-xl">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="w-6 h-6 rounded-lg bg-emerald-50 text-emerald-700 font-mono text-[11px] flex items-center justify-center font-semibold shrink-0 tabular-nums">
                         {idx + 1}
                       </span>
                       <div className="min-w-0">
-                        <span className="font-bold text-slate-800 block truncate">{t.nome}</span>
-                        <span className="text-[10px] text-slate-500 font-medium">
+                        <span className="font-semibold text-slate-900 block truncate">{t.nome}</span>
+                        <span className="text-[11px] text-slate-500 font-medium tabular-nums">
                           {t.alunos} alunos atribuídos
                           {t.pautasAtrasoObrigatorias > 0 && (
-                            <span className="ml-1.5 text-amber-700 font-bold">
-                              &bull; ⚡ {t.pautasAtrasoObrigatorias} pauta(s) 3+ atrasos
+                            <span className="ml-1.5 text-amber-700 font-semibold">
+                              · {t.pautasAtrasoObrigatorias} pauta(s) 3+ atrasos
                             </span>
                           )}
                         </span>
                       </div>
                     </div>
-                    <span className="px-2.5 py-1 bg-emerald-100 text-emerald-900 font-mono font-black text-xs rounded-lg shrink-0">
-                      {t.registros} registros
+                    <span className="px-2.5 py-1 bg-emerald-50 text-emerald-800 font-mono font-semibold text-xs rounded-lg shrink-0 tabular-nums">
+                      {t.registros} reg.
                     </span>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Tutores com 0 Registros Realizados */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden flex flex-col">
-              <div className="p-4 bg-slate-800 text-white flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center text-white text-sm">
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] overflow-hidden flex flex-col">
+              <div className="px-5 py-4 bg-white border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-sm">
                     <i className="fa-solid fa-user-clock"></i>
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-sm uppercase tracking-wider">Aguardando Lançamentos</h3>
-                    <p className="text-[11px] opacity-80 font-medium">Tutores com alunos atribuídos e 0 registros realizados (atualização automática)</p>
+                    <h3 className="font-bold text-sm text-slate-900">Aguardando Lançamentos</h3>
+                    <p className="text-[11px] text-slate-500 font-medium">Tutores com 0 registros realizados</p>
                   </div>
                 </div>
-                <span className="px-2.5 py-1 bg-white/20 rounded-full font-mono text-xs font-bold text-white">
+                <span className="px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg text-xs font-semibold tabular-nums">
                   {paineisTutoriaAutomatizados.pendentes.length} Tutores
                 </span>
               </div>
-              <div className="p-4 max-h-[500px] overflow-y-auto custom-scrollbar divide-y divide-slate-100">
+              <div className="p-3 max-h-[500px] overflow-y-auto custom-scrollbar divide-y divide-slate-100">
                 {paineisTutoriaAutomatizados.pendentes.map((t) => (
-                  <div key={t.key} className="py-2.5 flex items-center justify-between text-xs hover:bg-slate-50 px-2 rounded-lg">
-                    <div>
-                      <span className="font-bold text-slate-800 block">{t.nome}</span>
-                      <span className="text-[10px] text-slate-500 font-medium">
-                        {t.alunos} alunos atribuídos | {t.registros} registros {t.obs ? `— ${t.obs}` : ''}
-                        {t.pautasAtrasoObrigatorias > 0 && (
-                          <span className="ml-1.5 text-amber-700 font-bold">
-                            &bull; ⚡ {t.pautasAtrasoObrigatorias} pauta(s) obrigatória(s)
-                          </span>
-                        )}
+                  <div key={t.key} className="py-2.5 flex items-center justify-between text-xs hover:bg-slate-50 px-2.5 rounded-xl">
+                    <div className="min-w-0 pr-2">
+                      <span className="font-semibold text-slate-900 block truncate">{t.nome}</span>
+                      <span className="text-[11px] text-slate-500 font-medium tabular-nums">
+                        {t.alunos} alunos · {t.registros} registros {t.obs ? `— ${t.obs}` : ''}
                       </span>
                     </div>
-                    <span className="px-2.5 py-1 bg-slate-100 text-slate-600 font-mono font-bold text-xs rounded-lg border border-slate-200 shrink-0">
-                      {t.registros} registros
+                    <span className="px-2.5 py-1 bg-slate-100 text-slate-600 font-mono font-semibold text-xs rounded-lg shrink-0 tabular-nums">
+                      {t.registros} reg.
                     </span>
                   </div>
                 ))}
@@ -1468,7 +1421,6 @@ export default function DashProjetosPEI() {
             </div>
           </div>
 
-          {/* Tabela de Grupos de Tutoria PEI */}
           {renderTable('Detalhamento dos Grupos de Tutoria', 'fa-solid fa-user-tie', 'blue', tutoresList, 'tutor')}
         </div>
       )}
@@ -1478,31 +1430,36 @@ export default function DashProjetosPEI() {
       {activeInternalTab === 'pj' && renderTable('PJ (Protagonismo)', 'fa-solid fa-rocket', 'amber', pjList, 'pj')}
       {activeInternalTab === 'pv' && renderTable('Projeto de Vida', 'fa-solid fa-compass', 'indigo', pvList, 'pv')}
 
-      {/* MODAL PARA CRIAÇÃO / EDIÇÃO DE PROJETO PEI */}
+      {/* MODAL PARA CRIAÇÃO / EDIÇÃO DE PROJETO PEI (BOTTOM-SHEET MOBILE) */}
       {isModalProjetoOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden">
-            <div className="bg-blue-950 p-4 text-white flex items-center justify-between">
-              <h3 className="font-extrabold text-sm uppercase flex items-center gap-2">
-                <i className="fa-solid fa-folder-plus text-cyan-400"></i>
-                <span>{projetoEdicao ? 'Editar Projeto PEI' : 'Novo Projeto PEI'}</span>
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-xs sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200/80 shadow-2xl max-w-lg w-full overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm">
+                  <i className="fa-solid fa-folder-plus"></i>
+                </div>
+                <h3 className="font-bold text-base text-slate-900">
+                  {projetoEdicao ? 'Editar Projeto PEI' : 'Novo Projeto PEI'}
+                </h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsModalProjetoOpen(false)}
-                className="text-slate-400 hover:text-white text-lg font-bold"
+                className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 cursor-pointer transition"
               >
-                &times;
+                <i className="fa-solid fa-xmark"></i>
               </button>
             </div>
 
-            <form onSubmit={handleSalvarProjeto} className="p-5 space-y-4 text-xs font-semibold text-slate-700">
+            <form onSubmit={handleSalvarProjeto} className="p-5 space-y-4 text-xs font-medium text-slate-700 overflow-y-auto flex-1">
               <div>
-                <label className="block mb-1 font-bold">Eixo do Protagonismo:</label>
+                <label className="block mb-1.5 font-semibold text-slate-700">Eixo do Protagonismo</label>
                 <select
                   value={formProjeto.eixo}
                   onChange={e => setFormProjeto({ ...formProjeto, eixo: e.target.value })}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500 font-bold"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/30 font-semibold text-slate-800"
                 >
                   <option value="eletiva">Disciplinas Eletivas</option>
                   <option value="clube">Clubes Juvenis</option>
@@ -1513,58 +1470,58 @@ export default function DashProjetosPEI() {
               </div>
 
               <div>
-                <label className="block mb-1 font-bold">Nome do Projeto / Disciplina / Grupo:</label>
+                <label className="block mb-1.5 font-semibold text-slate-700">Nome do Projeto / Disciplina / Grupo</label>
                 <input
                   type="text"
                   required
                   value={formProjeto.nome}
                   onChange={e => setFormProjeto({ ...formProjeto, nome: e.target.value })}
                   placeholder="Ex: Robótica Sustentável, Clube de Xadrez..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500 font-bold"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/30 font-semibold text-slate-800"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block mb-1 font-bold">Prof. Responsável:</label>
+                  <label className="block mb-1.5 font-semibold text-slate-700">Prof. Responsável</label>
                   <input
                     type="text"
                     value={formProjeto.professorResponsavel}
                     onChange={e => setFormProjeto({ ...formProjeto, professorResponsavel: e.target.value })}
                     placeholder="Nome do docente"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/30"
                   />
                 </div>
                 <div>
-                  <label className="block mb-1 font-bold">Capacidade Máxima:</label>
+                  <label className="block mb-1.5 font-semibold text-slate-700">Capacidade Máxima</label>
                   <input
                     type="number"
                     min="1"
                     max="300"
                     value={formProjeto.capacidade}
                     onChange={e => setFormProjeto({ ...formProjeto, capacidade: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500 font-mono font-bold"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/30 font-mono font-semibold tabular-nums"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block mb-1 font-bold">Sala / Local:</label>
+                  <label className="block mb-1.5 font-semibold text-slate-700">Sala / Local</label>
                   <input
                     type="text"
                     value={formProjeto.sala}
                     onChange={e => setFormProjeto({ ...formProjeto, sala: e.target.value })}
                     placeholder="Ex: Lab de Informática"
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/30"
                   />
                 </div>
                 <div>
-                  <label className="block mb-1 font-bold">Status:</label>
+                  <label className="block mb-1.5 font-semibold text-slate-700">Status</label>
                   <select
                     value={formProjeto.status}
                     onChange={e => setFormProjeto({ ...formProjeto, status: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500 font-bold"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/30 font-semibold text-slate-800"
                   >
                     <option value="ATIVO">Ativo</option>
                     <option value="INATIVO">Inativo</option>
@@ -1573,28 +1530,28 @@ export default function DashProjetosPEI() {
               </div>
 
               <div>
-                <label className="block mb-1 font-bold">Descrição / Ementa:</label>
+                <label className="block mb-1.5 font-semibold text-slate-700">Descrição / Ementa</label>
                 <textarea
                   rows="2"
                   value={formProjeto.descricao}
                   onChange={e => setFormProjeto({ ...formProjeto, descricao: e.target.value })}
                   placeholder="Objetivos e informações do projeto..."
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-cyan-500"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/30"
                 ></textarea>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsModalProjetoOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl cursor-pointer transition"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={salvandoProjeto}
-                  className="px-5 py-2 bg-blue-900 hover:bg-blue-950 text-cyan-300 font-black rounded-xl shadow-xs"
+                  className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl shadow-2xs cursor-pointer transition"
                 >
                   {salvandoProjeto ? 'Salvando...' : 'Salvar Projeto'}
                 </button>

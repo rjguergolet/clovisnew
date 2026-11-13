@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import PaginaInicial from './components/PaginaInicial';
-import DashProjetosPEI from './components/DashProjetosPEI';
 import GestaoRotinaPDCA from './components/GestaoRotinaPDCA';
 import AgendaPEI from './components/AgendaPEI';
 import Horarios from './components/Horarios';
 import SubstituicaoPEI from './components/SubstituicaoPEI';
-import DashboardNotas from './components/DashboardNotas';
 import Professores from './components/Professores';
 import Auditoria from './components/Auditoria';
 import ComparativoFrequencia from './components/ComparativoFrequencia';
 import PresencaDiariaIA from './components/PresencaDiariaIA';
+import PainelDashboardsUnificado from './components/PainelDashboardsUnificado';
 import RelatorioAlteracoesModal from './components/RelatorioAlteracoesModal';
 import ModalImportarBoletimPDF from './components/ModalImportarBoletimPDF';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -104,9 +103,13 @@ export default function App() {
   const isAuthorizedPDCA = ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'PAAC', 'PROFESSOR', 'PROFESSOR_PAAC'].some(
     (r) => roleNorm.includes(r) || roleNorm === r
   );
-  const isAuthorizedProfessores = ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'SECRETARIA', 'PROFESSOR'].some(
-    (r) => roleNorm.includes(r) || roleNorm === r
+  const isProfessorComum = roleNorm === 'PROFESSOR';
+  const isAuthorizedProfessores = !isProfessorComum && (
+    ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'SECRETARIA'].includes(roleNorm) ||
+    roleNorm.includes('VICE')
   );
+  const isAuthorizedSubstituicaoPEI = !isProfessorComum;
+  const isAuthorizedPresencaDiaria = !isProfessorComum;
   const isAuthorizedAuditoria = roleNorm === 'DIRETOR' || roleNorm === 'VICE_DIRETOR' || roleNorm.includes('VICE');
   const isAuthorizedComparativo = roleNorm === 'DIRETOR' || roleNorm === 'VICE_DIRETOR' || roleNorm.includes('VICE') || roleNorm === 'CGPG' || roleNorm === 'CGPCG' || roleNorm === 'SECRETARIA';
 
@@ -146,10 +149,15 @@ export default function App() {
         return isAuthorizedProfessores ? (
           <Professores userRole={userRole} />
         ) : (
-          <div className="p-8 text-center text-red-600 font-bold bg-white rounded-2xl border border-red-200 m-4 shadow-sm">
-            <i className="fa-solid fa-lock text-2xl mb-2 block"></i>
-            Acesso Restrito ao módulo de Professores.
-          </div>
+          <PaginaInicial
+            onNavigate={(tab) => {
+              if (typeof (window as any).switchTab === 'function') {
+                (window as any).switchTab(tab);
+              } else {
+                setCurrentTab(tab);
+              }
+            }}
+          />
         );
       case 'agenda':
         return <AgendaPEI />;
@@ -160,21 +168,46 @@ export default function App() {
             Acesso Restrito ao Módulo Tarefas PDCA
           </div>
         );
-      case 'dash-projetos-pei':
-        return isAuthorizedPEI ? <DashProjetosPEI /> : (
-          <div className="p-8 text-center text-red-600 font-bold bg-white rounded-2xl border border-red-200 m-4 shadow-sm">
-            <i className="fa-solid fa-lock text-2xl mb-2 block"></i>
-            Acesso Restrito ao Dash Projetos PEI
-          </div>
-        );
+      case 'dashboard':
+      case 'dashboard-atrasos':
       case 'dashboard-notas':
-        return <DashboardNotas />;
+      case 'dash-projetos-pei':
+        return (
+          <PainelDashboardsUnificado
+            activeTab={currentTab}
+            isAuthorizedPEI={isAuthorizedPEI}
+          />
+        );
       case 'horarios':
         return <Horarios />;
       case 'substituicao-pei':
-        return <SubstituicaoPEI />;
+        return isAuthorizedSubstituicaoPEI ? (
+          <SubstituicaoPEI />
+        ) : (
+          <PaginaInicial
+            onNavigate={(tab) => {
+              if (typeof (window as any).switchTab === 'function') {
+                (window as any).switchTab(tab);
+              } else {
+                setCurrentTab(tab);
+              }
+            }}
+          />
+        );
       case 'presenca-diaria':
-        return <PresencaDiariaIA />;
+        return isAuthorizedPresencaDiaria ? (
+          <PresencaDiariaIA />
+        ) : (
+          <PaginaInicial
+            onNavigate={(tab) => {
+              if (typeof (window as any).switchTab === 'function') {
+                (window as any).switchTab(tab);
+              } else {
+                setCurrentTab(tab);
+              }
+            }}
+          />
+        );
       default:
         return (
           <PaginaInicial

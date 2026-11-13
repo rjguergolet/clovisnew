@@ -129,20 +129,22 @@ export default function RelatorioAlteracoesModal({ isOpen, onClose }) {
   const getAcaoBadge = (acao) => {
     const act = String(acao || '').toUpperCase();
     if (act.includes('CRIAR') || act.includes('INSERIR') || act.includes('LANÇAR') || act.includes('LANCAR')) {
-      return <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded text-[10px] font-black uppercase"><i className="fa-solid fa-plus text-[9px] mr-1"></i>{act}</span>;
+      return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-50/90 text-emerald-900 border border-emerald-200/60 border-l-4 border-l-emerald-500 rounded-lg text-[11px] font-semibold"><i className="fa-solid fa-plus text-[9px]"></i>{act}</span>;
     }
     if (act.includes('EXCLUIR') || act.includes('DELETAR') || act.includes('REMOVER') || act.includes('CANCELAR')) {
-      return <span className="px-2 py-0.5 bg-rose-100 text-rose-800 border border-rose-300 rounded text-[10px] font-black uppercase"><i className="fa-solid fa-trash text-[9px] mr-1"></i>{act}</span>;
+      return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-50/90 text-rose-900 border border-rose-200/60 border-l-4 border-l-rose-500 rounded-lg text-[11px] font-semibold"><i className="fa-solid fa-trash text-[9px]"></i>{act}</span>;
     }
     if (act.includes('CONFIRMAR') || act.includes('APROVAR')) {
-      return <span className="px-2 py-0.5 bg-teal-100 text-teal-800 border border-teal-300 rounded text-[10px] font-black uppercase"><i className="fa-solid fa-check text-[9px] mr-1"></i>{act}</span>;
+      return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-indigo-50/90 text-indigo-900 border border-indigo-200/60 border-l-4 border-l-indigo-600 rounded-lg text-[11px] font-semibold"><i className="fa-solid fa-check text-[9px]"></i>{act}</span>;
     }
-    return <span className="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded text-[10px] font-black uppercase"><i className="fa-solid fa-pen-to-square text-[9px] mr-1"></i>{act}</span>;
+    return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50/90 text-amber-900 border border-amber-200/60 border-l-4 border-l-amber-500 rounded-lg text-[11px] font-semibold"><i className="fa-solid fa-pen-to-square text-[9px]"></i>{act}</span>;
   };
 
   const exportarCSV = () => {
     if (logsFiltrados.length === 0) {
-      alert('Nenhum log para exportar.');
+      if (typeof window.showToast === 'function') {
+        window.showToast('Nenhum log para exportar.', 'warning');
+      }
       return;
     }
 
@@ -168,23 +170,35 @@ export default function RelatorioAlteracoesModal({ isOpen, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 animate-fadeIn">
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden">
-        
-        {/* Header do Modal - Padrão Gestão Blue-950 */}
-        <div className="bg-blue-950 text-white p-4 sm:p-5 flex items-center justify-between border-b border-blue-900">
+    <div
+      className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-slate-200/80 w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Mobile Drag Handle */}
+        <div className="sm:hidden flex justify-center pt-2.5 pb-1 shrink-0">
+          <div className="w-10 h-1 rounded-full bg-slate-300"></div>
+        </div>
+
+        {/* Header do Modal */}
+        <div className="bg-white/95 backdrop-blur-md px-5 py-4 flex items-center justify-between border-b border-slate-200/80 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-cyan-400 text-blue-950 flex items-center justify-center font-black text-lg shadow-md">
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-lg shrink-0">
               <i className="fa-solid fa-shield-halved"></i>
             </div>
             <div>
-              <h2 className="text-base sm:text-lg font-black text-white uppercase tracking-wide flex items-center gap-2">
-                <span>Trilha de Auditoria &amp; Relatório de Alterações</span>
-                <span className="text-[10px] font-bold bg-cyan-400 text-blue-950 px-2 py-0.5 rounded-full uppercase tracking-normal">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-base sm:text-lg font-bold tracking-tight text-slate-900">
+                  Trilha de Auditoria &amp; Alterações
+                </h2>
+                <span className="text-[11px] font-medium bg-indigo-50 text-indigo-700 border border-indigo-200/60 px-2.5 py-0.5 rounded-full">
                   Exclusivo Direção
                 </span>
-              </h2>
-              <p className="text-xs text-blue-200 font-medium">
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
                 Histórico em tempo real de operações e alterações realizadas no sistema
               </p>
             </div>
@@ -193,24 +207,23 @@ export default function RelatorioAlteracoesModal({ isOpen, onClose }) {
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-blue-900 hover:bg-blue-800 text-blue-200 hover:text-white flex items-center justify-center transition cursor-pointer"
+            className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition cursor-pointer shrink-0"
             title="Fechar Modal (Esc)"
           >
-            <i className="fa-solid fa-xmark text-lg"></i>
+            <i className="fa-solid fa-xmark text-base"></i>
           </button>
         </div>
 
         {/* Barra de Filtros e Ferramentas */}
-        <div className="bg-slate-50 p-3 sm:p-4 border-b border-slate-200 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-center">
-          {/* Filtro Módulo */}
+        <div className="bg-slate-50/80 p-3.5 sm:p-4 border-b border-slate-200/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end shrink-0">
           <div>
-            <label className="block text-[10px] font-extrabold text-slate-600 uppercase mb-1">
+            <label className="block text-xs font-medium text-slate-600 mb-1">
               Módulo
             </label>
             <select
               value={filtroModulo}
               onChange={(e) => setFiltroModulo(e.target.value)}
-              className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-cyan-500 shadow-2xs"
+              className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
             >
               <option value="Todos">Todos os Módulos</option>
               <option value="Grade Horária">Grade Horária</option>
@@ -222,15 +235,14 @@ export default function RelatorioAlteracoesModal({ isOpen, onClose }) {
             </select>
           </div>
 
-          {/* Filtro Ação */}
           <div>
-            <label className="block text-[10px] font-extrabold text-slate-600 uppercase mb-1">
+            <label className="block text-xs font-medium text-slate-600 mb-1">
               Tipo de Ação
             </label>
             <select
               value={filtroAcao}
               onChange={(e) => setFiltroAcao(e.target.value)}
-              className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-cyan-500 shadow-2xs"
+              className="w-full p-2 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
             >
               <option value="Todas">Todas as Ações</option>
               <option value="CRIAR">CRIAR / LANÇAR</option>
@@ -239,9 +251,8 @@ export default function RelatorioAlteracoesModal({ isOpen, onClose }) {
             </select>
           </div>
 
-          {/* Pesquisa por texto */}
           <div>
-            <label className="block text-[10px] font-extrabold text-slate-600 uppercase mb-1">
+            <label className="block text-xs font-medium text-slate-600 mb-1">
               Buscar Usuário / Descrição
             </label>
             <div className="relative">
@@ -250,143 +261,174 @@ export default function RelatorioAlteracoesModal({ isOpen, onClose }) {
                 value={buscaTexto}
                 onChange={(e) => setBuscaTexto(e.target.value)}
                 placeholder="Nome, cargo ou detalhes..."
-                className="w-full p-2 pl-8 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-cyan-500 shadow-2xs"
+                className="w-full p-2 pl-8 bg-white border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400"
               />
               <i className="fa-solid fa-magnifying-glass absolute left-2.5 top-2.5 text-slate-400 text-xs"></i>
             </div>
           </div>
 
-          {/* Exportar e Resumo */}
-          <div className="flex items-end justify-between sm:justify-end gap-2 pt-1 sm:pt-0">
-            <span className="text-[11px] font-bold text-slate-600 bg-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-300">
+          <div className="flex items-center justify-between sm:justify-end gap-2">
+            <span className="text-xs font-medium text-slate-600 bg-white px-3 py-2 rounded-xl border border-slate-200/80 tabular-nums">
               {logsFiltrados.length} log(s)
             </span>
             <button
               type="button"
               onClick={exportarCSV}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+              className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5 shadow-xs"
               title="Exportar logs filtrados em planilha CSV"
             >
-              <i className="fa-solid fa-file-excel"></i>
+              <i className="fa-solid fa-file-csv text-emerald-400"></i>
               <span>Exportar CSV</span>
             </button>
           </div>
         </div>
 
-        {/* Tabela de Logs */}
-        <div className="flex-1 overflow-y-auto p-2 sm:p-4">
+        {/* Lista / Tabela de Logs */}
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 bg-[#F8FAFC]">
           {loading ? (
             <div className="p-12 text-center text-slate-500 space-y-3">
-              <i className="fa-solid fa-spinner fa-spin text-3xl text-cyan-600"></i>
-              <p className="text-sm font-semibold">Carregando trilha de auditoria...</p>
+              <i className="fa-solid fa-spinner fa-spin text-2xl text-indigo-600"></i>
+              <p className="text-sm font-medium">Carregando trilha de auditoria...</p>
             </div>
           ) : logsFiltrados.length === 0 ? (
-            <div className="p-12 text-center text-slate-500 space-y-2 bg-slate-50 rounded-xl border border-dashed border-slate-300 m-2">
-              <i className="fa-solid fa-clipboard-check text-3xl text-slate-400 mb-1"></i>
-              <p className="text-sm font-bold text-slate-700">Nenhum registro de auditoria encontrado</p>
+            <div className="p-12 text-center text-slate-500 space-y-2 bg-white rounded-2xl border border-dashed border-slate-300">
+              <i className="fa-solid fa-clipboard-check text-3xl text-slate-300 mb-1"></i>
+              <p className="text-sm font-semibold text-slate-700">Nenhum registro de auditoria encontrado</p>
               <p className="text-xs text-slate-500">Tente ajustar os filtros selecionados acima.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-2xs">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-700 font-black uppercase text-[10px] tracking-wider border-b border-slate-200">
-                    <th className="p-3 border-r border-slate-200 w-36 whitespace-nowrap">Data / Hora</th>
-                    <th className="p-3 border-r border-slate-200 w-36 whitespace-nowrap">Módulo</th>
-                    <th className="p-3 border-r border-slate-200 w-28 text-center whitespace-nowrap">Ação</th>
-                    <th className="p-3 border-r border-slate-200">Descrição das Alterações</th>
-                    <th className="p-3 w-48 whitespace-nowrap">Usuário Responsável</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                  {logsFiltrados.map((log) => (
-                    <tr key={log.id} className="hover:bg-cyan-50 transition">
-                      {/* Data / Hora */}
-                      <td className="p-3 font-mono font-bold text-slate-700 border-r border-slate-100 text-[11px] whitespace-nowrap">
-                        {formatarData(log)}
-                      </td>
+            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
+              {/* Mobile Cards (< md) */}
+              <div className="md:hidden divide-y divide-slate-100">
+                {logsFiltrados.map((log) => (
+                  <div key={log.id} className="p-3.5 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="px-2.5 py-0.5 bg-indigo-50/80 text-slate-800 border border-indigo-200/50 border-l-4 border-l-indigo-600 rounded-lg text-xs font-medium">
+                        {log.modulo || 'Geral'}
+                      </span>
+                      <span className="text-[11px] text-slate-400 tabular-nums">{formatarData(log)}</span>
+                    </div>
+                    <div>{getAcaoBadge(log.acao)}</div>
+                    <p className="text-xs font-medium text-slate-800 leading-snug">{log.descricao}</p>
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                      <span className="font-semibold text-slate-700">{log.usuario || log.usuarioNome || 'Usuário'}</span>
+                      {log.detalhes && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedLogDetalhes(log)}
+                          className="text-indigo-600 font-semibold flex items-center gap-1 cursor-pointer"
+                        >
+                          <i className="fa-solid fa-code text-[10px]"></i> Detalhes
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
 
-                      {/* Módulo */}
-                      <td className="p-3 font-bold text-blue-950 border-r border-slate-100 whitespace-nowrap">
-                        <span className="px-2 py-0.5 bg-blue-50 text-blue-900 border border-blue-200 rounded text-[11px] font-extrabold inline-block">
-                          {log.modulo || 'Geral'}
-                        </span>
-                      </td>
-
-                      {/* Ação */}
-                      <td className="p-3 text-center border-r border-slate-100 whitespace-nowrap">
-                        {getAcaoBadge(log.acao)}
-                      </td>
-
-                      {/* Descrição e Detalhes */}
-                      <td className="p-3 text-slate-800 border-r border-slate-100">
-                        <div className="font-semibold text-slate-900 leading-snug">
-                          {log.descricao}
-                        </div>
-                        {log.detalhes && (
-                          <button
-                            type="button"
-                            onClick={() => setSelectedLogDetalhes(log)}
-                            className="mt-1 text-[10px] text-cyan-700 hover:text-cyan-900 font-bold underline flex items-center gap-1 cursor-pointer"
-                          >
-                            <i className="fa-solid fa-code text-[9px]"></i> Ver Detalhes Técnicos
-                          </button>
-                        )}
-                      </td>
-
-                      {/* Usuário / Cargo */}
-                      <td className="p-3 whitespace-nowrap">
-                        <div className="font-extrabold text-slate-900 text-xs">
-                          {log.usuario || log.usuarioNome || 'Usuário'}
-                        </div>
-                        <div className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                          <i className="fa-solid fa-user-shield text-[9px] text-cyan-600"></i>
-                          <span>{log.cargo || log.usuarioRole || 'DIRETOR'}</span>
-                          {log.email && <span className="text-slate-400 font-normal">({log.email})</span>}
-                        </div>
-                      </td>
+              {/* Desktop Table (>= md) */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-slate-50/90 text-slate-500 font-semibold text-xs border-b border-slate-200/80">
+                      <th className="p-3.5 w-40 whitespace-nowrap">Data / Hora</th>
+                      <th className="p-3.5 w-40 whitespace-nowrap">Módulo</th>
+                      <th className="p-3.5 w-32 text-center whitespace-nowrap">Ação</th>
+                      <th className="p-3.5">Descrição das Alterações</th>
+                      <th className="p-3.5 w-52 whitespace-nowrap">Usuário Responsável</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {logsFiltrados.map((log) => (
+                      <tr key={log.id} className="hover:bg-slate-50/80 transition">
+                        <td className="p-3.5 font-mono font-medium text-slate-700 text-[11px] whitespace-nowrap tabular-nums">
+                          {formatarData(log)}
+                        </td>
+
+                        <td className="p-3.5 whitespace-nowrap">
+                          <span className="px-2.5 py-0.5 bg-indigo-50/80 text-slate-800 border border-indigo-200/50 border-l-4 border-l-indigo-600 rounded-lg text-xs font-medium inline-block">
+                            {log.modulo || 'Geral'}
+                          </span>
+                        </td>
+
+                        <td className="p-3.5 text-center whitespace-nowrap">
+                          {getAcaoBadge(log.acao)}
+                        </td>
+
+                        <td className="p-3.5 text-slate-800">
+                          <div className="font-medium text-slate-900 leading-snug">
+                            {log.descricao}
+                          </div>
+                          {log.detalhes && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedLogDetalhes(log)}
+                              className="mt-1 text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 cursor-pointer"
+                            >
+                              <i className="fa-solid fa-code text-[10px]"></i> Ver Detalhes Técnicos
+                            </button>
+                          )}
+                        </td>
+
+                        <td className="p-3.5 whitespace-nowrap">
+                          <div className="font-semibold text-slate-900 text-xs">
+                            {log.usuario || log.usuarioNome || 'Usuário'}
+                          </div>
+                          <div className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">
+                              {log.cargo || log.usuarioRole || 'DIRETOR'}
+                            </span>
+                            {log.email && <span className="text-slate-400 truncate max-w-[120px]">{log.email}</span>}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
 
         {/* Footer do Modal */}
-        <div className="bg-slate-100 p-3 sm:p-4 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600 font-medium">
+        <div className="bg-white p-4 border-t border-slate-200/80 flex items-center justify-between text-xs text-slate-500 shrink-0">
           <div className="flex items-center gap-2">
-            <i className="fa-solid fa-lock text-cyan-700"></i>
-            <span>Trilha de auditoria protegida e sincronizada via Firestore.</span>
+            <i className="fa-solid fa-lock text-indigo-600"></i>
+            <span>Trilha de auditoria protegida e sincronizada em tempo real.</span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs transition cursor-pointer shadow-xs"
+            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl text-xs transition cursor-pointer"
           >
             Fechar Relatório
           </button>
         </div>
-
       </div>
 
-      {/* Sub-modal para ver Detalhes Técnicos se clicado */}
+      {/* Sub-modal Bottom-Sheet para Detalhes Técnicos */}
       {selectedLogDetalhes && (
-        <div className="fixed inset-0 z-60 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-slate-900 text-slate-100 rounded-xl p-5 max-w-xl w-full border border-slate-700 space-y-3 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-700 pb-2">
-              <h3 className="text-sm font-bold text-cyan-400 uppercase">
+        <div
+          className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onClick={() => setSelectedLogDetalhes(null)}
+        >
+          <div
+            className="bg-slate-900 text-slate-100 rounded-t-3xl sm:rounded-3xl p-5 max-w-xl w-full border border-slate-700/80 space-y-3 shadow-2xl max-h-[85vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-700 pb-3 shrink-0">
+              <h3 className="text-sm font-bold text-indigo-300 tracking-tight">
                 Detalhes do Registro #{selectedLogDetalhes.id}
               </h3>
               <button
                 type="button"
                 onClick={() => setSelectedLogDetalhes(null)}
-                className="text-slate-400 hover:text-white"
+                className="w-8 h-8 rounded-xl bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center cursor-pointer"
               >
                 <i className="fa-solid fa-xmark"></i>
               </button>
             </div>
-            <div className="text-xs space-y-1 font-mono bg-slate-950 p-3 rounded-lg overflow-x-auto border border-slate-800 max-h-60 text-emerald-400">
+            <div className="text-xs space-y-1.5 font-mono bg-slate-950 p-3.5 rounded-2xl overflow-auto border border-slate-800 flex-1 text-emerald-400">
               <p><strong>Módulo:</strong> {selectedLogDetalhes.modulo}</p>
               <p><strong>Ação:</strong> {selectedLogDetalhes.acao}</p>
               <p><strong>Timestamp:</strong> {selectedLogDetalhes.timestamp}</p>
@@ -394,16 +436,18 @@ export default function RelatorioAlteracoesModal({ isOpen, onClose }) {
               <p><strong>Descrição:</strong> {selectedLogDetalhes.descricao}</p>
               <div className="mt-2 pt-2 border-t border-slate-800">
                 <strong>Payload / Detalhes:</strong>
-                <pre className="mt-1 whitespace-pre-wrap text-[10px] text-slate-300">
-                  {selectedLogDetalhes.detalhes}
+                <pre className="mt-1 whitespace-pre-wrap text-[11px] text-slate-300">
+                  {typeof selectedLogDetalhes.detalhes === 'object'
+                    ? JSON.stringify(selectedLogDetalhes.detalhes, null, 2)
+                    : selectedLogDetalhes.detalhes}
                 </pre>
               </div>
             </div>
-            <div className="text-right pt-1">
+            <div className="text-right pt-1 shrink-0">
               <button
                 type="button"
                 onClick={() => setSelectedLogDetalhes(null)}
-                className="px-3 py-1.5 bg-cyan-600 text-white text-xs font-bold rounded-lg"
+                className="w-full sm:w-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold rounded-xl cursor-pointer"
               >
                 Fechar Detalhes
               </button>

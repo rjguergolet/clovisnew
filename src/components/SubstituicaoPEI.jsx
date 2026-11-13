@@ -184,6 +184,15 @@ export default function SubstituicaoPEI() {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(null);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
+  const [confirmDeleteSubId, setConfirmDeleteSubId] = useState(null);
+  const [confirmZerarSaldo, setConfirmZerarSaldo] = useState(false);
+  const [confirmDeleteDocenteNome, setConfirmDeleteDocenteNome] = useState(null);
+
+  const showFeedback = (msg, type = 'info') => {
+    if (typeof window !== 'undefined' && typeof window.showToast === 'function') {
+      window.showToast(msg, type, 4500);
+    }
+  };
 
   // State de Slots de Horários
   const [periodosAula, setPeriodosAula] = useState(PERIODOS_AULA);
@@ -194,7 +203,7 @@ export default function SubstituicaoPEI() {
   // State de Grade Horária Completa (para verificação de docentes ocupados em aula/atividade PEI)
   const [horariosEscola, setHorariosEscola] = useState([]);
 
-  // Sub-abas de visualização: 'painel' | 'sugestao' | 'saldo' | 'relatorio'
+  // Sub-abas de visualização: 'painel' | 'sugestao' | 'saldo' | 'relatorio' | 'docentes'
   const [subAba, setSubAba] = useState('painel');
 
   // Filtros
@@ -671,7 +680,7 @@ export default function SubstituicaoPEI() {
   const handleMigrarDocentesDoHorario = async (silencioso = false) => {
     if (!horariosEscola || horariosEscola.length === 0) {
       if (!silencioso) {
-        alert('Nenhum horário cadastrado na grade horária oficial para migração.');
+        showFeedback('Nenhum horário cadastrado na grade horária oficial para migração.', 'warning');
       }
       return;
     }
@@ -680,11 +689,7 @@ export default function SubstituicaoPEI() {
     await salvarCadastroProfessores(migrados);
 
     if (!silencioso) {
-      if (typeof window.showToast === 'function') {
-        window.showToast(`⚡ ${migrados.length} docentes migrados e sincronizados com sucesso da Grade Horária!`, 'success', 4000);
-      } else {
-        alert(`${migrados.length} docentes migrados e sincronizados com sucesso da Grade Horária!`);
-      }
+      showFeedback(`${migrados.length} docentes migrados e sincronizados com sucesso da Grade Horária!`, 'success');
     }
   };
 
@@ -755,7 +760,7 @@ export default function SubstituicaoPEI() {
     if (!novoDocenteForm.nome.trim()) return;
     const nome = novoDocenteForm.nome.trim();
     if (cadastroProfessores.some(p => p.nome.toLowerCase() === nome.toLowerCase())) {
-      alert(`O docente "${nome}" já está cadastrado.`);
+      showFeedback(`O docente "${nome}" já está cadastrado.`, 'warning');
       return;
     }
     const novo = {
@@ -767,25 +772,23 @@ export default function SubstituicaoPEI() {
     };
     salvarCadastroProfessores([...cadastroProfessores, novo]);
     setNovoDocenteForm({ nome: '', disciplina: '', area: 'Exatas (EXA)', tipo: 'EFETIVO', saldoAulas: 0 });
-    if (typeof window.showToast === 'function') {
-      window.showToast(`Docente "${nome}" cadastrado com sucesso!`, 'success');
-    }
+    showFeedback(`Docente "${nome}" cadastrado com sucesso!`, 'success');
   };
 
   const handleExcluirDocenteCorpo = async (nomeProf) => {
     const podeDeletar = typeof window !== 'undefined' && typeof window.podeExcluir === 'function' ? window.podeExcluir() : false;
     if (!podeDeletar) {
-      const msg = 'Acesso negado: Apenas a Direção Escolar (Diretor e Vice-Diretor) possui autorização para excluir docentes.';
-      if (typeof window.showToast === 'function') window.showToast(msg, 'warning', 4000);
-      else alert(msg);
+      showFeedback('Acesso negado: Apenas a Direção Escolar (Diretor e Vice-Diretor) possui autorização para excluir docentes.', 'warning');
       return;
     }
+    setConfirmDeleteDocenteNome(null);
     if (typeof window.deletarEntidadeUniversal === 'function') {
       await window.deletarEntidadeUniversal('professor', nomeProf);
     } else {
       const atualizados = cadastroProfessores.filter(p => p.nome !== nomeProf);
       salvarCadastroProfessores(atualizados);
     }
+    showFeedback(`Docente "${nomeProf}" removido do cadastro.`, 'info');
   };
 
   // Atualizar Área automaticamente quando altera a disciplina no form
@@ -1164,12 +1167,12 @@ export default function SubstituicaoPEI() {
     if (e) e.preventDefault();
 
     if (!form.professorAusente) {
-      alert('Por favor, selecione o professor ausente.');
+      showFeedback('Por favor, selecione o professor ausente.', 'warning');
       return;
     }
 
     if (aulasDoProfessorAusente.length === 0) {
-      alert('Não foram encontradas aulas regulares registradas para este professor no dia selecionado.');
+      showFeedback('Não foram encontradas aulas regulares registradas para este professor no dia selecionado.', 'warning');
       return;
     }
 
@@ -1179,7 +1182,7 @@ export default function SubstituicaoPEI() {
       const pOrder = getPeriodoOrder(aula.periodoId);
       const rotuloAula = getPeriodoRotulo(aula.periodoId);
       if (!aloc || !aloc.professorSubstituto) {
-        alert(`A ${rotuloAula} (${aula.turma} - ${aula.disciplina}) não possui professor substituto selecionado. Por favor, selecione um substituto para todas as aulas.`);
+        showFeedback(`A ${rotuloAula} (${aula.turma} - ${aula.disciplina}) não possui professor substituto selecionado.`, 'warning');
         return;
       }
 
@@ -1244,11 +1247,7 @@ export default function SubstituicaoPEI() {
         registrarLogAuditoria(auditPayloadLote);
       }
 
-      if (typeof window.showToast === 'function') {
-        window.showToast(`⚡ ${itensParaSalvar.length} substituições do dia salvas com sucesso!`, 'success', 5000);
-      } else {
-        alert(`${itensParaSalvar.length} substituições salvas com sucesso!`);
-      }
+      showFeedback(`${itensParaSalvar.length} substituições do dia salvas com sucesso!`, 'success');
 
       setSubAba('painel');
       setIsModalOpen(false);
@@ -1268,9 +1267,7 @@ export default function SubstituicaoPEI() {
         window.renderizarGradeDiaria(form.data);
       }
 
-      if (typeof window.showToast === 'function') {
-        window.showToast(`Registrado no cache local (${itensParaSalvar.length} substituições).`, 'info');
-      }
+      showFeedback(`Registrado no cache local (${itensParaSalvar.length} substituições).`, 'info');
       setSubAba('painel');
       setIsModalOpen(false);
     } finally {
@@ -1282,7 +1279,7 @@ export default function SubstituicaoPEI() {
   const handleSalvarAulaUnica = async (aula) => {
     const aloc = alocacoesLote[aula.periodoId];
     if (!aloc || !aloc.professorSubstituto) {
-      alert('Por favor, selecione um professor substituto apto antes de confirmar.');
+      showFeedback('Por favor, selecione um professor substituto apto antes de confirmar.', 'warning');
       return;
     }
 
@@ -1345,11 +1342,7 @@ export default function SubstituicaoPEI() {
         registrarLogAuditoria(auditPayloadUnica);
       }
 
-      if (typeof window.showToast === 'function') {
-        window.showToast(`Substituição da ${rotuloAula} (${aula.turma}) salva com sucesso!`, 'success');
-      } else {
-        alert(`Substituição da ${rotuloAula} salva com sucesso!`);
-      }
+      showFeedback(`Substituição da ${rotuloAula} (${aula.turma}) salva com sucesso!`, 'success');
     } catch (err) {
       console.error('Erro ao salvar no Firestore:', err);
       const localItem = { id: `local-sub-${Date.now()}`, ...payload };
@@ -1363,9 +1356,7 @@ export default function SubstituicaoPEI() {
         window.renderizarGradeDiaria(form.data);
       }
 
-      if (typeof window.showToast === 'function') {
-        window.showToast('Registrado no cache local.', 'info');
-      }
+      showFeedback('Registrado no cache local.', 'info');
     } finally {
       setSalvando(false);
     }
@@ -1374,17 +1365,11 @@ export default function SubstituicaoPEI() {
   // Aplicar Sugestão Automática no Form
   const handleSelecionarSubstitutoSugestao = (prof) => {
     if (prof.isIndisponivel) {
-      alert(
-        `⛔ DESQUALIFICADO(A): O(A) docente "${prof.nome}" está FORA DA ESCOLA / FOLGA (${prof.motivoIndisponivel || 'Fora do Expediente'}).\n\n` +
-        `Pelas regras do sistema PEI, docentes fora do expediente não podem ser cotados para substituição.`
-      );
+      showFeedback(`Docente "${prof.nome}" está fora da escola / folga (${prof.motivoIndisponivel || 'Fora do Expediente'}).`, 'warning');
       return;
     }
     if (prof.isOcupado) {
-      alert(
-        `⛔ DESQUALIFICADO(A): O(A) docente "${prof.nome}" já está OCUPADO(A) em sala de aula neste horário (${prof.motivoOcupado}).\n\n` +
-        `Pelas regras do sistema PEI, docentes com aula regular na grade não podem substituir.`
-      );
+      showFeedback(`Docente "${prof.nome}" já está ocupado em sala de aula neste horário (${prof.motivoOcupado}).`, 'warning');
       return;
     }
 
@@ -1394,9 +1379,7 @@ export default function SubstituicaoPEI() {
       tipoSubstituto: prof.motivoPrioridade
     }));
 
-    if (typeof window.showToast === 'function') {
-      window.showToast(`Substituto ${prof.nome} selecionado com sucesso!`, 'success');
-    }
+    showFeedback(`Substituto ${prof.nome} selecionado com sucesso!`, 'success');
   };
 
   // Salvar / Lançar Substituição
@@ -1406,14 +1389,14 @@ export default function SubstituicaoPEI() {
 
     try {
       if (!form.professorSubstituto) {
-        alert('Por favor, selecione um professor substituto apto antes de confirmar.');
+        showFeedback('Por favor, selecione um professor substituto apto antes de confirmar.', 'warning');
         setSalvando(false);
         return;
       }
 
       const candObj = sugestoesSubstitutos.find(s => s.nome === form.professorSubstituto);
       if (candObj && (candObj.isIndisponivel || candObj.isOcupado)) {
-        alert(`Operação Bloqueada: O docente "${form.professorSubstituto}" não pode substituir neste horário (${candObj.motivoPrioridade}). Quem está em aula ou fora da escola não substitui.`);
+        showFeedback(`Operação bloqueada: O docente "${form.professorSubstituto}" não pode substituir neste horário (${candObj.motivoPrioridade}).`, 'warning');
         setSalvando(false);
         return;
       }
@@ -1514,12 +1497,10 @@ export default function SubstituicaoPEI() {
   const handleExcluirSubstituicao = async (id) => {
     const podeDeletar = typeof window !== 'undefined' && typeof window.podeExcluir === 'function' ? window.podeExcluir() : false;
     if (!podeDeletar) {
-      const msg = 'Acesso negado: Apenas a Direção Escolar (Diretor e Vice-Diretor) possui autorização para excluir substituições.';
-      if (typeof window.showToast === 'function') window.showToast(msg, 'warning', 4000);
-      else alert(msg);
+      showFeedback('Acesso negado: Apenas a Direção Escolar (Diretor e Vice-Diretor) possui autorização para excluir substituições.', 'warning');
       return;
     }
-    if (!window.confirm('Tem certeza que deseja cancelar e excluir esta substituição?')) return;
+    setConfirmDeleteSubId(null);
 
     try {
       const itemExcluido = substituicoes.find(s => s.id === id);
@@ -1803,21 +1784,10 @@ export default function SubstituicaoPEI() {
   // Botão de Zerar Saldo (Ciclo de Fim de Semana)
   const handleZerarSaldoFimDeSemana = async () => {
     if (!podeEditar) {
-      alert('Ação restrita: Apenas a Direção Escolar / Gestão possui autorização para zerar os saldos e créditos semanais.');
+      showFeedback('Ação restrita: Apenas a Direção Escolar / Gestão possui autorização para zerar os saldos semanais.', 'warning');
       return;
     }
-
-    const confirma = window.confirm(
-      '⚠️ REINÍCIO DE CICLO SEMANAL (ZERAR SALDO DE FIM DE SEMANA):\n\n' +
-      'Confirma zerar o saldo acumulado de substituições e reiniciar os créditos e débitos para o início da próxima semana letiva?\n\n' +
-      'Esta ação irá:\n' +
-      '1. Resetar o saldo acumulado e inicial de todos os docentes para 0;\n' +
-      '2. Limpar o histórico e créditos/débitos da semana atual;\n' +
-      '3. Deixar o painel totalmente limpo e preparado para o próximo ciclo semanal letivo.\n\n' +
-      'Deseja continuar?'
-    );
-
-    if (!confirma) return;
+    setConfirmZerarSaldo(false);
 
     try {
       // 1. Zerar saldoAulas e saldoInicial em todos os docentes
@@ -1866,14 +1836,10 @@ export default function SubstituicaoPEI() {
         registrarLogAuditoria(auditPayloadZerar);
       }
 
-      if (typeof window.showToast === 'function') {
-        window.showToast('Saldo e créditos/débitos zerados com sucesso! Painel preparado para o novo ciclo semanal letivo.', 'success', 5000);
-      } else {
-        alert('Saldo e créditos/débitos zerados com sucesso! Painel preparado para o próximo ciclo semanal.');
-      }
+      showFeedback('Saldo e créditos/débitos zerados com sucesso! Painel preparado para o novo ciclo semanal.', 'success');
     } catch (err) {
       console.error('Erro ao zerar saldo:', err);
-      alert('Ocorreu um erro ao zerar os saldos. Tente novamente.');
+      showFeedback('Ocorreu um erro ao zerar os saldos. Tente novamente.', 'error');
     }
   };
 
@@ -1886,9 +1852,7 @@ export default function SubstituicaoPEI() {
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
-    if (typeof window.showToast === 'function') {
-      window.showToast('Saldo exportado com sucesso em formato JSON!', 'success');
-    }
+    showFeedback('Saldo exportado com sucesso em formato JSON!', 'success');
   };
 
   // Importar Saldo JSON
@@ -1902,14 +1866,12 @@ export default function SubstituicaoPEI() {
         const dadosImportados = JSON.parse(event.target.result);
         if (Array.isArray(dadosImportados)) {
           localStorage.setItem('clovis_saldo_professores_import', JSON.stringify(dadosImportados));
-          if (typeof window.showToast === 'function') {
-            window.showToast(`Importados saldos de ${dadosImportados.length} professores com sucesso!`, 'success');
-          }
+          showFeedback(`Importados saldos de ${dadosImportados.length} professores com sucesso!`, 'success');
         } else {
-          alert('Formato de arquivo JSON inválido.');
+          showFeedback('Formato de arquivo JSON inválido.', 'warning');
         }
       } catch (err) {
-        alert('Erro ao processar o arquivo JSON de saldo.');
+        showFeedback('Erro ao processar o arquivo JSON de saldo.', 'error');
       }
     };
     reader.readAsText(file);
@@ -1921,22 +1883,24 @@ export default function SubstituicaoPEI() {
 
   if (!temAcessoSubstituicao) {
     return (
-      <div className="w-full bg-white rounded-2xl p-8 border border-slate-200 shadow-sm text-center my-8">
-        <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl border border-red-200 shadow-sm">
-          <i className="fa-solid fa-lock"></i>
-        </div>
-        <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight mb-2">Acesso Restrito ao Módulo</h2>
-        <p className="text-sm font-semibold text-slate-600 max-w-lg mx-auto leading-relaxed">
-          O acesso à aba de <span className="font-extrabold text-slate-800">Substituição PEI & Eventuais</span> é exclusivo para os cargos da Gestão Escolar: <span className="text-blue-900 font-extrabold">Vice-Diretor, Diretor e CGPG</span>.
-        </p>
-        <div className="mt-6">
-          <button
-            type="button"
-            onClick={() => window.switchTab && window.switchTab('dashboard')}
-            className="bg-blue-950 text-white font-extrabold text-xs px-5 py-2.5 rounded-xl hover:bg-blue-900 transition shadow-sm cursor-pointer"
-          >
-            Voltar ao Dashboard
-          </button>
+      <div className="p-6 md:p-8 bg-[#F8FAFC] min-h-screen flex items-center justify-center">
+        <div className="max-w-md w-full bg-white rounded-3xl p-7 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] text-center">
+          <div className="w-14 h-14 bg-rose-500/10 text-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-xl">
+            <i className="fa-solid fa-lock"></i>
+          </div>
+          <h2 className="text-lg font-bold text-slate-900 tracking-tight mb-2">Acesso Restrito ao Módulo</h2>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            O acesso à aba de <strong className="text-slate-800 font-semibold">Substituição PEI &amp; Eventuais</strong> é exclusivo para os cargos da Gestão Escolar: <strong className="text-indigo-700 font-semibold">Vice-Diretor, Diretor e CGPG</strong>.
+          </p>
+          <div className="mt-6">
+            <button
+              type="button"
+              onClick={() => window.switchTab && window.switchTab('dashboard')}
+              className="bg-slate-900 text-white font-semibold text-xs px-5 py-2.5 rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              Voltar ao Dashboard
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1945,1291 +1909,487 @@ export default function SubstituicaoPEI() {
   return (
     <>
       {/* CONTEÚDO DA TELA DA APLICAÇÃO (OCULTO NA IMPRESSÃO) */}
-      <div className="w-full space-y-6 pb-12 print:hidden">
-        {/* Cabeçalho da Seção */}
-      <div className="bg-gradient-to-r from-blue-950 via-slate-900 to-blue-900 rounded-2xl p-6 text-white shadow-lg border border-blue-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-xl bg-cyan-100 text-cyan-300 flex items-center justify-center text-2xl border border-cyan-400 shadow-inner">
-            <i className="fa-solid fa-user-gear"></i>
-          </div>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
-                <span>Gestão de Substituição PEI &amp; Eventuais</span>
-                <span className="text-[10px] font-black bg-cyan-400 text-blue-950 px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                  v20.0
-                </span>
-              </h1>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/40">
-                <span className={`w-2 h-2 rounded-full ${isRealtimeConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
-                {isRealtimeConnected ? 'Tempo Real Ativo' : 'Conectando...'}
-              </span>
-            </div>
-            <p className="text-xs text-cyan-200 font-medium mt-0.5">
-              Escola Estadual Clóvis de Lucca &bull; Motor de Atribuição Inteligente por Área de Conhecimento
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 print:hidden">
-          <button
-            onClick={handleImprimir}
-            className="flex items-center gap-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white text-xs font-black px-4 py-2.5 rounded-xl transition shadow-md cursor-pointer border border-red-400"
-            title="Gerar relatório oficial em PDF ou imprimir"
-          >
-            <i className="fa-solid fa-file-pdf text-white text-sm"></i>
-            <span>Gerar Relatório em PDF</span>
-          </button>
-
-          {podeEditar && (
-            <button
-              onClick={handleAbrirModalNovo}
-              className="flex items-center gap-2 bg-gradient-to-r from-cyan-400 to-cyan-500 hover:from-cyan-300 hover:to-cyan-400 text-blue-950 text-xs font-black px-4 py-2.5 rounded-xl transition shadow-md cursor-pointer"
-            >
-              <i className="fa-solid fa-user-plus text-sm"></i>
-              <span>Lançar Substituição</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {erro && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-xl text-xs font-semibold flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-2">
-            <i className="fa-solid fa-triangle-exclamation text-amber-600 text-base"></i>
-            <span>{erro}</span>
-          </div>
-          <span className="text-[11px] text-amber-700 bg-amber-100 px-2.5 py-1 rounded-lg">Status Operacional OK</span>
-        </div>
-      )}
-
-      {/* Métricas Principais */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 print:hidden">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-lg font-bold">
-            <i className="fa-solid fa-calendar-check"></i>
-          </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Registradas</p>
-            <p className="text-xl font-black text-slate-800">{substituicoes.length}</p>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg font-bold">
-            <i className="fa-solid fa-check-circle"></i>
-          </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Confirmadas</p>
-            <p className="text-xl font-black text-slate-800">
-              {substituicoes.filter(s => s.status === 'CONFIRMADA').length}
-            </p>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center text-lg font-bold">
-            <i className="fa-solid fa-clock-rotate-left"></i>
-          </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Substitutos Ativos</p>
-            <p className="text-xl font-black text-slate-800">{relatorioSubstitutos.length}</p>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center text-lg font-bold">
-            <i className="fa-solid fa-star"></i>
-          </div>
-          <div>
-            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Prioridade Mesma Área</p>
-            <p className="text-xl font-black text-slate-800">
-              {substituicoes.filter(s => String(s.tipoSubstituto).includes('Mesma Área')).length}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Navegação entre Sub-abas */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-4 print:hidden">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
-            <button
-              onClick={() => setSubAba('painel')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
-                subAba === 'painel'
-                  ? 'bg-blue-950 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-              }`}
-            >
-              <i className="fa-solid fa-list-check"></i>
-              <span>Painel de Substituições</span>
-            </button>
-
-            <button
-              onClick={() => setSubAba('sugestao')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
-                subAba === 'sugestao'
-                  ? 'bg-blue-950 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-              }`}
-            >
-              <i className="fa-solid fa-wand-magic-sparkles text-cyan-400"></i>
-              <span>Motor de Sugestão PEI</span>
-            </button>
-
-            <button
-              onClick={() => setSubAba('saldo')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
-                subAba === 'saldo'
-                  ? 'bg-blue-950 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-              }`}
-            >
-              <i className="fa-solid fa-scale-balanced text-amber-400"></i>
-              <span>Controle de Saldo</span>
-            </button>
-
-            <button
-              onClick={() => setSubAba('relatorio')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
-                subAba === 'relatorio'
-                  ? 'bg-blue-950 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-              }`}
-            >
-              <i className="fa-solid fa-file-invoice"></i>
-              <span>Relatório de Eventuais</span>
-            </button>
-
-            <button
-              onClick={() => setSubAba('docentes')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
-                subAba === 'docentes'
-                  ? 'bg-blue-950 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-              }`}
-            >
-              <i className="fa-solid fa-users-gear text-emerald-400"></i>
-              <span>Configuração de Docentes</span>
-            </button>
-          </div>
-
-          {/* Busca Rápida */}
-          <div className="relative w-full sm:w-64">
-            <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
-            <input
-              type="text"
-              value={termoBusca}
-              onChange={(e) => setTermoBusca(e.target.value)}
-              placeholder="Buscar prof, turma, disciplina..."
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-cyan-400 outline-none transition"
-            />
-          </div>
-        </div>
-
-        {/* Filtros em Linha & Controles de Ordenação */}
-        {subAba === 'painel' && (
-          <div className="flex flex-wrap items-center justify-between gap-4 text-xs font-bold text-slate-700">
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex items-center gap-2">
-                <label>Turma:</label>
-                <select
-                  value={filtroTurma}
-                  onChange={(e) => setFiltroTurma(e.target.value)}
-                  className="p-2 bg-slate-50 border border-slate-200 rounded-lg font-semibold cursor-pointer"
-                >
-                  <option value="TODAS">Todas as Turmas</option>
-                  {TURMAS_PEI.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+      <div className="w-full min-h-screen bg-[#F8FAFC] pb-20 sm:pb-12 print:hidden">
+        <div className="max-w-[1440px] mx-auto px-3 sm:px-6 pt-3 sm:pt-5 space-y-5">
+          {/* Header Glassmorphism */}
+          <header className="bg-white/90 backdrop-blur-md sticky top-2 z-20 rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5 min-w-0">
+              <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-lg shrink-0">
+                <i className="fa-solid fa-user-gear"></i>
               </div>
-
-              <div className="flex items-center gap-2">
-                <label>Status:</label>
-                <select
-                  value={filtroStatus}
-                  onChange={(e) => setFiltroStatus(e.target.value)}
-                  className="p-2 bg-slate-50 border border-slate-200 rounded-lg font-semibold cursor-pointer"
-                >
-                  <option value="TODOS">Todos os Status</option>
-                  <option value="CONFIRMADA">CONFIRMADA</option>
-                  <option value="PENDENTE">PENDENTE</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Controles de Ordenação (Padrão: Próximas Primeiro / Toggle: Docente) */}
-            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-2xs">
-              <span className="text-[10px] uppercase font-extrabold text-slate-400 px-1.5">Classificação:</span>
-              <button
-                type="button"
-                onClick={() => setTipoOrdenacao('dia-aula')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black transition flex items-center gap-1.5 cursor-pointer ${
-                  tipoOrdenacao === 'dia-aula'
-                    ? 'bg-blue-950 text-cyan-300 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                }`}
-                title="Mostrar a próxima substituição primeiro (ordem cronológica das próximas aulas)"
-              >
-                <i className="fa-solid fa-clock-rotate-left text-cyan-400"></i>
-                <span>Próximas Primeiro (Padrão)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setTipoOrdenacao('docente')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black transition flex items-center gap-1.5 cursor-pointer ${
-                  tipoOrdenacao === 'docente'
-                    ? 'bg-blue-950 text-cyan-300 shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
-                }`}
-                title="Classificar por nome do docente ausente"
-              >
-                <i className="fa-solid fa-user-tie text-cyan-400"></i>
-                <span>Por Docente</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* CONTEÚDO SUB-ABA 1: PAINEL DE SUBSTITUIÇÕES */}
-      {subAba === 'painel' && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          {loading ? (
-            <div className="p-12 text-center text-slate-500">
-              <i className="fa-solid fa-spinner fa-spin text-3xl text-cyan-500 mb-2 block"></i>
-              Carregando registros de substituição...
-            </div>
-          ) : listagemFiltrada.length === 0 ? (
-            <div className="p-12 text-center text-slate-400 space-y-2">
-              <i className="fa-solid fa-user-check text-4xl text-slate-300"></i>
-              <p className="font-bold text-slate-600 text-sm">Nenhuma substituição encontrada para os filtros selecionados.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse min-w-[850px]">
-                <thead>
-                  <tr className="bg-blue-950 text-white text-xs font-black uppercase tracking-wider">
-                    <th className="p-3.5 border-b border-blue-900">Data & Período</th>
-                    <th className="p-3.5 border-b border-blue-900">Prof. Ausente & Turma</th>
-                    <th className="p-3.5 border-b border-blue-900">Disciplina & Área</th>
-                    <th className="p-3.5 border-b border-blue-900">Prof. Substituto Alocado</th>
-                    <th className="p-3.5 border-b border-blue-900">Motivo</th>
-                    <th className="p-3.5 border-b border-blue-900 text-center">Status</th>
-                    {podeEditar && <th className="p-3.5 border-b border-blue-900 text-center">Ações</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 text-xs font-medium">
-                  {listagemFiltrada.map((item) => {
-                    const listaP = (periodosAula && periodosAula.length > 0) ? periodosAula : PERIODOS_AULA;
-                    const periodoObj = listaP.find(p => getPeriodoOrder(p.id ?? p.periodoId ?? p.rotulo) === getPeriodoOrder(item.periodoId)) || { rotulo: getPeriodoRotulo(item.periodoId), horario: '' };
-                    const badge = getDataBadgeInfo(item.data);
-                    return (
-                      <tr key={item.id} className="hover:bg-slate-50 transition">
-                        <td className="p-3.5 font-bold text-slate-800">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-black font-mono text-xs text-slate-900">{formatDataBR(item.data)}</span>
-                            {badge && (
-                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase border shadow-2xs ${badge.className}`}>
-                                {badge.label}
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[11px] text-cyan-900 font-extrabold flex items-center gap-1.5 mt-0.5">
-                            <span>{periodoObj.rotulo}</span>
-                            {periodoObj.horario && <span className="text-slate-500 font-mono text-[10px]">({periodoObj.horario})</span>}
-                          </div>
-                        </td>
-
-                        <td className="p-3.5">
-                          <div className="font-extrabold text-slate-900">{item.professorAusente}</div>
-                          <div className="text-[11px] font-bold text-blue-700">{item.turma}</div>
-                        </td>
-
-                        <td className="p-3.5">
-                          <span className="font-bold text-slate-800">{item.disciplina}</span>
-                          <div className="text-[10px] text-slate-500 font-semibold">{item.area}</div>
-                        </td>
-
-                        <td className="p-3.5 bg-cyan-50/40">
-                          <div className="font-extrabold text-blue-950 flex items-center gap-1.5">
-                            <i className="fa-solid fa-user-check text-cyan-600"></i>
-                            <span>{item.professorSubstituto}</span>
-                          </div>
-                          <div className="text-[10px] text-slate-600 italic">{item.tipoSubstituto}</div>
-                        </td>
-
-                        <td className="p-3.5 text-slate-600 max-w-[180px] truncate" title={item.motivo}>
-                          {item.motivo}
-                        </td>
-
-                        <td className="p-3.5 text-center">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${
-                            item.status === 'CONFIRMADA'
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                              : 'bg-amber-100 text-amber-800 border border-amber-300'
-                          }`}>
-                            {item.status}
-                          </span>
-                        </td>
-
-                        {podeEditar && (
-                          <td className="p-3.5 text-center print:hidden">
-                            <div className="flex items-center justify-center gap-1">
-                              <button
-                                onClick={() => handleAbrirModalEdicao(item)}
-                                className="p-1.5 hover:bg-slate-100 text-slate-700 rounded-lg transition cursor-pointer"
-                                title="Editar"
-                              >
-                                <i className="fa-solid fa-pen-to-square"></i>
-                              </button>
-                              <button
-                                onClick={() => handleExcluirSubstituicao(item.id)}
-                                className="p-1.5 hover:bg-rose-100 text-rose-700 rounded-lg transition cursor-pointer"
-                                title="Excluir"
-                              >
-                                <i className="fa-solid fa-trash"></i>
-                              </button>
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* CONTEÚDO SUB-ABA 2: MOTOR DE SUGESTÃO PEI & ALOCAÇÃO AUTOMATIZADA */}
-      {subAba === 'sugestao' && (
-        <div className="space-y-6">
-          {/* Card 1: Seleção do Professor Ausente e Configuração do Dia */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-              <div>
-                <h3 className="text-base font-black text-blue-950 uppercase tracking-tight flex items-center gap-2">
-                  <i className="fa-solid fa-wand-magic-sparkles text-cyan-500"></i>
-                  Alocação Automatizada de Substituição PEI
-                </h3>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  Selecione o professor ausente e a data para localizar automaticamente todas as aulas do dia e alocar os melhores substitutos livres.
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+                    Substituição PEI &amp; Eventuais
+                  </h1>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200/70">
+                    <span className={`w-1.5 h-1.5 rounded-full ${isRealtimeConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`}></span>
+                    {isRealtimeConnected ? 'Tempo Real' : 'Conectando...'}
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                  E.E. Clóvis de Lucca · Motor de atribuição inteligente por área de conhecimento
                 </p>
               </div>
+            </div>
 
-              {aulasDoProfessorAusente.length > 0 && (
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl border">
-                    <strong className="text-blue-950">{aulasDoProfessorAusente.length}</strong> aula(s) em {MAPA_DIAS_EXTENSO[diaSemanaForm] || diaSemanaForm}
-                  </span>
-                  {podeEditar && (
-                    <button
-                      onClick={handleSalvarAlocacoesLote}
-                      disabled={salvando}
-                      className="bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-black px-4 py-2.5 rounded-xl transition shadow-md flex items-center gap-2 cursor-pointer"
-                    >
-                      <i className="fa-solid fa-bolt text-yellow-300 animate-pulse"></i>
-                      <span>{salvando ? 'Salvando...' : `Confirmar Todas (${aulasDoProfessorAusente.length} Aulas)`}</span>
-                    </button>
-                  )}
-                </div>
+            <div className="flex flex-wrap items-center gap-2 print:hidden">
+              <button
+                type="button"
+                onClick={handleImprimir}
+                className="inline-flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold px-3.5 py-2.5 rounded-xl transition-colors cursor-pointer"
+                title="Gerar relatório oficial em PDF ou imprimir"
+              >
+                <i className="fa-solid fa-file-pdf text-rose-600"></i>
+                <span>Exportar PDF</span>
+              </button>
+
+              {podeEditar && (
+                <button
+                  type="button"
+                  onClick={handleAbrirModalNovo}
+                  className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-colors shadow-xs cursor-pointer"
+                >
+                  <i className="fa-solid fa-user-plus text-xs"></i>
+                  <span>Lançar Substituição</span>
+                </button>
               )}
             </div>
+          </header>
 
-            {/* Formulário de Busca e Seleção do Professor Ausente */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs font-bold">
-              <div>
-                <label className="block text-slate-700 uppercase mb-1.5 flex items-center gap-1.5">
-                  <i className="fa-solid fa-user-xmark text-rose-500"></i>
-                  1. Professor Ausente:
-                </label>
-                <select
-                  value={form.professorAusente}
-                  onChange={(e) => {
-                    const prof = listaProfessoresUnificada.find(p => isSameProfessor(p.nome, e.target.value));
-                    setForm(prev => ({
-                      ...prev,
-                      professorAusente: e.target.value,
-                      disciplina: prof ? prof.disciplina : prev.disciplina,
-                      area: prof ? prof.area : prev.area
-                    }));
-                  }}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-extrabold text-blue-950 focus:ring-2 focus:ring-cyan-500 outline-none cursor-pointer"
-                >
-                  <option value="">-- Selecione o Docente Ausente --</option>
-                  {listaProfessoresUnificada.map(p => (
-                    <option key={p.nome} value={p.nome}>
-                      {p.nome} ({p.disciplina || 'Geral'})
-                    </option>
-                  ))}
-                </select>
+          {erro && (
+            <div className="bg-amber-50/90 border border-amber-200/70 border-l-4 border-l-amber-500 text-amber-950 px-4 py-3 rounded-2xl text-xs font-medium flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <i className="fa-solid fa-triangle-exclamation text-amber-600"></i>
+                <span>{erro}</span>
               </div>
+              <span className="text-[11px] font-medium text-amber-800 bg-white/80 px-2.5 py-1 rounded-lg border border-amber-200/60 shrink-0">Modo Local Ativo</span>
+            </div>
+          )}
 
+          {/* Bento KPIs */}
+          <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 print:hidden">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex items-center justify-between gap-3">
               <div>
-                <label className="block text-slate-700 uppercase mb-1.5 flex items-center gap-1.5">
-                  <i className="fa-solid fa-calendar-day text-cyan-600"></i>
-                  2. Data da Ausência:
-                </label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    value={form.data}
-                    onChange={(e) => setForm({ ...form, data: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-extrabold text-slate-800 focus:ring-2 focus:ring-cyan-500 outline-none"
-                  />
-                  <span className="text-[11px] font-bold text-cyan-900 mt-1 block">
-                    Dia: <strong className="text-blue-950 uppercase">{MAPA_DIAS_EXTENSO[diaSemanaForm] || diaSemanaForm}</strong>
-                  </span>
-                </div>
+                <p className="text-xs font-medium text-slate-500">Total Registradas</p>
+                <p className="text-2xl font-bold text-slate-900 tabular-nums mt-0.5">{substituicoes.length}</p>
               </div>
-
-              <div>
-                <label className="block text-slate-700 uppercase mb-1.5 flex items-center gap-1.5">
-                  <i className="fa-solid fa-file-signature text-amber-600"></i>
-                  3. Motivo da Ausência:
-                </label>
-                <select
-                  value={form.motivo}
-                  onChange={(e) => setForm({ ...form, motivo: e.target.value })}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-800 focus:ring-2 focus:ring-cyan-500 outline-none cursor-pointer"
-                >
-                  {MOTIVOS_AUSENCIA.map(m => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
+              <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-base shrink-0">
+                <i className="fa-solid fa-calendar-check"></i>
               </div>
             </div>
-          </div>
 
-          {/* Card 2: Lista de Aulas do Professor Ausente e Sugestões de Substitutos */}
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-black text-blue-950 uppercase tracking-wide flex items-center gap-2">
-                  <i className="fa-solid fa-list-ol text-cyan-600"></i>
-                  Aulas Atribuídas & Sugestões de Substitutos Livres
-                </h3>
-                <p className="text-[11px] text-slate-500 font-medium">
-                  Cruzamento em tempo real com a Grade Horária Geral para identificar docentes livres/de janela.
+                <p className="text-xs font-medium text-slate-500">Confirmadas</p>
+                <p className="text-2xl font-bold text-emerald-600 tabular-nums mt-0.5">
+                  {substituicoes.filter(s => s.status === 'CONFIRMADA').length}
                 </p>
               </div>
-
-              {aulasDoProfessorAusente.length > 0 && (
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                  <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-lg flex items-center gap-1.5">
-                    <i className="fa-solid fa-circle-check"></i>
-                    <span>Motor PEI: 8 Critérios de Prioridade Ativos</span>
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Banner Informativo da Ordem dos 8 Critérios PEI & Desempate */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[11px] text-slate-700 space-y-1.5">
-              <div className="flex items-center justify-between font-black text-blue-950 uppercase tracking-wide text-[10px]">
-                <span className="flex items-center gap-1.5">
-                  <i className="fa-solid fa-scale-balanced text-cyan-600"></i>
-                  Ordem de Prioridade PEI (Regras Oficiais de Substituição)
-                </span>
-                <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded font-bold">
-                  Desempate: Menor carga semanal de aulas
-                </span>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-1.5 font-bold text-center text-[10px]">
-                <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 rounded p-1">1. Mesma matéria</div>
-                <div className="bg-teal-50 border border-teal-200 text-teal-900 rounded p-1">2. Mesma área</div>
-                <div className="bg-cyan-50 border border-cyan-200 text-cyan-900 rounded p-1">3. PAAC da área</div>
-                <div className="bg-blue-50 border border-blue-200 text-blue-900 rounded p-1">4. Qualquer matéria</div>
-                <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded p-1">5. Qualquer área</div>
-                <div className="bg-purple-50 border border-purple-200 text-purple-900 rounded p-1">6. CGPG</div>
-                <div className="bg-indigo-50 border border-indigo-200 text-indigo-900 rounded p-1">7. Vice-direção</div>
-                <div className="bg-rose-50 border border-rose-200 text-rose-900 rounded p-1">8. Direção</div>
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-base shrink-0">
+                <i className="fa-solid fa-circle-check"></i>
               </div>
             </div>
 
-            {!form.professorAusente ? (
-              <div className="p-12 text-center text-slate-400 space-y-2">
-                <i className="fa-solid fa-user-slash text-4xl text-slate-300"></i>
-                <p className="font-bold text-slate-600 text-sm">Nenhum professor selecionado.</p>
-                <p className="text-xs">Selecione o professor ausente no painel acima para carregar automaticamente as aulas do dia.</p>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium text-slate-500">Substitutos Ativos</p>
+                <p className="text-2xl font-bold text-amber-600 tabular-nums mt-0.5">{relatorioSubstitutos.length}</p>
               </div>
-            ) : aulasDoProfessorAusente.length === 0 ? (
-              <div className="p-10 text-center text-slate-500 space-y-3 bg-amber-50 border border-amber-200 rounded-xl">
-                <i className="fa-solid fa-calendar-xmark text-4xl text-amber-500"></i>
-                <div>
-                  <p className="font-black text-slate-800 text-sm">
-                    Nenhuma aula regular encontrada para {form.professorAusente} em {MAPA_DIAS_EXTENSO[diaSemanaForm] || diaSemanaForm}.
-                  </p>
-                  <p className="text-xs text-slate-600 mt-1">
-                    Verifique se o professor possui aulas cadastradas para este dia da semana na aba <strong className="text-blue-950">Horários</strong> ou altere a data selecionada.
-                  </p>
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-base shrink-0">
+                <i className="fa-solid fa-clock-rotate-left"></i>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium text-slate-500">Mesma Área PEI</p>
+                <p className="text-2xl font-bold text-purple-600 tabular-nums mt-0.5">
+                  {substituicoes.filter(s => String(s.tipoSubstituto).includes('Mesma Área')).length}
+                </p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center text-base shrink-0">
+                <i className="fa-solid fa-star"></i>
+              </div>
+            </div>
+          </section>
+
+          {/* Command Bar & Sub-abas */}
+          <section className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-3.5 print:hidden">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-2xl overflow-x-auto no-scrollbar">
+                {[
+                  { key: 'painel', label: 'Painel', icon: 'fa-list-check' },
+                  { key: 'sugestao', label: 'Motor PEI', icon: 'fa-wand-magic-sparkles' },
+                  { key: 'saldo', label: 'Saldo', icon: 'fa-scale-balanced' },
+                  { key: 'relatorio', label: 'Relatório', icon: 'fa-file-invoice' },
+                  { key: 'docentes', label: 'Docentes', icon: 'fa-users-gear' },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setSubAba(tab.key)}
+                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer shrink-0 ${
+                      subAba === tab.key
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <i className={`fa-solid ${tab.icon} text-[11px] ${subAba === tab.key ? 'text-indigo-600' : ''}`}></i>
+                    <span>{tab.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="relative w-full lg:w-72">
+                <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                <input
+                  type="text"
+                  value={termoBusca}
+                  onChange={(e) => setTermoBusca(e.target.value)}
+                  placeholder="Buscar professor, turma ou disciplina..."
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 outline-none transition"
+                />
+              </div>
+            </div>
+
+            {subAba === 'painel' && (
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pt-2 border-t border-slate-100 text-xs">
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={filtroTurma}
+                    onChange={(e) => setFiltroTurma(e.target.value)}
+                    className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-700 cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500/30"
+                  >
+                    <option value="TODAS">Todas as Turmas</option>
+                    {TURMAS_PEI.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+
+                  <select
+                    value={filtroStatus}
+                    onChange={(e) => setFiltroStatus(e.target.value)}
+                    className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-700 cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500/30"
+                  >
+                    <option value="TODOS">Todos os Status</option>
+                    <option value="CONFIRMADA">Confirmadas</option>
+                    <option value="PENDENTE">Pendentes</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1 bg-slate-100/90 p-1 rounded-2xl self-start md:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setTipoOrdenacao('dia-aula')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer ${
+                      tipoOrdenacao === 'dia-aula'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Mostrar a próxima substituição primeiro"
+                  >
+                    <i className="fa-solid fa-clock-rotate-left text-[11px] text-indigo-600"></i>
+                    <span>Próximas Primeiro</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTipoOrdenacao('docente')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer ${
+                      tipoOrdenacao === 'docente'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                    title="Classificar por nome do docente ausente"
+                  >
+                    <i className="fa-solid fa-user-tie text-[11px] text-indigo-600"></i>
+                    <span>Por Docente</span>
+                  </button>
                 </div>
               </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                  <table className="w-full text-left border-collapse min-w-[750px]">
-                    <thead>
-                      <tr className="bg-blue-950 text-white text-xs font-black uppercase tracking-wider">
-                        <th className="p-3.5">Horário / Aula</th>
-                        <th className="p-3.5">Turma & Disciplina</th>
-                        <th className="p-3.5">Professor Substituto Sugerido (Livre no Horário)</th>
-                        <th className="p-3.5 text-center">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 text-xs font-medium">
-                      {aulasDoProfessorAusente.map((aula) => {
-                        const listaP = (periodosAula && periodosAula.length > 0) ? periodosAula : PERIODOS_AULA;
-                        const periodoObj = listaP.find(p => getPeriodoOrder(p.id ?? p.periodoId ?? p.rotulo) === getPeriodoOrder(aula.periodoId)) || { rotulo: getPeriodoRotulo(aula.periodoId), horario: '' };
-                        const areaAula = encontrarAreaDisciplina(aula.disciplina);
-                        const sugestoes = calcularSugestoesParaAula(aula.periodoId, aula.disciplina, areaAula);
-                        const alocAtual = alocacoesLote[aula.periodoId] || { professorSubstituto: '', tipoSubstituto: '' };
-                        const subsAtualObj = sugestoes.find(s => isSameProfessor(s.nome, alocAtual.professorSubstituto) || s.nome === alocAtual.professorSubstituto);
+            )}
+          </section>
 
-                        return (
-                          <tr key={aula.id || aula.periodoId} className="hover:bg-slate-50 transition">
-                            <td className="p-3.5">
-                              <div className="font-black text-blue-950 text-sm flex items-center gap-1.5 flex-wrap">
-                                <span className="px-2 py-0.5 rounded-md bg-blue-100 text-blue-900 text-xs font-black">
-                                  {periodoObj.rotulo}
-                                </span>
-                                {periodoObj.horario && (
-                                  <span className="text-xs font-bold text-slate-500 font-mono">
-                                    ({periodoObj.horario})
+          {/* CONTEÚDO SUB-ABA 1: PAINEL DE SUBSTITUIÇÕES */}
+          {subAba === 'painel' && (
+            <section className="bg-white rounded-3xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] overflow-hidden">
+              {loading ? (
+                <div className="p-12 text-center text-slate-500 text-xs font-medium">
+                  <i className="fa-solid fa-spinner fa-spin text-2xl text-indigo-600 mb-2 block"></i>
+                  Carregando registros de substituição...
+                </div>
+              ) : listagemFiltrada.length === 0 ? (
+                <div className="p-12 text-center text-slate-400 space-y-2">
+                  <i className="fa-solid fa-user-check text-3xl text-slate-300"></i>
+                  <p className="font-semibold text-slate-600 text-sm">Nenhuma substituição encontrada para os filtros selecionados.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Mobile Card View (< md) */}
+                  <div className="md:hidden divide-y divide-slate-100">
+                    {listagemFiltrada.map((item) => {
+                      const listaP = (periodosAula && periodosAula.length > 0) ? periodosAula : PERIODOS_AULA;
+                      const periodoObj = listaP.find(p => getPeriodoOrder(p.id ?? p.periodoId ?? p.rotulo) === getPeriodoOrder(item.periodoId)) || { rotulo: getPeriodoRotulo(item.periodoId), horario: '' };
+                      const badge = getDataBadgeInfo(item.data);
+                      const isConfirming = confirmDeleteSubId === item.id;
+
+                      return (
+                        <div key={item.id} className="p-4 space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold text-sm text-slate-900 tabular-nums">{formatDataBR(item.data)}</span>
+                                {badge && (
+                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/70">
+                                    {badge.label}
                                   </span>
                                 )}
                               </div>
-                            </td>
-
-                            <td className="p-3.5">
-                              <div className="font-extrabold text-slate-900 text-sm">{aula.turma}</div>
-                              <div className="text-xs font-bold text-blue-800">{aula.disciplina}</div>
-                              <div className="text-[10px] text-slate-500 font-semibold">{areaAula}</div>
-                            </td>
-
-                            <td className="p-3.5 bg-cyan-50/30 max-w-sm">
-                              <select
-                                value={alocAtual.professorSubstituto}
-                                onChange={(e) => handleMudarSubstitutoLote(aula.periodoId, e.target.value, aula.disciplina, areaAula)}
-                                className="w-full p-2.5 bg-white border border-cyan-300 rounded-xl font-extrabold text-blue-950 focus:ring-2 focus:ring-cyan-500 outline-none cursor-pointer shadow-xs"
-                              >
-                                <option value="">-- Selecione o Professor Substituto --</option>
-                                {sugestoes.map(p => {
-                                  const isBlocked = p.isIndisponivel || p.isOcupado;
-                                  let rotulo = `${p.nome} (${p.disciplina}) — ${p.motivoPrioridade} [Carga Semanal Total: ${p.totalAulasSemana}h (${p.aulasSemana} reg. + ${p.saldoReal} subst.)]`;
-                                  if (isBlocked) {
-                                    rotulo = `⛔ BLOQUEADO: ${p.nome} (${p.isIndisponivel ? 'Fora da Escola / Folga' : 'Em Aula em ' + p.motivoOcupado})`;
-                                  }
-                                  return (
-                                    <option key={p.nome} value={p.nome} disabled={isBlocked}>
-                                      {rotulo}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-
-                              {subsAtualObj && (
-                                <div className="mt-1.5 text-[11px] font-bold flex items-center gap-1.5 flex-wrap">
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                                    subsAtualObj.prioridade === 1
-                                      ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                                      : subsAtualObj.prioridade === 2
-                                      ? 'bg-teal-100 text-teal-900 border border-teal-300'
-                                      : subsAtualObj.prioridade === 3
-                                      ? 'bg-cyan-100 text-cyan-900 border border-cyan-300'
-                                      : subsAtualObj.prioridade === 4
-                                      ? 'bg-blue-100 text-blue-900 border border-blue-300'
-                                      : subsAtualObj.prioridade === 5
-                                      ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                                      : subsAtualObj.prioridade === 6
-                                      ? 'bg-purple-100 text-purple-900 border border-purple-300'
-                                      : subsAtualObj.prioridade === 7
-                                      ? 'bg-indigo-100 text-indigo-900 border border-indigo-300'
-                                      : subsAtualObj.prioridade === 8
-                                      ? 'bg-rose-100 text-rose-900 border border-rose-300'
-                                      : 'bg-slate-100 text-slate-800 border border-slate-300'
-                                  }`}>
-                                    {subsAtualObj.motivoPrioridade}
-                                  </span>
-                                  <span className="text-slate-600 text-[10px]">
-                                    (Carga semanal total: <strong>{subsAtualObj.totalAulasSemana}h</strong> — {subsAtualObj.aulasSemana} regência + {subsAtualObj.saldoReal} subst.)
-                                  </span>
-                                </div>
-                              )}
-                            </td>
-
-                            <td className="p-3.5 text-center">
-                              {podeEditar && (
-                                <button
-                                  onClick={() => handleSalvarAulaUnica(aula)}
-                                  disabled={salvando || !alocAtual.professorSubstituto}
-                                  className={`px-3.5 py-2 text-xs font-extrabold rounded-xl transition shadow-xs cursor-pointer flex items-center justify-center gap-1.5 mx-auto ${
-                                    alocAtual.professorSubstituto
-                                      ? 'bg-blue-950 hover:bg-blue-900 text-white'
-                                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                                  }`}
-                                  title="Salvar apenas esta aula"
-                                >
-                                  <i className="fa-solid fa-check text-cyan-400"></i>
-                                  <span>Salvar Aula</span>
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {podeEditar && (
-                  <div className="pt-2 flex justify-end">
-                    <button
-                      onClick={handleSalvarAlocacoesLote}
-                      disabled={salvando}
-                      className="bg-gradient-to-r from-cyan-400 via-cyan-500 to-blue-600 hover:from-cyan-300 hover:to-blue-500 text-blue-950 font-black text-xs px-6 py-3 rounded-xl transition shadow-lg flex items-center gap-2.5 cursor-pointer"
-                    >
-                      <i className="fa-solid fa-bolt text-lg text-blue-950 animate-bounce"></i>
-                      <span>⚡ CONFIRMAR E SALVAR TODAS AS {aulasDoProfessorAusente.length} SUBSTITUIÇÕES DO DIA</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* CONTEÚDO SUB-ABA: CONTROLE DE SALDO DE AULAS */}
-      {subAba === 'saldo' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-          <div className="border-b pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-black text-blue-950 uppercase tracking-tight flex items-center gap-2">
-                <i className="fa-solid fa-scale-balanced text-amber-500"></i>
-                Extrato de Saldo de Aulas & Créditos/Débitos PEI
-              </h2>
-              <p className="text-xs text-slate-500 font-medium mt-0.5">
-                Controle em tempo real de substituições realizadas (+) e faltas justificadas (-) por docente na E.E. Clóvis de Lucca
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 print:hidden">
-              <button
-                onClick={handleZerarSaldoFimDeSemana}
-                className="flex items-center gap-2 bg-rose-700 hover:bg-rose-800 text-white text-xs font-black px-3.5 py-2 rounded-xl transition shadow-sm cursor-pointer border border-rose-600"
-                title="Reinicia os saldos acumulados e histórico de substituição para o início da próxima semana letiva"
-              >
-                <i className="fa-solid fa-rotate-right"></i>
-                <span>Zerar Saldo (Fim de Semana)</span>
-              </button>
-
-              <button
-                onClick={handleExportarSaldoJSON}
-                className="flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-black px-3.5 py-2 rounded-xl transition shadow-sm cursor-pointer"
-              >
-                <i className="fa-solid fa-download"></i>
-                <span>Exportar Saldo (JSON)</span>
-              </button>
-
-              <label className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold px-3.5 py-2 rounded-xl transition border border-slate-700 shadow-sm cursor-pointer">
-                <i className="fa-solid fa-upload text-cyan-400"></i>
-                <span>Importar Saldo (JSON)</span>
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={handleImportarSaldoJSON}
-                  className="hidden"
-                />
-              </label>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-blue-950 text-white text-xs font-black uppercase tracking-wider">
-                  <th className="p-3.5 border-b border-blue-900">Docente / Disciplina</th>
-                  <th className="p-3.5 border-b border-blue-900">Área de Conhecimento</th>
-                  <th className="p-3.5 border-b border-blue-900 text-center">Aulas na Grade (Regência)</th>
-                  <th className="p-3.5 border-b border-blue-900 text-center bg-blue-900">
-                    Saldo Somado (Carga Total Semanal)
-                  </th>
-                  <th className="p-3.5 border-b border-blue-900 text-center">Saldo Inicial</th>
-                  <th className="p-3.5 border-b border-blue-900 text-center">Créditos (+)</th>
-                  <th className="p-3.5 border-b border-blue-900 text-center">Débitos (-)</th>
-                  <th className="p-3.5 border-b border-blue-900 text-center">Saldo Acumulado</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 text-xs font-medium">
-                {saldoDocentesConsolidado.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="p-6 text-center text-slate-400 italic">
-                      Nenhum docente cadastrado na grade horária oficial.
-                    </td>
-                  </tr>
-                ) : (
-                  saldoDocentesConsolidado.map((docente) => (
-                    <tr key={docente.nome} className="hover:bg-slate-50 transition">
-                      <td className="p-3.5 font-extrabold text-slate-900">
-                        <div>{docente.nome}</div>
-                        <div className="text-[10px] text-slate-500 font-semibold">{docente.disciplina}</div>
-                      </td>
-                      <td className="p-3.5 font-bold text-slate-700">{docente.area}</td>
-                      <td className="p-3.5 text-center font-mono font-extrabold text-blue-900 bg-blue-50">
-                        {docente.aulasRegenciaGrade}h
-                      </td>
-                      <td className="p-3.5 text-center bg-amber-50/30">
-                        <div className="font-mono font-black text-sm text-blue-950">
-                          {docente.cargaTotalSemana}h
-                        </div>
-                        {docente.atingiuTeto32 ? (
-                          <span className="inline-block mt-0.5 text-[9px] font-black uppercase px-2 py-0.5 rounded bg-rose-100 text-rose-800 border border-rose-300">
-                            ⛔ 32h+ (Teto Atingido - Não Substitui)
-                          </span>
-                        ) : (
-                          <span className="inline-block mt-0.5 text-[9px] font-bold text-slate-500">
-                            ({docente.aulasRegenciaGrade} reg. + {docente.creditos} subst.)
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-3.5 text-center font-mono font-bold text-slate-600">{docente.saldoInicial}</td>
-                      <td className="p-3.5 text-center font-mono font-black text-emerald-700 bg-emerald-50">
-                        +{docente.creditos}
-                      </td>
-                      <td className="p-3.5 text-center font-mono font-black text-rose-700 bg-rose-50">
-                        -{docente.debitos}
-                      </td>
-                      <td className="p-3.5 text-center">
-                        <span className={`inline-block font-mono font-black text-xs px-3 py-1 rounded-full border ${
-                          docente.totalFinal > 0
-                            ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                            : docente.totalFinal < 0
-                            ? 'bg-rose-100 text-rose-900 border-rose-300'
-                            : 'bg-slate-100 text-slate-700 border-slate-300'
-                        }`}>
-                          {docente.totalFinal > 0 ? `+${docente.totalFinal}` : docente.totalFinal} aula(s)
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* CONTEÚDO SUB-ABA 3: RELATÓRIO DE EVENTUAIS E MONITOR DE CARGA HORÁRIA PARA A SECRETARIA/DIRETORIA */}
-      {subAba === 'relatorio' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-          <div className="border-b pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-black text-blue-950 uppercase tracking-tight">
-                Boletim de Controle de Carga Horária & Aulas Eventuais
-              </h2>
-              <p className="text-xs text-slate-500 font-medium">
-                Escola Estadual Clóvis de Lucca &bull; Sincronização em Tempo Real de Créditos (+), Débitos (-) e Saldo Docente
-              </p>
-            </div>
-
-            <button
-              onClick={handleImprimir}
-              className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white text-xs font-black px-4 py-2.5 rounded-xl transition flex items-center gap-2 print:hidden cursor-pointer shadow-md"
-            >
-              <i className="fa-solid fa-file-pdf"></i>
-              <span>Gerar Relatório PDF / Imprimir</span>
-            </button>
-          </div>
-
-          {/* Tabela 1: Extrato Consolidado de Créditos e Débitos (Tempo Real) */}
-          <div className="space-y-2">
-            <h3 className="text-xs font-black text-blue-950 uppercase tracking-wider flex items-center gap-2">
-              <i className="fa-solid fa-scale-balanced text-amber-500"></i>
-              Extrato do Monitor de Carga Horária Docente (E.E. Clóvis de Lucca)
-            </h3>
-            <div className="overflow-x-auto border border-slate-200 rounded-xl">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-blue-950 text-white text-[11px] font-black uppercase tracking-wider">
-                    <th className="p-2.5">Docente</th>
-                    <th className="p-2.5">Área / Disciplina</th>
-                    <th className="p-2.5 text-center">Aulas na Grade (Regência)</th>
-                    <th className="p-2.5 text-center bg-blue-900">Saldo Somado (Carga Total)</th>
-                    <th className="p-2.5 text-center">Saldo Inicial</th>
-                    <th className="p-2.5 text-center">Créditos (+)</th>
-                    <th className="p-2.5 text-center">Débitos (-)</th>
-                    <th className="p-2.5 text-center">Saldo Acumulado</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 text-xs font-medium">
-                  {saldoDocentesConsolidado.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="p-4 text-center text-slate-400 italic">
-                        Nenhum registro docente para apuração.
-                      </td>
-                    </tr>
-                  ) : (
-                    saldoDocentesConsolidado.map((d) => (
-                      <tr key={d.nome} className="hover:bg-slate-50">
-                        <td className="p-2.5 font-bold text-slate-900">{d.nome}</td>
-                        <td className="p-2.5 text-slate-600">{d.disciplina} ({d.area})</td>
-                        <td className="p-2.5 text-center font-mono font-bold text-blue-950 bg-blue-50">{d.aulasRegenciaGrade}h</td>
-                        <td className="p-2.5 text-center font-mono font-black text-slate-900 bg-amber-50">
-                          {d.cargaTotalSemana}h {d.atingiuTeto32 && <span className="text-[9px] text-rose-700 font-bold ml-1">(⚠️ 32h+)</span>}
-                        </td>
-                        <td className="p-2.5 text-center font-mono font-bold text-slate-600">{d.saldoInicial}</td>
-                        <td className="p-2.5 text-center font-mono font-black text-emerald-700 bg-emerald-50">+{d.creditos}</td>
-                        <td className="p-2.5 text-center font-mono font-black text-rose-700 bg-rose-50">-{d.debitos}</td>
-                        <td className="p-2.5 text-center font-mono font-black">
-                          <span className={`px-2 py-0.5 rounded ${
-                            d.totalFinal > 0 ? 'bg-emerald-100 text-emerald-900' : d.totalFinal < 0 ? 'bg-rose-100 text-rose-900' : 'bg-slate-100 text-slate-700'
-                          }`}>
-                            {d.totalFinal > 0 ? `+${d.totalFinal}` : d.totalFinal} aula(s)
-                          </span>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Tabela 2: Detalhamento de Eventuais e Substitutos Atendidos */}
-          <div className="space-y-2 pt-2 border-t border-slate-100">
-            <h3 className="text-xs font-black text-blue-950 uppercase tracking-wider flex items-center gap-2">
-              <i className="fa-solid fa-list-check text-cyan-600"></i>
-              Detalhamento de Aulas Substituídas por Docente Eventual
-            </h3>
-            <div className="overflow-x-auto border border-slate-200 rounded-xl">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-800 text-[11px] font-black uppercase tracking-wider border-b border-slate-300">
-                    <th className="p-2.5">Docente Substituto</th>
-                    <th className="p-2.5 text-center">Total Aulas</th>
-                    <th className="p-2.5">Turmas Atendidas</th>
-                    <th className="p-2.5">Disciplinas Ministradas</th>
-                    <th className="p-2.5 text-center">Visto Direção</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 text-xs font-medium">
-                  {relatorioSubstitutos.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="p-4 text-center text-slate-400 italic">
-                        Nenhuma aula de substituição computada no período.
-                      </td>
-                    </tr>
-                  ) : (
-                    relatorioSubstitutos.map((r) => (
-                      <tr key={r.nome} className="hover:bg-slate-50">
-                        <td className="p-2.5 font-extrabold text-blue-950">{r.nome}</td>
-                        <td className="p-2.5 text-center font-black text-sm text-emerald-700 bg-emerald-50">
-                          {r.totalAulas}
-                        </td>
-                        <td className="p-2.5 font-semibold text-slate-700">
-                          {Array.from(r.turmasAtendidas).join(', ')}
-                        </td>
-                        <td className="p-2.5 text-slate-600">
-                          {Array.from(r.disciplinas).join(', ')}
-                        </td>
-                        <td className="p-2.5 text-center font-bold text-slate-400">
-                          [ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ] OK
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Rodapé do Relatório para Assinatura */}
-          <div className="pt-8 border-t border-slate-200 grid grid-cols-2 gap-8 text-center text-xs font-bold text-slate-700">
-            <div>
-              <div className="border-b border-slate-400 w-3/4 mx-auto mb-1"></div>
-              <p>Assinatura da Direção / Vice-Direção PEI</p>
-            </div>
-            <div>
-              <div className="border-b border-slate-400 w-3/4 mx-auto mb-1"></div>
-              <p>Assinatura do CGPG / Coordenação Pedagógica</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CONTEÚDO SUB-ABA 5: CONFIGURAÇÃO E CADASTRO DE DOCENTES (MIGRAÇÃO DE HORÁRIO) */}
-      {subAba === 'docentes' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-          <div className="border-b pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-black text-blue-950 uppercase tracking-tight flex items-center gap-2">
-                <i className="fa-solid fa-users-gear text-emerald-600"></i>
-                Configuração & Cadastro de Docentes PEI
-              </h2>
-              <p className="text-xs text-slate-500 font-medium">
-                Docentes, disciplinas, áreas de conhecimento e aulas de regência migradas da Grade Horária Oficial da E.E. Clóvis de Lucca
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 print:hidden">
-              {podeEditar && (
-                <button
-                  onClick={() => handleMigrarDocentesDoHorario(false)}
-                  className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white text-xs font-black px-4 py-2.5 rounded-xl transition shadow-md cursor-pointer border border-emerald-500"
-                  title="Sincroniza e migra automaticamente todos os docentes da aba Horários"
-                >
-                  <i className="fa-solid fa-bolt text-yellow-300 animate-pulse"></i>
-                  <span>Migrar Docentes do Horário</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Formulário de Adição Manual de Docente */}
-          {podeEditar && (
-            <form onSubmit={handleAdicionarDocenteCorpo} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-              <h3 className="text-xs font-black text-blue-950 uppercase tracking-wider flex items-center gap-1.5">
-                <i className="fa-solid fa-user-plus text-cyan-600"></i>
-                Adicionar / Cadastrar Novo Docente (Eventual / Contratado)
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
-                <input
-                  type="text"
-                  value={novoDocenteForm.nome}
-                  onChange={(e) => setNovoDocenteForm({ ...novoDocenteForm, nome: e.target.value })}
-                  placeholder="Nome Completo do Docente"
-                  className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold"
-                  required
-                />
-                <input
-                  type="text"
-                  value={novoDocenteForm.disciplina}
-                  onChange={(e) => setNovoDocenteForm({ ...novoDocenteForm, disciplina: e.target.value, area: encontrarAreaDisciplina(e.target.value) })}
-                  placeholder="Disciplina (ex: Matemática)"
-                  className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold"
-                />
-                <select
-                  value={novoDocenteForm.area}
-                  onChange={(e) => setNovoDocenteForm({ ...novoDocenteForm, area: e.target.value })}
-                  className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold"
-                >
-                  {OPCOES_AREAS_PEI.map(a => <option key={a} value={a}>{a}</option>)}
-                </select>
-                <select
-                  value={novoDocenteForm.tipo}
-                  onChange={(e) => setNovoDocenteForm({ ...novoDocenteForm, tipo: e.target.value })}
-                  className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold"
-                >
-                  <option value="EFETIVO">Efetivo PEI</option>
-                  <option value="CATEGORIA_O">Categoria O</option>
-                  <option value="EVENTUAL">Eventual</option>
-                </select>
-                <button
-                  type="submit"
-                  className="bg-blue-950 hover:bg-blue-900 text-white text-xs font-black p-2.5 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <i className="fa-solid fa-check"></i>
-                  <span>Salvar Docente</span>
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* Tabela de Docentes Cadastrados & Migrados */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-black text-blue-950 uppercase tracking-wider">
-                Corpo Docente PEI ({listaProfessoresUnificada.length} Professores)
-              </h3>
-              <span className="text-[11px] font-bold text-slate-500 italic">
-                💡 As áreas de conhecimento são migradas do horário e usadas pelo motor de sugestão PEI.
-              </span>
-            </div>
-
-            <div className="overflow-x-auto border border-slate-200 rounded-xl">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-blue-950 text-white text-xs font-black uppercase tracking-wider">
-                    <th className="p-3.5 border-b border-blue-900">Docente / Nome</th>
-                    <th className="p-3.5 border-b border-blue-900">Disciplina Principal</th>
-                    <th className="p-3.5 border-b border-blue-900">Área de Conhecimento PEI</th>
-                    <th className="p-3.5 border-b border-blue-900 text-center">Aulas na Grade (Regência)</th>
-                    <th className="p-3.5 border-b border-blue-900 text-center">Vínculo</th>
-                    {podeEditar && <th className="p-3.5 border-b border-blue-900 text-center">Ações</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 text-xs font-medium">
-                  {listaProfessoresUnificada.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="p-6 text-center text-slate-400 italic">
-                        Nenhum docente encontrado. Clique em "Migrar Docentes do Horário" para importar automaticamente.
-                      </td>
-                    </tr>
-                  ) : (
-                    listaProfessoresUnificada.map((docente) => (
-                      <tr key={docente.nome} className="hover:bg-slate-50 transition">
-                        <td className="p-3.5 font-black text-slate-900 flex items-center gap-2">
-                          <i className="fa-solid fa-user-tie text-slate-400 text-sm"></i>
-                          <span>{docente.nome}</span>
-                        </td>
-                        <td className="p-3.5 font-bold text-slate-700">
-                          {docente.disciplina}
-                        </td>
-                        <td className="p-3.5">
-                          {podeEditar ? (
-                            <select
-                              value={docente.area}
-                              onChange={(e) => handleAlterarAreaDocenteInline(docente.nome, e.target.value)}
-                              className="p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:ring-2 focus:ring-cyan-500 outline-none cursor-pointer"
-                            >
-                              {OPCOES_AREAS_PEI.map(a => (
-                                <option key={a} value={a}>{a}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span className="font-bold text-slate-800">{docente.area}</span>
-                          )}
-                        </td>
-                        <td className="p-3.5 text-center font-mono font-extrabold text-blue-900 bg-blue-50">
-                          {docente.aulasRegenciaGrade || 0}
-                        </td>
-                        <td className="p-3.5 text-center font-bold text-slate-600">
-                          {podeEditar ? (
-                            <select
-                              value={docente.tipo || 'EFETIVO'}
-                              onChange={(e) => handleAlterarTipoDocenteInline(docente.nome, e.target.value)}
-                              className="p-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:ring-2 focus:ring-cyan-500 outline-none cursor-pointer"
-                            >
-                              <option value="EFETIVO">Efetivo PEI (Regente)</option>
-                              <option value="PAAC">PAAC / Eventual / Apoio</option>
-                              <option value="CGPG">CGPG / CGPCA (Coordenador Geral)</option>
-                              <option value="VICE_DIRETOR">Vice-Diretor(a)</option>
-                              <option value="DIRETOR">Diretor(a) Escolar</option>
-                            </select>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-800 text-[10px] font-extrabold uppercase">
-                              {docente.tipo || 'EFETIVO'}
+                              <p className="text-xs text-slate-500 tabular-nums mt-0.5">
+                                {periodoObj.rotulo} {periodoObj.horario ? `· ${periodoObj.horario}` : ''}
+                              </p>
+                            </div>
+                            <span className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-l-4 ${
+                              item.status === 'CONFIRMADA'
+                                ? 'bg-emerald-50/90 text-emerald-900 border-emerald-200/70 border-l-emerald-500'
+                                : 'bg-amber-50/90 text-amber-900 border-amber-200/70 border-l-amber-500'
+                            }`}>
+                              {item.status}
                             </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-2 bg-slate-50/70 p-3 rounded-2xl border border-slate-200/60 text-xs">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-slate-500">Ausente:</span>
+                              <span className="font-semibold text-slate-900 text-right">{item.professorAusente}</span>
+                            </div>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-slate-500">Turma / Disciplina:</span>
+                              <span className="font-medium text-slate-800 text-right">{item.turma} · {item.disciplina}</span>
+                            </div>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-slate-500">Substituto:</span>
+                              <span className="font-semibold text-indigo-700 text-right">{item.professorSubstituto}</span>
+                            </div>
+                            {item.motivo && (
+                              <div className="text-[11px] text-slate-500 pt-1 border-t border-slate-200/60">
+                                {item.motivo}
+                              </div>
+                            )}
+                          </div>
+
+                          {podeEditar && (
+                            <div className="flex items-center justify-end gap-2">
+                              {isConfirming ? (
+                                <div className="flex items-center gap-2 w-full justify-between bg-rose-50 px-3 py-2 rounded-xl border border-rose-200">
+                                  <span className="text-xs font-medium text-rose-900">Excluir registro?</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDeleteSubId(null)}
+                                      className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-600 text-xs font-medium cursor-pointer"
+                                    >
+                                      Cancelar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleExcluirSubstituicao(item.id)}
+                                      className="px-2.5 py-1 rounded-lg bg-rose-600 text-white text-xs font-semibold cursor-pointer"
+                                    >
+                                      Confirmar
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAbrirModalEdicao(item)}
+                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-medium cursor-pointer"
+                                  >
+                                    <i className="fa-solid fa-pen-to-square mr-1"></i> Editar
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeleteSubId(item.id)}
+                                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-medium cursor-pointer"
+                                  >
+                                    <i className="fa-solid fa-trash mr-1"></i> Excluir
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           )}
-                        </td>
-                        {podeEditar && (
-                          <td className="p-3.5 text-center">
-                            <button
-                              onClick={() => handleExcluirDocenteCorpo(docente.nome)}
-                              className="text-rose-600 hover:text-rose-800 p-1.5 rounded-lg hover:bg-rose-50 transition cursor-pointer"
-                              title="Excluir Docente do Cadastro"
-                            >
-                              <i className="fa-solid fa-trash-can text-sm"></i>
-                            </button>
-                          </td>
-                        )}
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-
-      {/* MODAL LANÇAR / EDITAR SUBSTITUIÇÃO PEI */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh]">
-            <div className="bg-blue-950 p-4 text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <i className="fa-solid fa-wand-magic-sparkles text-cyan-300"></i>
-                <h3 className="font-extrabold text-sm uppercase tracking-wide">
-                  {itemEdicao ? 'Editar Substituição PEI' : 'Lançar Substituições do Dia em Lote (Por Professor Ausente)'}
-                </h3>
-              </div>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="text-slate-300 hover:text-white p-1 cursor-pointer"
-              >
-                <i className="fa-solid fa-xmark text-lg"></i>
-              </button>
-            </div>
-
-            {itemEdicao ? (
-              /* MODAL DE EDIÇÃO DE ITEM ÚNICO */
-              <form onSubmit={handleSalvarSubstituicao} className="p-5 space-y-4 overflow-y-auto flex-1 text-xs">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-extrabold text-slate-700 uppercase mb-1">Data</label>
-                    <input
-                      type="date"
-                      value={form.data}
-                      onChange={(e) => setForm({ ...form, data: e.target.value })}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-extrabold text-slate-700 uppercase mb-1">Período / Aula</label>
-                    <select
-                      value={form.periodoId}
-                      onChange={(e) => setForm({ ...form, periodoId: Number(e.target.value) })}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold"
-                      required
-                    >
-                      {PERIODOS_AULA.map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.rotulo} ({p.horario})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-extrabold text-slate-700 uppercase mb-1">Professor Ausente</label>
-                  <select
-                    value={form.professorAusente}
-                    onChange={(e) => setForm({ ...form, professorAusente: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800"
-                    required
-                  >
-                    <option value="">-- Selecione o Professor Ausente --</option>
-                    {listaProfessoresUnificada.map(p => (
-                      <option key={p.nome} value={p.nome}>{p.nome} ({p.disciplina})</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-extrabold text-slate-700 uppercase mb-1">Disciplina</label>
-                    <input
-                      type="text"
-                      value={form.disciplina}
-                      onChange={(e) => handleDisciplinaChange(e.target.value)}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-extrabold text-slate-700 uppercase mb-1">Turma PEI</label>
-                    <select
-                      value={form.turma}
-                      onChange={(e) => setForm({ ...form, turma: e.target.value })}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold"
-                      required
-                    >
-                      {TURMAS_PEI.map(t => <option key={t} value={t}>{t}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block font-extrabold text-slate-700 uppercase mb-1">Motivo da Ausência</label>
-                  <select
-                    value={form.motivo}
-                    onChange={(e) => setForm({ ...form, motivo: e.target.value })}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                    required
-                  >
-                    {MOTIVOS_AUSENCIA.map(m => <option key={m} value={m}>{m}</option>)}
-                  </select>
-                </div>
-
-                <div className="bg-cyan-50 p-3.5 rounded-xl border border-cyan-200 space-y-2">
-                  <label className="block font-black text-cyan-950 uppercase tracking-wide">
-                    Professor Substituto Alocado
-                  </label>
-                  <select
-                    value={form.professorSubstituto}
-                    onChange={(e) => {
-                      const selNome = e.target.value;
-                      const pObj = sugestoesSubstitutos.find(s => s.nome === selNome);
-                      setForm({
-                        ...form,
-                        professorSubstituto: selNome,
-                        tipoSubstituto: pObj?.motivoPrioridade || form.tipoSubstituto
-                      });
-                    }}
-                    className="w-full p-2.5 bg-white border border-cyan-300 rounded-xl font-extrabold text-blue-950 focus:ring-2 focus:ring-cyan-500 outline-none cursor-pointer"
-                    required
-                  >
-                    <option value="">-- Selecione o Professor Substituto Apto --</option>
-                    {sugestoesSubstitutos.map(p => {
-                      const isBlocked = p.isIndisponivel || p.isOcupado;
-                      let rotulo = `${p.nome} (${p.disciplina}) — ${p.motivoPrioridade} [Carga Semanal Total: ${p.totalAulasSemana}h (${p.aulasSemana} reg. + ${p.saldoReal} subst.)]`;
-                      if (isBlocked) {
-                        rotulo = `⛔ BLOQUEADO: ${p.nome} (${p.isIndisponivel ? 'Fora da Escola / Folga' : 'Em Aula em ' + p.motivoOcupado})`;
-                      }
-                      return (
-                        <option key={p.nome} value={p.nome} disabled={isBlocked}>
-                          {rotulo}
-                        </option>
+                        </div>
                       );
                     })}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-extrabold text-slate-700 uppercase mb-1">Observações</label>
-                  <textarea
-                    value={form.observacao}
-                    onChange={(e) => setForm({ ...form, observacao: e.target.value })}
-                    placeholder="Orientações de aula deixadas pelo titular..."
-                    rows={2}
-                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                  />
-                </div>
-
-                <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={salvando}
-                    className="px-5 py-2.5 bg-cyan-400 hover:bg-cyan-300 text-blue-950 text-xs font-black rounded-xl transition shadow-sm cursor-pointer flex items-center gap-2"
-                  >
-                    {salvando ? 'Salvando...' : 'Atualizar Substituição'}
-                  </button>
-                </div>
-              </form>
-            ) : (
-              /* MODAL EM GRADE / LOTE DIÁRIO POR PROFESSOR AUSENTE */
-              <div className="p-6 space-y-6 overflow-y-auto flex-1 text-xs">
-                {/* 1. Formulário de Cabeçalho: Data, Professor Ausente e Motivo */}
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-4 font-bold">
-                  <div>
-                    <label className="block text-slate-700 uppercase mb-1.5 flex items-center gap-1.5">
-                      <i className="fa-solid fa-calendar-day text-cyan-600"></i>
-                      Data da Ausência:
-                    </label>
-                    <input
-                      type="date"
-                      value={form.data}
-                      onChange={(e) => setForm({ ...form, data: e.target.value })}
-                      className="w-full p-2.5 bg-white border border-slate-300 rounded-xl font-extrabold text-slate-800 focus:ring-2 focus:ring-cyan-500 outline-none"
-                      required
-                    />
-                    <span className="text-[11px] font-bold text-cyan-900 mt-1 block">
-                      Dia: <strong className="text-blue-950 uppercase">{MAPA_DIAS_EXTENSO[diaSemanaForm] || diaSemanaForm}</strong>
-                    </span>
                   </div>
 
+                  {/* Desktop Table (>= md) */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-left border-collapse min-w-[850px]">
+                      <thead>
+                        <tr className="bg-slate-50/90 border-b border-slate-200/80 text-slate-500 text-xs font-semibold">
+                          <th className="p-3.5">Data &amp; Período</th>
+                          <th className="p-3.5">Prof. Ausente &amp; Turma</th>
+                          <th className="p-3.5">Disciplina &amp; Área</th>
+                          <th className="p-3.5">Substituto Alocado</th>
+                          <th className="p-3.5">Motivo</th>
+                          <th className="p-3.5 text-center">Status</th>
+                          {podeEditar && <th className="p-3.5 text-center">Ações</th>}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-xs">
+                        {listagemFiltrada.map((item) => {
+                          const listaP = (periodosAula && periodosAula.length > 0) ? periodosAula : PERIODOS_AULA;
+                          const periodoObj = listaP.find(p => getPeriodoOrder(p.id ?? p.periodoId ?? p.rotulo) === getPeriodoOrder(item.periodoId)) || { rotulo: getPeriodoRotulo(item.periodoId), horario: '' };
+                          const badge = getDataBadgeInfo(item.data);
+                          const isConfirming = confirmDeleteSubId === item.id;
+
+                          return (
+                            <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="p-3.5">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-semibold text-slate-900 tabular-nums">{formatDataBR(item.data)}</span>
+                                  {badge && (
+                                    <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200/70">
+                                      {badge.label}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-slate-500 mt-0.5 tabular-nums">
+                                  <span className="font-medium text-indigo-700">{periodoObj.rotulo}</span>
+                                  {periodoObj.horario && <span className="ml-1">({periodoObj.horario})</span>}
+                                </div>
+                              </td>
+
+                              <td className="p-3.5">
+                                <div className="font-semibold text-slate-900">{item.professorAusente}</div>
+                                <div className="text-[11px] font-medium text-slate-500">{item.turma}</div>
+                              </td>
+
+                              <td className="p-3.5">
+                                <div className="font-medium text-slate-800">{item.disciplina}</div>
+                                <div className="text-[11px] text-slate-400">{item.area}</div>
+                              </td>
+
+                              <td className="p-3.5">
+                                <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                                  <i className="fa-solid fa-user-check text-emerald-600 text-[11px]"></i>
+                                  <span>{item.professorSubstituto}</span>
+                                </div>
+                                <div className="text-[11px] text-slate-500">{item.tipoSubstituto}</div>
+                              </td>
+
+                              <td className="p-3.5 text-slate-600 max-w-[190px] truncate" title={item.motivo}>
+                                {item.motivo}
+                              </td>
+
+                              <td className="p-3.5 text-center">
+                                <span className={`inline-flex px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-l-4 ${
+                                  item.status === 'CONFIRMADA'
+                                    ? 'bg-emerald-50/90 text-emerald-900 border-emerald-200/70 border-l-emerald-500'
+                                    : 'bg-amber-50/90 text-amber-900 border-amber-200/70 border-l-amber-500'
+                                }`}>
+                                  {item.status}
+                                </span>
+                              </td>
+
+                              {podeEditar && (
+                                <td className="p-3.5 text-center print:hidden">
+                                  {isConfirming ? (
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={() => setConfirmDeleteSubId(null)}
+                                        className="px-2 py-1 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-medium cursor-pointer"
+                                      >
+                                        Não
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleExcluirSubstituicao(item.id)}
+                                        className="px-2 py-1 rounded-lg bg-rose-600 text-white text-[11px] font-semibold cursor-pointer"
+                                      >
+                                        Excluir
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAbrirModalEdicao(item)}
+                                        className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-900 rounded-lg transition cursor-pointer"
+                                        title="Editar"
+                                      >
+                                        <i className="fa-solid fa-pen-to-square"></i>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setConfirmDeleteSubId(item.id)}
+                                        className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition cursor-pointer"
+                                        title="Excluir"
+                                      >
+                                        <i className="fa-solid fa-trash-can"></i>
+                                      </button>
+                                    </div>
+                                  )}
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </section>
+          )}
+
+          {/* CONTEÚDO SUB-ABA 2: MOTOR DE SUGESTÃO PEI & ALOCAÇÃO AUTOMATIZADA */}
+          {subAba === 'sugestao' && (
+            <div className="space-y-5">
+              {/* Card 1: Seleção do Professor Ausente e Configuração do Dia */}
+              <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-base shrink-0">
+                      <i className="fa-solid fa-wand-magic-sparkles"></i>
+                    </div>
+                    <div>
+                      <h3 className="text-base font-semibold text-slate-900">
+                        Alocação Automatizada de Substituição PEI
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Selecione o professor ausente e a data para localizar todas as aulas do dia e sugerir substitutos livres.
+                      </p>
+                    </div>
+                  </div>
+
+                  {aulasDoProfessorAusente.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <span className="text-xs font-medium text-slate-600 bg-slate-100 px-3 py-2 rounded-xl tabular-nums">
+                        <strong className="text-slate-900">{aulasDoProfessorAusente.length}</strong> aula(s) em {MAPA_DIAS_EXTENSO[diaSemanaForm] || diaSemanaForm}
+                      </span>
+                      {podeEditar && (
+                        <button
+                          type="button"
+                          onClick={handleSalvarAlocacoesLote}
+                          disabled={salvando}
+                          className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition-colors shadow-xs flex items-center gap-2 cursor-pointer"
+                        >
+                          <i className="fa-solid fa-bolt text-amber-400"></i>
+                          <span>{salvando ? 'Salvando...' : `Confirmar Todas (${aulasDoProfessorAusente.length})`}</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
                   <div>
-                    <label className="block text-slate-700 uppercase mb-1.5 flex items-center gap-1.5">
-                      <i className="fa-solid fa-user-xmark text-rose-500"></i>
-                      Professor Ausente:
+                    <label className="block font-semibold text-slate-700 mb-1.5">
+                      1. Professor Ausente
                     </label>
                     <select
                       value={form.professorAusente}
@@ -3242,8 +2402,7 @@ export default function SubstituicaoPEI() {
                           area: prof ? prof.area : prev.area
                         }));
                       }}
-                      className="w-full p-2.5 bg-white border border-slate-300 rounded-xl font-extrabold text-blue-950 focus:ring-2 focus:ring-cyan-500 outline-none cursor-pointer"
-                      required
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900 focus:ring-2 focus:ring-indigo-500/30 outline-none cursor-pointer"
                     >
                       <option value="">-- Selecione o Docente Ausente --</option>
                       {listaProfessoresUnificada.map(p => (
@@ -3255,15 +2414,28 @@ export default function SubstituicaoPEI() {
                   </div>
 
                   <div>
-                    <label className="block text-slate-700 uppercase mb-1.5 flex items-center gap-1.5">
-                      <i className="fa-solid fa-file-signature text-amber-600"></i>
-                      Motivo da Ausência:
+                    <label className="block font-semibold text-slate-700 mb-1.5">
+                      2. Data da Ausência
+                    </label>
+                    <input
+                      type="date"
+                      value={form.data}
+                      onChange={(e) => setForm({ ...form, data: e.target.value })}
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900 focus:ring-2 focus:ring-indigo-500/30 outline-none tabular-nums"
+                    />
+                    <span className="text-[11px] text-slate-500 mt-1 block">
+                      Dia: <strong className="text-slate-800">{MAPA_DIAS_EXTENSO[diaSemanaForm] || diaSemanaForm}</strong>
+                    </span>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1.5">
+                      3. Motivo da Ausência
                     </label>
                     <select
                       value={form.motivo}
                       onChange={(e) => setForm({ ...form, motivo: e.target.value })}
-                      className="w-full p-2.5 bg-white border border-slate-300 rounded-xl font-semibold text-slate-800 focus:ring-2 focus:ring-cyan-500 outline-none cursor-pointer"
-                      required
+                      className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900 focus:ring-2 focus:ring-indigo-500/30 outline-none cursor-pointer"
                     >
                       {MOTIVOS_AUSENCIA.map(m => (
                         <option key={m} value={m}>{m}</option>
@@ -3271,48 +2443,80 @@ export default function SubstituicaoPEI() {
                     </select>
                   </div>
                 </div>
+              </div>
 
-                {/* 2. Tabela Dinâmica com as Aulas do Professor no Dia */}
-                <div className="space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                    <h4 className="text-sm font-black text-blue-950 uppercase tracking-tight flex items-center gap-2">
-                      <i className="fa-solid fa-list-ol text-cyan-600"></i>
-                      Aulas na Grade de {MAPA_DIAS_EXTENSO[diaSemanaForm] || diaSemanaForm} ({aulasDoProfessorAusente.length} aulas)
-                    </h4>
-                    {aulasDoProfessorAusente.length > 0 && (
-                      <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
-                        ✨ Substitutos sugeridos pré-selecionados por prioridade PEI
-                      </span>
-                    )}
+              {/* Card 2: Lista de Aulas e Sugestões */}
+              <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900">
+                      Aulas Atribuídas &amp; Sugestões de Substitutos Livres
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Cruzamento em tempo real com a grade horária para identificar docentes livres.
+                    </p>
                   </div>
 
-                  {!form.professorAusente ? (
-                    <div className="p-8 text-center text-slate-400 space-y-2 border border-dashed border-slate-200 rounded-xl">
-                      <i className="fa-solid fa-arrow-up text-2xl text-cyan-500 animate-bounce"></i>
-                      <p className="font-bold text-slate-600 text-sm">Selecione o professor ausente no campo acima.</p>
-                      <p className="text-xs">As aulas atribuídas a ele na grade de horários do dia serão carregadas automaticamente nesta tabela.</p>
-                    </div>
-                  ) : aulasDoProfessorAusente.length === 0 ? (
-                    <div className="p-8 text-center text-slate-600 space-y-2 bg-amber-50/60 border border-amber-200 rounded-xl">
-                      <i className="fa-solid fa-calendar-xmark text-3xl text-amber-500"></i>
-                      <p className="font-black text-slate-800 text-sm">
-                        Nenhuma aula regular encontrada para {form.professorAusente} em {MAPA_DIAS_EXTENSO[diaSemanaForm] || diaSemanaForm}.
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Verifique a data selecionada ou se o professor possui aulas atribuídas neste dia da semana na grade horária oficial.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                      <table className="w-full text-left border-collapse">
+                  {aulasDoProfessorAusente.length > 0 && (
+                    <span className="text-[11px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-200/70 px-3 py-1 rounded-xl flex items-center gap-1.5 self-start sm:self-auto">
+                      <i className="fa-solid fa-circle-check text-emerald-600"></i>
+                      <span>Motor PEI · 8 Critérios de Prioridade</span>
+                    </span>
+                  )}
+                </div>
+
+                {/* Ordem dos 8 Critérios PEI */}
+                <div className="bg-slate-50/70 border border-slate-200/70 rounded-2xl p-3 text-[11px] text-slate-700 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-semibold text-slate-800 flex items-center gap-1.5">
+                      <i className="fa-solid fa-scale-balanced text-indigo-600"></i>
+                      Ordem de Prioridade PEI
+                    </span>
+                    <span className="text-amber-800 bg-amber-50 border border-amber-200/70 px-2.5 py-0.5 rounded-lg font-medium">
+                      Desempate: menor carga semanal
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-1.5 font-medium text-center text-[11px]">
+                    <div className="bg-emerald-50/90 border border-emerald-200/60 text-emerald-900 rounded-lg p-1.5">1. Mesma matéria</div>
+                    <div className="bg-teal-50/90 border border-teal-200/60 text-teal-900 rounded-lg p-1.5">2. Mesma área</div>
+                    <div className="bg-cyan-50/90 border border-cyan-200/60 text-cyan-900 rounded-lg p-1.5">3. PAAC área</div>
+                    <div className="bg-sky-50/90 border border-sky-200/60 text-sky-900 rounded-lg p-1.5">4. Outra matéria</div>
+                    <div className="bg-amber-50/90 border border-amber-200/60 text-amber-900 rounded-lg p-1.5">5. Outra área</div>
+                    <div className="bg-purple-50/90 border border-purple-200/60 text-purple-900 rounded-lg p-1.5">6. CGPG</div>
+                    <div className="bg-indigo-50/90 border border-indigo-200/60 text-indigo-900 rounded-lg p-1.5">7. Vice-direção</div>
+                    <div className="bg-rose-50/90 border border-rose-200/60 text-rose-900 rounded-lg p-1.5">8. Direção</div>
+                  </div>
+                </div>
+
+                {!form.professorAusente ? (
+                  <div className="p-10 text-center text-slate-400 space-y-2">
+                    <i className="fa-solid fa-user-slash text-3xl text-slate-300"></i>
+                    <p className="font-semibold text-slate-600 text-sm">Nenhum professor selecionado.</p>
+                    <p className="text-xs">Selecione o professor ausente acima para carregar as aulas do dia.</p>
+                  </div>
+                ) : aulasDoProfessorAusente.length === 0 ? (
+                  <div className="p-8 text-center text-slate-600 space-y-2 bg-amber-50/60 border border-amber-200/70 border-l-4 border-l-amber-500 rounded-2xl">
+                    <i className="fa-solid fa-calendar-xmark text-3xl text-amber-600"></i>
+                    <p className="font-semibold text-slate-900 text-sm">
+                      Nenhuma aula regular encontrada para {form.professorAusente} em {MAPA_DIAS_EXTENSO[diaSemanaForm] || diaSemanaForm}.
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Verifique a grade na aba Horários ou altere a data selecionada.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="overflow-x-auto border border-slate-200/80 rounded-2xl">
+                      <table className="w-full text-left border-collapse min-w-[750px]">
                         <thead>
-                          <tr className="bg-blue-950 text-white text-xs font-black uppercase tracking-wider">
-                            <th className="p-3 border-b border-blue-900">Horário / Aula</th>
-                            <th className="p-3 border-b border-blue-900">Turma & Disciplina</th>
-                            <th className="p-3 border-b border-blue-900">Professor Substituto Alocado</th>
+                          <tr className="bg-slate-50/90 border-b border-slate-200/80 text-slate-500 text-xs font-semibold">
+                            <th className="p-3.5">Horário / Aula</th>
+                            <th className="p-3.5">Turma &amp; Disciplina</th>
+                            <th className="p-3.5">Substituto Sugerido</th>
+                            <th className="p-3.5 text-center">Ações</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-200 text-xs font-medium">
+                        <tbody className="divide-y divide-slate-100 text-xs">
                           {aulasDoProfessorAusente.map((aula) => {
                             const listaP = (periodosAula && periodosAula.length > 0) ? periodosAula : PERIODOS_AULA;
                             const periodoObj = listaP.find(p => getPeriodoOrder(p.id ?? p.periodoId ?? p.rotulo) === getPeriodoOrder(aula.periodoId)) || { rotulo: getPeriodoRotulo(aula.periodoId), horario: '' };
@@ -3322,83 +2526,74 @@ export default function SubstituicaoPEI() {
                             const subsAtualObj = sugestoes.find(s => isSameProfessor(s.nome, alocAtual.professorSubstituto) || s.nome === alocAtual.professorSubstituto);
 
                             return (
-                              <tr key={aula.id || aula.periodoId} className="hover:bg-slate-50 transition">
-                                <td className="p-3">
-                                  <div className="font-black text-blue-950 text-xs flex items-center gap-1.5 flex-wrap">
-                                    <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-900 text-xs font-extrabold">
+                              <tr key={aula.id || aula.periodoId} className="hover:bg-slate-50/70 transition-colors">
+                                <td className="p-3.5">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="px-2.5 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-semibold border border-indigo-200/60">
                                       {periodoObj.rotulo}
                                     </span>
                                     {periodoObj.horario && (
-                                      <span className="text-[11px] font-bold text-slate-500 font-mono">
-                                        ({periodoObj.horario})
+                                      <span className="text-xs text-slate-500 tabular-nums">
+                                        {periodoObj.horario}
                                       </span>
                                     )}
                                   </div>
                                 </td>
 
-                                <td className="p-3">
-                                  <div className="font-extrabold text-slate-900">{aula.turma}</div>
-                                  <div className="text-xs font-bold text-blue-800">{aula.disciplina}</div>
-                                  <div className="text-[10px] text-slate-500 font-semibold">{areaAula}</div>
+                                <td className="p-3.5">
+                                  <div className="font-semibold text-slate-900">{aula.turma}</div>
+                                  <div className="text-xs font-medium text-indigo-700">{aula.disciplina}</div>
+                                  <div className="text-[11px] text-slate-400">{areaAula}</div>
                                 </td>
 
-                                <td className="p-3 bg-cyan-50/20">
+                                <td className="p-3.5 max-w-sm">
                                   <select
                                     value={alocAtual.professorSubstituto}
                                     onChange={(e) => handleMudarSubstitutoLote(aula.periodoId, e.target.value, aula.disciplina, areaAula)}
-                                    className="w-full p-2 bg-white border border-cyan-300 rounded-xl font-extrabold text-blue-950 focus:ring-2 focus:ring-cyan-500 outline-none cursor-pointer shadow-xs"
+                                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900 focus:ring-2 focus:ring-indigo-500/30 outline-none cursor-pointer"
                                   >
                                     <option value="">-- Selecione o Professor Substituto --</option>
-                                    <optgroup label="⭐ Sugestões Inteligentes (Docentes Livres)">
-                                      {sugestoes.filter(p => !p.isIndisponivel && !p.isOcupado).map(p => (
-                                        <option key={p.nome} value={p.nome}>
-                                          {p.nome} ({p.disciplina}) — {p.motivoPrioridade} [Carga Semanal Total: {p.totalAulasSemana}h ({p.aulasSemana} reg. + {p.saldoReal} subst.)]
+                                    {sugestoes.map(p => {
+                                      const isBlocked = p.isIndisponivel || p.isOcupado;
+                                      let rotulo = `${p.nome} (${p.disciplina}) — ${p.motivoPrioridade} [Carga: ${p.totalAulasSemana}h]`;
+                                      if (isBlocked) {
+                                        rotulo = `Bloqueado: ${p.nome} (${p.isIndisponivel ? 'Fora da Escola / Folga' : 'Em Aula: ' + p.motivoOcupado})`;
+                                      }
+                                      return (
+                                        <option key={p.nome} value={p.nome} disabled={isBlocked}>
+                                          {rotulo}
                                         </option>
-                                      ))}
-                                    </optgroup>
-                                    <optgroup label="👥 Todos os Professores da Escola (Manual)">
-                                      {sugestoes.map(p => {
-                                        const isBlocked = p.isIndisponivel || p.isOcupado;
-                                        let rotulo = `${p.nome} (${p.disciplina}) — ${p.motivoPrioridade} [Carga Semanal Total: ${p.totalAulasSemana}h (${p.aulasSemana} reg. + ${p.saldoReal} subst.)]`;
-                                        if (isBlocked) {
-                                          rotulo = `⛔ BLOQUEADO: ${p.nome} (${p.isIndisponivel ? 'Fora da Escola / Folga' : 'Em Aula em ' + p.motivoOcupado})`;
-                                        }
-                                        return (
-                                          <option key={p.nome} value={p.nome} disabled={isBlocked}>
-                                            {rotulo}
-                                          </option>
-                                        );
-                                      })}
-                                    </optgroup>
+                                      );
+                                    })}
                                   </select>
 
                                   {subsAtualObj && (
-                                    <div className="mt-1 text-[10px] font-bold flex items-center gap-1.5 flex-wrap">
-                                      <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
-                                        subsAtualObj.prioridade === 1
-                                          ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                                          : subsAtualObj.prioridade === 2
-                                          ? 'bg-teal-100 text-teal-900 border border-teal-300'
-                                          : subsAtualObj.prioridade === 3
-                                          ? 'bg-cyan-100 text-cyan-900 border border-cyan-300'
-                                          : subsAtualObj.prioridade === 4
-                                          ? 'bg-blue-100 text-blue-900 border border-blue-300'
-                                          : subsAtualObj.prioridade === 5
-                                          ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                                          : subsAtualObj.prioridade === 6
-                                          ? 'bg-purple-100 text-purple-900 border border-purple-300'
-                                          : subsAtualObj.prioridade === 7
-                                          ? 'bg-indigo-100 text-indigo-900 border border-indigo-300'
-                                          : subsAtualObj.prioridade === 8
-                                          ? 'bg-rose-100 text-rose-900 border border-rose-300'
-                                          : 'bg-slate-100 text-slate-800 border border-slate-300'
-                                      }`}>
+                                    <div className="mt-1.5 text-[11px] flex items-center gap-2 flex-wrap">
+                                      <span className="px-2 py-0.5 rounded-md font-medium bg-indigo-50 text-indigo-800 border border-indigo-200/60">
                                         {subsAtualObj.motivoPrioridade}
                                       </span>
-                                      <span className="text-slate-600 text-[10px]">
-                                        (Carga semanal total: <strong>{subsAtualObj.totalAulasSemana}h</strong> — {subsAtualObj.aulasSemana} regência + {subsAtualObj.saldoReal} subst.)
+                                      <span className="text-slate-500 tabular-nums">
+                                        Carga: <strong className="text-slate-700">{subsAtualObj.totalAulasSemana}h</strong> ({subsAtualObj.aulasSemana} reg. + {subsAtualObj.saldoReal} subst.)
                                       </span>
                                     </div>
+                                  )}
+                                </td>
+
+                                <td className="p-3.5 text-center">
+                                  {podeEditar && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSalvarAulaUnica(aula)}
+                                      disabled={salvando || !alocAtual.professorSubstituto}
+                                      className={`px-3.5 py-2 text-xs font-semibold rounded-xl transition cursor-pointer inline-flex items-center gap-1.5 ${
+                                        alocAtual.professorSubstituto
+                                          ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                                          : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                      }`}
+                                    >
+                                      <i className="fa-solid fa-check text-emerald-400"></i>
+                                      <span>Salvar</span>
+                                    </button>
                                   )}
                                 </td>
                               </tr>
@@ -3407,42 +2602,864 @@ export default function SubstituicaoPEI() {
                         </tbody>
                       </table>
                     </div>
-                  )}
+
+                    {podeEditar && (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={handleSalvarAlocacoesLote}
+                          disabled={salvando}
+                          className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs px-5 py-3 rounded-xl transition shadow-xs flex items-center gap-2 cursor-pointer"
+                        >
+                          <i className="fa-solid fa-bolt text-amber-400"></i>
+                          <span>Confirmar e Salvar {aulasDoProfessorAusente.length} Substituição(ões)</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* CONTEÚDO SUB-ABA 3: CONTROLE DE SALDO DE AULAS */}
+          {subAba === 'saldo' && (
+            <section className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-5">
+              <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                    <i className="fa-solid fa-scale-balanced text-amber-500"></i>
+                    Extrato de Saldo de Aulas &amp; Créditos/Débitos PEI
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Controle em tempo real de substituições realizadas (+) e faltas justificadas (-) por docente.
+                  </p>
                 </div>
 
-                {/* 3. Rodapé de Ações do Modal */}
-                <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">
+                <div className="flex flex-wrap items-center gap-2 print:hidden">
                   <button
                     type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                    onClick={() => setConfirmZerarSaldo(prev => !prev)}
+                    className="inline-flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold px-3.5 py-2 rounded-xl transition cursor-pointer"
                   >
-                    Cancelar
+                    <i className="fa-solid fa-rotate-right"></i>
+                    <span>Zerar Saldo</span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={handleSalvarAlocacoesLote}
-                    disabled={salvando || !form.professorAusente || aulasDoProfessorAusente.length === 0}
-                    className={`px-6 py-2.5 text-xs font-black rounded-xl transition shadow-md flex items-center gap-2 cursor-pointer ${
-                      salvando || !form.professorAusente || aulasDoProfessorAusente.length === 0
-                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                        : 'bg-gradient-to-r from-cyan-400 to-blue-600 hover:from-cyan-300 hover:to-blue-500 text-blue-950 shadow-cyan-500/20'
-                    }`}
+                    onClick={handleExportarSaldoJSON}
+                    className="inline-flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold px-3.5 py-2 rounded-xl transition cursor-pointer"
                   >
-                    <i className="fa-solid fa-bolt text-yellow-300"></i>
-                    <span>
-                      {salvando
-                        ? 'Salvando Substituições...'
-                        : `Confirmar e Lançar ${aulasDoProfessorAusente.length} Substituição(ões)`}
-                    </span>
+                    <i className="fa-solid fa-download"></i>
+                    <span>Exportar JSON</span>
                   </button>
+
+                  <label className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-3.5 py-2 rounded-xl transition cursor-pointer">
+                    <i className="fa-solid fa-upload text-indigo-600"></i>
+                    <span>Importar JSON</span>
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={handleImportarSaldoJSON}
+                      className="hidden"
+                    />
+                  </label>
                 </div>
               </div>
-            )}
-          </div>
+
+              {confirmZerarSaldo && (
+                <div className="p-4 rounded-2xl bg-rose-50/90 border border-rose-200 border-l-4 border-l-rose-500 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="text-xs text-rose-950">
+                    <p className="font-semibold">Confirmar reinício do ciclo semanal (Zerar Saldo)?</p>
+                    <p className="text-[11px] text-rose-800 mt-0.5">
+                      Esta ação zera o saldo inicial/acumulado de todos os docentes e limpa o histórico de substituições da semana atual.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmZerarSaldo(false)}
+                      className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-600 text-xs font-semibold cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleZerarSaldoFimDeSemana}
+                      className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold cursor-pointer"
+                    >
+                      Confirmar Reinício
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="overflow-x-auto border border-slate-200/80 rounded-2xl">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/90 border-b border-slate-200/80 text-slate-500 text-xs font-semibold">
+                      <th className="p-3.5">Docente / Disciplina</th>
+                      <th className="p-3.5">Área PEI</th>
+                      <th className="p-3.5 text-center">Regência</th>
+                      <th className="p-3.5 text-center">Carga Total</th>
+                      <th className="p-3.5 text-center">Inicial</th>
+                      <th className="p-3.5 text-center">Créditos (+)</th>
+                      <th className="p-3.5 text-center">Débitos (-)</th>
+                      <th className="p-3.5 text-center">Saldo</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs">
+                    {saldoDocentesConsolidado.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="p-8 text-center text-slate-400">
+                          Nenhum docente cadastrado na grade horária oficial.
+                        </td>
+                      </tr>
+                    ) : (
+                      saldoDocentesConsolidado.map((docente) => (
+                        <tr key={docente.nome} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="p-3.5">
+                            <div className="font-semibold text-slate-900">{docente.nome}</div>
+                            <div className="text-[11px] text-slate-500">{docente.disciplina}</div>
+                          </td>
+                          <td className="p-3.5 text-slate-600">{docente.area}</td>
+                          <td className="p-3.5 text-center font-semibold text-indigo-700 tabular-nums">
+                            {docente.aulasRegenciaGrade}h
+                          </td>
+                          <td className="p-3.5 text-center tabular-nums">
+                            <div className="font-bold text-slate-900 text-sm">{docente.cargaTotalSemana}h</div>
+                            {docente.atingiuTeto32 ? (
+                              <span className="inline-block mt-0.5 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-rose-50 text-rose-800 border border-rose-200">
+                                32h+ (Teto atingido)
+                              </span>
+                            ) : (
+                              <span className="inline-block mt-0.5 text-[11px] text-slate-400">
+                                {docente.aulasRegenciaGrade} reg. + {docente.creditos} subst.
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3.5 text-center text-slate-600 tabular-nums">{docente.saldoInicial}</td>
+                          <td className="p-3.5 text-center font-semibold text-emerald-700 tabular-nums">+{docente.creditos}</td>
+                          <td className="p-3.5 text-center font-semibold text-rose-700 tabular-nums">-{docente.debitos}</td>
+                          <td className="p-3.5 text-center tabular-nums">
+                            <span className={`inline-block font-semibold text-xs px-2.5 py-1 rounded-lg border border-l-4 ${
+                              docente.totalFinal > 0
+                                ? 'bg-emerald-50/90 text-emerald-900 border-emerald-200/70 border-l-emerald-500'
+                                : docente.totalFinal < 0
+                                ? 'bg-rose-50/90 text-rose-900 border-rose-200/70 border-l-rose-500'
+                                : 'bg-slate-50 text-slate-700 border-slate-200 border-l-slate-400'
+                            }`}>
+                              {docente.totalFinal > 0 ? `+${docente.totalFinal}` : docente.totalFinal} aula(s)
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          {/* CONTEÚDO SUB-ABA 4: RELATÓRIO DE EVENTUAIS */}
+          {subAba === 'relatorio' && (
+            <section className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-6">
+              <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                    Boletim de Controle de Carga Horária &amp; Aulas Eventuais
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    E.E. Clóvis de Lucca · Sincronização de créditos (+), débitos (-) e saldo docente.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleImprimir}
+                  className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition inline-flex items-center gap-2 print:hidden cursor-pointer"
+                >
+                  <i className="fa-solid fa-file-pdf text-rose-400"></i>
+                  <span>Gerar PDF / Imprimir</span>
+                </button>
+              </div>
+
+              <div className="space-y-2.5">
+                <h3 className="text-xs font-semibold text-slate-800 flex items-center gap-2">
+                  <i className="fa-solid fa-scale-balanced text-amber-500"></i>
+                  Extrato do Monitor de Carga Horária Docente
+                </h3>
+                <div className="overflow-x-auto border border-slate-200/80 rounded-2xl">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/90 border-b border-slate-200/80 text-slate-500 text-xs font-semibold">
+                        <th className="p-3">Docente</th>
+                        <th className="p-3">Área / Disciplina</th>
+                        <th className="p-3 text-center">Regência</th>
+                        <th className="p-3 text-center">Carga Total</th>
+                        <th className="p-3 text-center">Inicial</th>
+                        <th className="p-3 text-center">Créditos (+)</th>
+                        <th className="p-3 text-center">Débitos (-)</th>
+                        <th className="p-3 text-center">Saldo Acumulado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs">
+                      {saldoDocentesConsolidado.length === 0 ? (
+                        <tr>
+                          <td colSpan={8} className="p-6 text-center text-slate-400">
+                            Nenhum registro docente para apuração.
+                          </td>
+                        </tr>
+                      ) : (
+                        saldoDocentesConsolidado.map((d) => (
+                          <tr key={d.nome} className="hover:bg-slate-50/70">
+                            <td className="p-3 font-semibold text-slate-900">{d.nome}</td>
+                            <td className="p-3 text-slate-600">{d.disciplina} ({d.area})</td>
+                            <td className="p-3 text-center font-semibold text-indigo-700 tabular-nums">{d.aulasRegenciaGrade}h</td>
+                            <td className="p-3 text-center font-bold text-slate-900 tabular-nums">
+                              {d.cargaTotalSemana}h {d.atingiuTeto32 && <span className="text-[10px] text-rose-700 font-semibold ml-1">(32h+)</span>}
+                            </td>
+                            <td className="p-3 text-center text-slate-600 tabular-nums">{d.saldoInicial}</td>
+                            <td className="p-3 text-center font-semibold text-emerald-700 tabular-nums">+{d.creditos}</td>
+                            <td className="p-3 text-center font-semibold text-rose-700 tabular-nums">-{d.debitos}</td>
+                            <td className="p-3 text-center tabular-nums">
+                              <span className={`px-2 py-0.5 rounded-md font-semibold ${
+                                d.totalFinal > 0 ? 'bg-emerald-50 text-emerald-900' : d.totalFinal < 0 ? 'bg-rose-50 text-rose-900' : 'bg-slate-100 text-slate-700'
+                              }`}>
+                                {d.totalFinal > 0 ? `+${d.totalFinal}` : d.totalFinal} aula(s)
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="space-y-2.5 pt-2 border-t border-slate-100">
+                <h3 className="text-xs font-semibold text-slate-800 flex items-center gap-2">
+                  <i className="fa-solid fa-list-check text-indigo-600"></i>
+                  Detalhamento de Aulas Substituídas por Docente Eventual
+                </h3>
+                <div className="overflow-x-auto border border-slate-200/80 rounded-2xl">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/90 border-b border-slate-200/80 text-slate-500 text-xs font-semibold">
+                        <th className="p-3">Docente Substituto</th>
+                        <th className="p-3 text-center">Total Aulas</th>
+                        <th className="p-3">Turmas Atendidas</th>
+                        <th className="p-3">Disciplinas Ministradas</th>
+                        <th className="p-3 text-center">Visto Direção</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs">
+                      {relatorioSubstitutos.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="p-6 text-center text-slate-400">
+                            Nenhuma aula de substituição computada no período.
+                          </td>
+                        </tr>
+                      ) : (
+                        relatorioSubstitutos.map((r) => (
+                          <tr key={r.nome} className="hover:bg-slate-50/70">
+                            <td className="p-3 font-semibold text-slate-900">{r.nome}</td>
+                            <td className="p-3 text-center font-bold text-sm text-emerald-700 tabular-nums">
+                              {r.totalAulas}
+                            </td>
+                            <td className="p-3 text-slate-700">{Array.from(r.turmasAtendidas).join(', ')}</td>
+                            <td className="p-3 text-slate-600">{Array.from(r.disciplinas).join(', ')}</td>
+                            <td className="p-3 text-center text-slate-400">[ &nbsp;&nbsp;&nbsp;&nbsp; ] OK</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* CONTEÚDO SUB-ABA 5: CONFIGURAÇÃO E CADASTRO DE DOCENTES */}
+          {subAba === 'docentes' && (
+            <section className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-5">
+              <div className="border-b border-slate-100 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                    <i className="fa-solid fa-users-gear text-emerald-600"></i>
+                    Configuração &amp; Cadastro de Docentes PEI
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Docentes, disciplinas, áreas de conhecimento e aulas de regência sincronizadas com a grade oficial.
+                  </p>
+                </div>
+
+                {podeEditar && (
+                  <button
+                    type="button"
+                    onClick={() => handleMigrarDocentesDoHorario(false)}
+                    className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition shadow-xs cursor-pointer print:hidden"
+                    title="Sincroniza e migra automaticamente todos os docentes da aba Horários"
+                  >
+                    <i className="fa-solid fa-bolt text-amber-300"></i>
+                    <span>Migrar Docentes do Horário</span>
+                  </button>
+                )}
+              </div>
+
+              {podeEditar && (
+                <form onSubmit={handleAdicionarDocenteCorpo} className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/70 space-y-3">
+                  <h3 className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
+                    <i className="fa-solid fa-user-plus text-indigo-600"></i>
+                    Adicionar Novo Docente (Eventual / Contratado)
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+                    <input
+                      type="text"
+                      value={novoDocenteForm.nome}
+                      onChange={(e) => setNovoDocenteForm({ ...novoDocenteForm, nome: e.target.value })}
+                      placeholder="Nome Completo do Docente"
+                      className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/30"
+                      required
+                    />
+                    <input
+                      type="text"
+                      value={novoDocenteForm.disciplina}
+                      onChange={(e) => setNovoDocenteForm({ ...novoDocenteForm, disciplina: e.target.value, area: encontrarAreaDisciplina(e.target.value) })}
+                      placeholder="Disciplina (ex: Matemática)"
+                      className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/30"
+                    />
+                    <select
+                      value={novoDocenteForm.area}
+                      onChange={(e) => setNovoDocenteForm({ ...novoDocenteForm, area: e.target.value })}
+                      className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/30"
+                    >
+                      {OPCOES_AREAS_PEI.map(a => <option key={a} value={a}>{a}</option>)}
+                    </select>
+                    <select
+                      value={novoDocenteForm.tipo}
+                      onChange={(e) => setNovoDocenteForm({ ...novoDocenteForm, tipo: e.target.value })}
+                      className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/30"
+                    >
+                      <option value="EFETIVO">Efetivo PEI</option>
+                      <option value="CATEGORIA_O">Categoria O</option>
+                      <option value="EVENTUAL">Eventual</option>
+                    </select>
+                    <button
+                      type="submit"
+                      className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold p-2.5 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <i className="fa-solid fa-check"></i>
+                      <span>Salvar Docente</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              <div className="space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-xs font-semibold text-slate-800 tabular-nums">
+                    Corpo Docente PEI ({listaProfessoresUnificada.length} professores)
+                  </h3>
+                  <span className="text-[11px] text-slate-500">
+                    As áreas de conhecimento orientam a ordem de sugestão PEI.
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto border border-slate-200/80 rounded-2xl">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50/90 border-b border-slate-200/80 text-slate-500 text-xs font-semibold">
+                        <th className="p-3.5">Docente / Nome</th>
+                        <th className="p-3.5">Disciplina</th>
+                        <th className="p-3.5">Área de Conhecimento PEI</th>
+                        <th className="p-3.5 text-center">Aulas na Grade</th>
+                        <th className="p-3.5 text-center">Vínculo</th>
+                        {podeEditar && <th className="p-3.5 text-center">Ações</th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-xs">
+                      {listaProfessoresUnificada.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="p-8 text-center text-slate-400">
+                            Nenhum docente encontrado. Clique em "Migrar Docentes do Horário" para importar automaticamente.
+                          </td>
+                        </tr>
+                      ) : (
+                        listaProfessoresUnificada.map((docente) => {
+                          const isConfirmingDoc = confirmDeleteDocenteNome === docente.nome;
+                          return (
+                            <tr key={docente.nome} className="hover:bg-slate-50/70 transition-colors">
+                              <td className="p-3.5 font-semibold text-slate-900">
+                                <div className="flex items-center gap-2">
+                                  <i className="fa-solid fa-user-tie text-slate-400"></i>
+                                  <span>{docente.nome}</span>
+                                </div>
+                              </td>
+                              <td className="p-3.5 text-slate-700">{docente.disciplina}</td>
+                              <td className="p-3.5">
+                                {podeEditar ? (
+                                  <select
+                                    value={docente.area}
+                                    onChange={(e) => handleAlterarAreaDocenteInline(docente.nome, e.target.value)}
+                                    className="p-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500/30 outline-none cursor-pointer"
+                                  >
+                                    {OPCOES_AREAS_PEI.map(a => (
+                                      <option key={a} value={a}>{a}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span className="font-medium text-slate-800">{docente.area}</span>
+                                )}
+                              </td>
+                              <td className="p-3.5 text-center font-semibold text-indigo-700 tabular-nums">
+                                {docente.aulasRegenciaGrade || 0}
+                              </td>
+                              <td className="p-3.5 text-center">
+                                {podeEditar ? (
+                                  <select
+                                    value={docente.tipo || 'EFETIVO'}
+                                    onChange={(e) => handleAlterarTipoDocenteInline(docente.nome, e.target.value)}
+                                    className="p-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500/30 outline-none cursor-pointer"
+                                  >
+                                    <option value="EFETIVO">Efetivo PEI (Regente)</option>
+                                    <option value="PAAC">PAAC / Eventual / Apoio</option>
+                                    <option value="CGPG">CGPG / CGPCA</option>
+                                    <option value="VICE_DIRETOR">Vice-Diretor(a)</option>
+                                    <option value="DIRETOR">Diretor(a) Escolar</option>
+                                  </select>
+                                ) : (
+                                  <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] font-medium">
+                                    {docente.tipo || 'EFETIVO'}
+                                  </span>
+                                )}
+                              </td>
+                              {podeEditar && (
+                                <td className="p-3.5 text-center">
+                                  {isConfirmingDoc ? (
+                                    <div className="flex items-center justify-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => setConfirmDeleteDocenteNome(null)}
+                                        className="px-2 py-1 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-medium cursor-pointer"
+                                      >
+                                        Não
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleExcluirDocenteCorpo(docente.nome)}
+                                        className="px-2 py-1 rounded-lg bg-rose-600 text-white text-[11px] font-semibold cursor-pointer"
+                                      >
+                                        Excluir
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDeleteDocenteNome(docente.nome)}
+                                      className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                                      title="Excluir Docente do Cadastro"
+                                    >
+                                      <i className="fa-solid fa-trash-can"></i>
+                                    </button>
+                                  )}
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </section>
+          )}
         </div>
-      )}
+
+        {/* MODAL LANÇAR / EDITAR SUBSTITUIÇÃO PEI (Bottom-Sheet Mobile / Centered Desktop) */}
+        {isModalOpen && (
+          <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 z-50">
+            <div className="bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200/80 shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]">
+              <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0" />
+
+              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between gap-3 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm shrink-0">
+                    <i className="fa-solid fa-wand-magic-sparkles"></i>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-base text-slate-900">
+                      {itemEdicao ? 'Editar Substituição PEI' : 'Lançar Substituições do Dia em Lote'}
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      {itemEdicao ? 'Atualize os dados da substituição selecionada' : 'Alocação inteligente por professor ausente'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
+                >
+                  <i className="fa-solid fa-xmark"></i>
+                </button>
+              </div>
+
+              {itemEdicao ? (
+                <form onSubmit={handleSalvarSubstituicao} className="flex flex-col flex-1 overflow-hidden">
+                  <div className="p-5 space-y-4 overflow-y-auto flex-1 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1.5">Data</label>
+                        <input
+                          type="date"
+                          value={form.data}
+                          onChange={(e) => setForm({ ...form, data: e.target.value })}
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900 tabular-nums"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1.5">Período / Aula</label>
+                        <select
+                          value={form.periodoId}
+                          onChange={(e) => setForm({ ...form, periodoId: Number(e.target.value) })}
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900"
+                          required
+                        >
+                          {PERIODOS_AULA.map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.rotulo} ({p.horario})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1.5">Professor Ausente</label>
+                      <select
+                        value={form.professorAusente}
+                        onChange={(e) => setForm({ ...form, professorAusente: e.target.value })}
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900"
+                        required
+                      >
+                        <option value="">-- Selecione o Professor Ausente --</option>
+                        {listaProfessoresUnificada.map(p => (
+                          <option key={p.nome} value={p.nome}>{p.nome} ({p.disciplina})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1.5">Disciplina</label>
+                        <input
+                          type="text"
+                          value={form.disciplina}
+                          onChange={(e) => handleDisciplinaChange(e.target.value)}
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1.5">Turma PEI</label>
+                        <select
+                          value={form.turma}
+                          onChange={(e) => setForm({ ...form, turma: e.target.value })}
+                          className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900"
+                          required
+                        >
+                          {TURMAS_PEI.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1.5">Motivo da Ausência</label>
+                      <select
+                        value={form.motivo}
+                        onChange={(e) => setForm({ ...form, motivo: e.target.value })}
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900"
+                        required
+                      >
+                        {MOTIVOS_AUSENCIA.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
+
+                    <div className="bg-indigo-50/60 p-3.5 rounded-2xl border border-indigo-200/70 space-y-2">
+                      <label className="block font-semibold text-indigo-950">
+                        Professor Substituto Alocado
+                      </label>
+                      <select
+                        value={form.professorSubstituto}
+                        onChange={(e) => {
+                          const selNome = e.target.value;
+                          const pObj = sugestoesSubstitutos.find(s => s.nome === selNome);
+                          setForm({
+                            ...form,
+                            professorSubstituto: selNome,
+                            tipoSubstituto: pObj?.motivoPrioridade || form.tipoSubstituto
+                          });
+                        }}
+                        className="w-full p-2.5 bg-white border border-indigo-200 rounded-xl font-medium text-slate-900 focus:ring-2 focus:ring-indigo-500/30 outline-none cursor-pointer"
+                        required
+                      >
+                        <option value="">-- Selecione o Professor Substituto Apto --</option>
+                        {sugestoesSubstitutos.map(p => {
+                          const isBlocked = p.isIndisponivel || p.isOcupado;
+                          let rotulo = `${p.nome} (${p.disciplina}) — ${p.motivoPrioridade} [Carga: ${p.totalAulasSemana}h]`;
+                          if (isBlocked) {
+                            rotulo = `Bloqueado: ${p.nome} (${p.isIndisponivel ? 'Fora da Escola / Folga' : 'Em Aula: ' + p.motivoOcupado})`;
+                          }
+                          return (
+                            <option key={p.nome} value={p.nome} disabled={isBlocked}>
+                              {rotulo}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1.5">Observações</label>
+                      <textarea
+                        value={form.observacao}
+                        onChange={(e) => setForm({ ...form, observacao: e.target.value })}
+                        placeholder="Orientações de aula deixadas pelo titular..."
+                        rows={2}
+                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-normal text-slate-800"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="px-5 py-3.5 border-t border-slate-100 bg-slate-50/70 flex items-center justify-end gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setIsModalOpen(false)}
+                      className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl transition cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={salvando}
+                      className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition shadow-xs cursor-pointer"
+                    >
+                      {salvando ? 'Salvando...' : 'Atualizar Substituição'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="flex flex-col flex-1 overflow-hidden">
+                  <div className="p-5 space-y-5 overflow-y-auto flex-1 text-xs">
+                    <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/70 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1.5">Data da Ausência</label>
+                        <input
+                          type="date"
+                          value={form.data}
+                          onChange={(e) => setForm({ ...form, data: e.target.value })}
+                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-medium text-slate-900 focus:ring-2 focus:ring-indigo-500/30 outline-none tabular-nums"
+                          required
+                        />
+                        <span className="text-[11px] text-slate-500 mt-1 block">
+                          Dia: <strong className="text-slate-800">{MAPA_DIAS_EXTENSO[diaSemanaForm] || diaSemanaForm}</strong>
+                        </span>
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1.5">Professor Ausente</label>
+                        <select
+                          value={form.professorAusente}
+                          onChange={(e) => {
+                            const prof = listaProfessoresUnificada.find(p => isSameProfessor(p.nome, e.target.value));
+                            setForm(prev => ({
+                              ...prev,
+                              professorAusente: e.target.value,
+                              disciplina: prof ? prof.disciplina : prev.disciplina,
+                              area: prof ? prof.area : prev.area
+                            }));
+                          }}
+                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-medium text-slate-900 focus:ring-2 focus:ring-indigo-500/30 outline-none cursor-pointer"
+                          required
+                        >
+                          <option value="">-- Selecione o Docente Ausente --</option>
+                          {listaProfessoresUnificada.map(p => (
+                            <option key={p.nome} value={p.nome}>
+                              {p.nome} ({p.disciplina || 'Geral'})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1.5">Motivo da Ausência</label>
+                        <select
+                          value={form.motivo}
+                          onChange={(e) => setForm({ ...form, motivo: e.target.value })}
+                          className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-medium text-slate-900 focus:ring-2 focus:ring-indigo-500/30 outline-none cursor-pointer"
+                          required
+                        >
+                          {MOTIVOS_AUSENCIA.map(m => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                        <h4 className="text-sm font-semibold text-slate-900 tabular-nums">
+                          Aulas na Grade de {MAPA_DIAS_EXTENSO[diaSemanaForm] || diaSemanaForm} ({aulasDoProfessorAusente.length} aulas)
+                        </h4>
+                        {aulasDoProfessorAusente.length > 0 && (
+                          <span className="text-[11px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-200/70 px-2.5 py-1 rounded-lg">
+                            Substitutos sugeridos por prioridade PEI
+                          </span>
+                        )}
+                      </div>
+
+                      {!form.professorAusente ? (
+                        <div className="p-8 text-center text-slate-400 space-y-2 border border-dashed border-slate-200 rounded-2xl">
+                          <i className="fa-solid fa-arrow-up text-xl text-indigo-500"></i>
+                          <p className="font-semibold text-slate-600 text-sm">Selecione o professor ausente acima.</p>
+                          <p className="text-xs">As aulas regulares do dia serão carregadas automaticamente.</p>
+                        </div>
+                      ) : aulasDoProfessorAusente.length === 0 ? (
+                        <div className="p-8 text-center text-slate-600 space-y-2 bg-amber-50/60 border border-amber-200/70 rounded-2xl">
+                          <i className="fa-solid fa-calendar-xmark text-2xl text-amber-500"></i>
+                          <p className="font-semibold text-slate-900 text-sm">
+                            Nenhuma aula regular encontrada para {form.professorAusente} em {MAPA_DIAS_EXTENSO[diaSemanaForm] || diaSemanaForm}.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto border border-slate-200/80 rounded-2xl">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50/90 border-b border-slate-200/80 text-slate-500 text-xs font-semibold">
+                                <th className="p-3">Horário / Aula</th>
+                                <th className="p-3">Turma &amp; Disciplina</th>
+                                <th className="p-3">Substituto Alocado</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 text-xs">
+                              {aulasDoProfessorAusente.map((aula) => {
+                                const listaP = (periodosAula && periodosAula.length > 0) ? periodosAula : PERIODOS_AULA;
+                                const periodoObj = listaP.find(p => getPeriodoOrder(p.id ?? p.periodoId ?? p.rotulo) === getPeriodoOrder(aula.periodoId)) || { rotulo: getPeriodoRotulo(aula.periodoId), horario: '' };
+                                const areaAula = encontrarAreaDisciplina(aula.disciplina);
+                                const sugestoes = calcularSugestoesParaAula(aula.periodoId, aula.disciplina, areaAula);
+                                const alocAtual = alocacoesLote[aula.periodoId] || { professorSubstituto: '', tipoSubstituto: '' };
+                                const subsAtualObj = sugestoes.find(s => isSameProfessor(s.nome, alocAtual.professorSubstituto) || s.nome === alocAtual.professorSubstituto);
+
+                                return (
+                                  <tr key={aula.id || aula.periodoId} className="hover:bg-slate-50/70">
+                                    <td className="p-3">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-semibold">
+                                          {periodoObj.rotulo}
+                                        </span>
+                                        {periodoObj.horario && (
+                                          <span className="text-[11px] text-slate-500 tabular-nums">
+                                            ({periodoObj.horario})
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+
+                                    <td className="p-3">
+                                      <div className="font-semibold text-slate-900">{aula.turma}</div>
+                                      <div className="text-xs font-medium text-indigo-700">{aula.disciplina}</div>
+                                      <div className="text-[11px] text-slate-400">{areaAula}</div>
+                                    </td>
+
+                                    <td className="p-3">
+                                      <select
+                                        value={alocAtual.professorSubstituto}
+                                        onChange={(e) => handleMudarSubstitutoLote(aula.periodoId, e.target.value, aula.disciplina, areaAula)}
+                                        className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900 focus:ring-2 focus:ring-indigo-500/30 outline-none cursor-pointer"
+                                      >
+                                        <option value="">-- Selecione o Professor Substituto --</option>
+                                        <optgroup label="Sugestões Inteligentes (Livres)">
+                                          {sugestoes.filter(p => !p.isIndisponivel && !p.isOcupado).map(p => (
+                                            <option key={p.nome} value={p.nome}>
+                                              {p.nome} ({p.disciplina}) — {p.motivoPrioridade} [{p.totalAulasSemana}h]
+                                            </option>
+                                          ))}
+                                        </optgroup>
+                                        <optgroup label="Todos os Professores da Escola">
+                                          {sugestoes.map(p => {
+                                            const isBlocked = p.isIndisponivel || p.isOcupado;
+                                            let rotulo = `${p.nome} (${p.disciplina}) — ${p.motivoPrioridade} [${p.totalAulasSemana}h]`;
+                                            if (isBlocked) {
+                                              rotulo = `Bloqueado: ${p.nome} (${p.isIndisponivel ? 'Fora da Escola / Folga' : 'Em Aula: ' + p.motivoOcupado})`;
+                                            }
+                                            return (
+                                              <option key={p.nome} value={p.nome} disabled={isBlocked}>
+                                                {rotulo}
+                                              </option>
+                                            );
+                                          })}
+                                        </optgroup>
+                                      </select>
+
+                                      {subsAtualObj && (
+                                        <div className="mt-1 text-[11px] flex items-center gap-1.5 flex-wrap">
+                                          <span className="px-2 py-0.5 rounded-md font-medium bg-indigo-50 text-indigo-800 border border-indigo-200/60">
+                                            {subsAtualObj.motivoPrioridade}
+                                          </span>
+                                          <span className="text-slate-500 tabular-nums">
+                                            Carga: <strong>{subsAtualObj.totalAulasSemana}h</strong>
+                                          </span>
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="px-5 py-3.5 border-t border-slate-100 bg-slate-50/70 flex items-center justify-end gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setIsModalOpen(false)}
+                      className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl transition cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSalvarAlocacoesLote}
+                      disabled={salvando || !form.professorAusente || aulasDoProfessorAusente.length === 0}
+                      className={`px-5 py-2 text-xs font-semibold rounded-xl transition flex items-center gap-2 cursor-pointer ${
+                        salvando || !form.professorAusente || aulasDoProfessorAusente.length === 0
+                          ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                          : 'bg-slate-900 hover:bg-slate-800 text-white shadow-xs'
+                      }`}
+                    >
+                      <i className="fa-solid fa-bolt text-amber-400"></i>
+                      <span>
+                        {salvando
+                          ? 'Salvando...'
+                          : `Confirmar ${aulasDoProfessorAusente.length} Substituição(ões)`}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* SEÇÃO EXCLUSIVA DE IMPRESSÃO - IMPRESSORA / RELATÓRIO PDF */}

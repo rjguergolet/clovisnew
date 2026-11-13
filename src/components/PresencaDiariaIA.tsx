@@ -1441,32 +1441,35 @@ export default function PresencaDiariaIA() {
   }, [textoMensagemWhatsapp]);
 
   return (
-    <div className="w-full min-h-screen bg-slate-50 text-slate-800 p-4 sm:p-6 lg:p-8 space-y-5">
+    <div className="w-full min-h-screen bg-[#F8FAFC] text-slate-800 p-3 sm:p-6 lg:p-8 space-y-5">
       {/* ============================================================== */}
-      {/* CABEÇALHO DO MÓDULO (OPERACIONAL 2027 SEM TRANSIÇÃO)            */}
+      {/* CABEÇALHO DO MÓDULO (GLASSMORPHIC + OPERACIONAL 2027)          */}
       {/* ============================================================== */}
-      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
-        <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-slate-900 text-cyan-300 flex items-center justify-center text-xl shrink-0">
+      <header className="bg-white/90 backdrop-blur-md md:sticky md:top-2 z-20 rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
+        <div className="flex items-start gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-lg shrink-0">
             <i className="fa-solid fa-clipboard-user"></i>
           </div>
           <div>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 font-semibold">
-              <span className="text-slate-900 font-bold">Ano Letivo 2027</span>
-              <span aria-hidden="true">·</span>
-              <span>Ordenado por Turma e Ordem Alfabética</span>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 font-medium">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold text-[11px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                Ano Letivo 2027
+              </span>
+              <span className="text-slate-300" aria-hidden="true">·</span>
+              <span>Turma &amp; Ordem Alfabética</span>
               {ultimoSalvamentoTexto && (
                 <>
-                  <span aria-hidden="true">·</span>
-                  <span className="text-emerald-700 font-bold tabular-nums">{ultimoSalvamentoTexto}</span>
+                  <span className="text-slate-300" aria-hidden="true">·</span>
+                  <span className="text-emerald-700 font-semibold tabular-nums">{ultimoSalvamentoTexto}</span>
                 </>
               )}
             </div>
-            <h1 className="text-xl sm:text-2xl font-black text-slate-900 mt-0.5 tracking-tight">
-              Presença Diária & Monitoramento Comportamental 2027
+            <h1 className="text-lg sm:text-xl font-bold text-slate-900 mt-1 tracking-tight">
+              Presença Diária &amp; Monitoramento 2027
             </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Integrado à Agenda PEI, Dispensas do Dossiê/Ocorrências e Atrasos em tempo real, com cálculo automático da 3ª Métrica.
+            <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+              Integrado à Agenda PEI, dispensas do dossiê/ocorrências e atrasos em tempo real, com cálculo automático da 3ª Métrica.
             </p>
           </div>
         </div>
@@ -1476,17 +1479,17 @@ export default function PresencaDiariaIA() {
             type="button"
             onClick={handleMarcarTodosPresentes}
             disabled={!podeLancarNoDia}
-            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+            className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 disabled:opacity-40 text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
             title="Confirma restantes como presentes preservando dispensas e atrasos já lançados"
           >
-            <i className="fa-solid fa-check-double text-xs"></i>
-            <span>Confirmar Restantes Presentes</span>
+            <i className="fa-solid fa-check-double text-xs text-emerald-600"></i>
+            <span>Confirmar Restantes</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleGerarMensagemWhatsapp()}
-            className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 shadow-2xs"
           >
             <i className="fa-brands fa-whatsapp text-sm"></i>
             <span>Mensagem Pais (IA)</span>
@@ -1495,7 +1498,7 @@ export default function PresencaDiariaIA() {
           <button
             type="button"
             onClick={handleExecutarAnaliseIa}
-            className="px-3.5 py-2 bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+            className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
           >
             <i className="fa-solid fa-brain text-xs"></i>
             <span>Análise IA 2027</span>
@@ -1505,62 +1508,62 @@ export default function PresencaDiariaIA() {
             type="button"
             onClick={() => handleSalvarChamada('parcial')}
             disabled={salvando || !podeLancarNoDia}
-            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-900 border border-slate-300 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 whitespace-nowrap shrink-0"
+            className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 whitespace-nowrap shrink-0"
             title="Salva o andamento parcial das turmas já conferidas para continuar depois"
           >
-            <i className="fa-solid fa-bookmark text-xs text-blue-700"></i>
-            <span>Salvar e Continuar Depois</span>
+            <i className="fa-solid fa-bookmark text-xs text-indigo-600"></i>
+            <span>Salvar Parcial</span>
           </button>
 
           <button
             type="button"
             onClick={() => handleSalvarChamada('final')}
             disabled={salvando || !podeLancarNoDia}
-            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 whitespace-nowrap shrink-0"
+            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 whitespace-nowrap shrink-0 shadow-2xs"
           >
-            <i className={`fa-solid ${salvando ? 'fa-spinner animate-spin text-cyan-400' : 'fa-floppy-disk text-cyan-400'} text-xs`}></i>
+            <i className={`fa-solid ${salvando ? 'fa-spinner animate-spin text-indigo-300' : 'fa-floppy-disk text-emerald-400'} text-xs`}></i>
             <span>{salvando ? 'Salvando...' : 'Salvar Chamada'}</span>
           </button>
         </div>
-      </div>
+      </header>
 
       {/* ============================================================== */}
-      {/* SINCRONIZAÇÃO COM AGENDA PEI (DIAS LETIVOS VS NÃO LETIVOS)     */}
+      {/* SINCRONIZAÇÃO COM AGENDA PEI (SOFT BADGE BORDER-L-4)           */}
       {/* ============================================================== */}
       <div
-        className={`rounded-2xl p-4 border flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 ${
+        className={`rounded-2xl p-4 border border-l-4 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.03)] flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 ${
           dayStatus.hasFeriado
-            ? 'bg-rose-50 border-rose-300 text-rose-950'
+            ? 'bg-rose-50/90 text-rose-900 border-rose-200/60 border-l-rose-500'
             : dayStatus.isWeekend && !dayStatus.hasReposicao
-            ? 'bg-slate-100 border-slate-300 text-slate-800'
+            ? 'bg-slate-100/90 text-slate-800 border-slate-200/80 border-l-slate-400'
             : dayStatus.hasReposicao
-            ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
+            ? 'bg-emerald-50/90 text-emerald-900 border-emerald-200/60 border-l-emerald-500'
             : dayStatus.hasProvao
-            ? 'bg-purple-50 border-purple-300 text-purple-950'
-            : 'bg-white border-slate-200 text-slate-900'
+            ? 'bg-purple-50/90 text-purple-900 border-purple-200/60 border-l-purple-600'
+            : 'bg-white text-slate-800 border-slate-200/80 border-l-indigo-600'
         }`}
       >
         <div className="flex items-start sm:items-center gap-3">
           <div
             className={`w-10 h-10 rounded-xl flex items-center justify-center text-base shrink-0 ${
-              dayStatus.isLetivo ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+              dayStatus.isLetivo ? 'bg-emerald-500/10 text-emerald-700' : 'bg-rose-500/10 text-rose-700'
             }`}
           >
             <i className={`fa-solid ${dayStatus.isLetivo ? 'fa-calendar-check' : 'fa-calendar-xmark'}`}></i>
           </div>
           <div>
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="font-bold">Agenda PEI · {formatarDataBr(dataSelecionada)}</span>
-              <span aria-hidden="true">/</span>
-              <span className="font-black">{dayStatus.statusLabel}</span>
+              <span className="font-semibold">Agenda PEI · {formatarDataBr(dataSelecionada)}</span>
+              <span className="opacity-40" aria-hidden="true">·</span>
+              <span className="font-bold">{dayStatus.statusLabel}</span>
             </div>
             {eventosDoDiaAgenda.length > 0 ? (
-              <p className="text-[11px] opacity-85 mt-0.5">
+              <p className="text-xs opacity-85 mt-0.5">
                 Eventos na Agenda PEI:{' '}
                 {eventosDoDiaAgenda.map((ev) => `${ev.titulo || ev.categoria} (${ev.categoria})`).join(' · ')}
               </p>
             ) : (
-              <p className="text-[11px] opacity-75 mt-0.5">
+              <p className="text-xs opacity-75 mt-0.5">
                 {dayStatus.isLetivo
                   ? 'Dia letivo habilitado pela Agenda PEI. Dispensas com datas e atrasos são cruzados automaticamente.'
                   : 'Pela Agenda PEI não há aula regular nesta data (sábado/domingo/feriado/recesso). Navegue para o próximo dia letivo.'}
@@ -1569,36 +1572,36 @@ export default function PresencaDiariaIA() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 shrink-0">
           <button
             type="button"
             onClick={() => handleNavegarDiaLetivo(-1)}
-            className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 text-xs font-bold rounded-lg transition cursor-pointer whitespace-nowrap"
+            className="px-3 py-1.5 bg-white/90 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl transition cursor-pointer whitespace-nowrap"
           >
-            ← Dia Letivo Anterior
+            ← Dia Anterior
           </button>
           <button
             type="button"
             onClick={() => setDataSelecionada(hojeIso)}
-            className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 text-xs font-bold rounded-lg transition cursor-pointer whitespace-nowrap"
+            className="px-3 py-1.5 bg-white/90 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl transition cursor-pointer whitespace-nowrap"
           >
             Hoje
           </button>
           <button
             type="button"
             onClick={() => handleNavegarDiaLetivo(1)}
-            className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-800 text-xs font-bold rounded-lg transition cursor-pointer whitespace-nowrap"
+            className="px-3 py-1.5 bg-white/90 border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-xl transition cursor-pointer whitespace-nowrap"
           >
-            Próximo Dia Letivo →
+            Próximo Dia →
           </button>
           {!dayStatus.isLetivo && (
             <button
               type="button"
               onClick={() => setForcarChamadaDiaNaoLetivo((v) => !v)}
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition cursor-pointer whitespace-nowrap ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-xl border transition cursor-pointer whitespace-nowrap ${
                 forcarChamadaDiaNaoLetivo
-                  ? 'bg-rose-700 text-white border-rose-700'
-                  : 'bg-white text-rose-800 border-rose-300 hover:bg-rose-100'
+                  ? 'bg-rose-600 text-white border-rose-600'
+                  : 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50'
               }`}
             >
               {forcarChamadaDiaNaoLetivo ? 'Chamada Extraordinária Ativa' : 'Liberar Chamada Extraordinária'}
@@ -1611,7 +1614,7 @@ export default function PresencaDiariaIA() {
                 (window as any).clovisSwitchView('agenda');
               }
             }}
-            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg transition cursor-pointer whitespace-nowrap"
+            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition cursor-pointer whitespace-nowrap"
           >
             Ver Agenda PEI
           </button>
@@ -1619,97 +1622,111 @@ export default function PresencaDiariaIA() {
       </div>
 
       {/* ============================================================== */}
-      {/* CARDS DAS 3 MÉTRICAS DE FALTAS (FALTAS EFETIVAS EM DESTAQUE)   */}
+      {/* BENTO KPI GRID — 3 MÉTRICAS DE FALTAS                          */}
       {/* ============================================================== */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500">
-            <span>Taxa de Presença no Dia</span>
-            <i className="fa-solid fa-user-check text-emerald-600"></i>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-slate-500">Presença no Dia</span>
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-sm shrink-0">
+              <i className="fa-solid fa-user-check"></i>
+            </div>
           </div>
           <div className="mt-3">
             <div className="flex items-baseline gap-2 tabular-nums">
-              <span className="text-3xl font-black text-slate-900">{estatisticas.taxaPresenca}%</span>
-              <span className="text-xs font-bold text-slate-500">
-                ({estatisticas.presentes + estatisticas.atrasados} / {estatisticas.total})
+              <span className="text-2xl sm:text-3xl font-bold text-slate-900">{estatisticas.taxaPresenca}%</span>
+              <span className="text-xs font-medium text-slate-500">
+                ({estatisticas.presentes + estatisticas.atrasados}/{estatisticas.total})
               </span>
             </div>
-            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mt-2">
+            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden mt-2.5">
               <div
-                className="bg-emerald-600 h-full transition-all duration-300"
+                className="bg-emerald-500 h-full transition-all duration-300 rounded-full"
                 style={{ width: `${Math.min(100, Math.max(0, Number(estatisticas.taxaPresenca)))}%` }}
               ></div>
             </div>
-            <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 mt-2 tabular-nums">
+            <div className="flex items-center justify-between text-[11px] font-medium text-slate-500 mt-2 tabular-nums">
               <span>Presentes: {estatisticas.presentes}</span>
-              <span className="text-amber-700">Atrasos: {estatisticas.atrasados}</span>
+              <span className="text-amber-700 font-semibold">Atrasos: {estatisticas.atrasados}</span>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-500">
-            <span>1ª Métrica · Faltas Brutas</span>
-            <i className="fa-solid fa-list-ol text-slate-500"></i>
+        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-slate-500">1ª Métrica · Faltas Brutas</span>
+            <div className="w-9 h-9 rounded-xl bg-slate-500/10 text-slate-600 flex items-center justify-center text-sm shrink-0">
+              <i className="fa-solid fa-list-ol"></i>
+            </div>
           </div>
           <div className="mt-3">
             <div className="flex items-baseline gap-2 tabular-nums">
-              <span className="text-3xl font-black text-slate-900">{estatisticas.faltosos}</span>
-              <span className="text-xs font-bold text-slate-500">faltas hoje</span>
+              <span className="text-2xl sm:text-3xl font-bold text-slate-900">{estatisticas.faltosos}</span>
+              <span className="text-xs font-medium text-slate-500">faltas hoje</span>
             </div>
-            <p className="text-[11px] text-slate-500 mt-1 tabular-nums">
-              Total bruto acumulado: <strong>{estatisticas.somaFaltasTotais}</strong>
+            <p className="text-[11px] text-slate-500 mt-2 tabular-nums">
+              Total bruto acumulado: <strong className="text-slate-700">{estatisticas.somaFaltasTotais}</strong>
             </p>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-bold text-blue-700">
-            <span>2ª Métrica · Dispensas & Licenças</span>
-            <i className="fa-solid fa-notes-medical text-blue-600"></i>
+        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-medium text-indigo-700">2ª Métrica · Dispensas</span>
+            <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm shrink-0">
+              <i className="fa-solid fa-notes-medical"></i>
+            </div>
           </div>
           <div className="mt-3">
             <div className="flex items-baseline gap-2 tabular-nums">
-              <span className="text-3xl font-black text-blue-900">{estatisticas.licencas}</span>
-              <span className="text-xs font-bold text-blue-700">afastados hoje</span>
+              <span className="text-2xl sm:text-3xl font-bold text-slate-900">{estatisticas.licencas}</span>
+              <span className="text-xs font-medium text-indigo-700">afastados hoje</span>
             </div>
-            <p className="text-[11px] text-slate-500 mt-1 tabular-nums">
-              Total justificado (Dossiê/Diário): <strong>{estatisticas.somaLicencas}</strong> dia(s)
+            <p className="text-[11px] text-slate-500 mt-2 tabular-nums">
+              Justificados (Dossiê/Diário): <strong className="text-slate-700">{estatisticas.somaLicencas}</strong> dia(s)
             </p>
           </div>
         </div>
 
-        <div className="bg-rose-50/70 rounded-2xl p-5 border border-rose-300 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-bold text-rose-900">
-            <span>3ª Métrica · Faltas Efetivas Reais</span>
-            <i className="fa-solid fa-triangle-exclamation text-rose-600"></i>
+        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-rose-200/70 border-l-4 border-l-rose-500 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex flex-col justify-between">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-rose-800">3ª Métrica · Faltas Efetivas</span>
+            <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-600 flex items-center justify-center text-sm shrink-0">
+              <i className="fa-solid fa-triangle-exclamation"></i>
+            </div>
           </div>
           <div className="mt-3">
             <div className="flex items-baseline gap-2 tabular-nums">
-              <span className="text-3xl font-black text-rose-950">{estatisticas.somaFaltasEfetivas}</span>
-              <span className="text-xs font-bold text-rose-800">sem licenças/dispensas</span>
+              <span className="text-2xl sm:text-3xl font-bold text-rose-900">{estatisticas.somaFaltasEfetivas}</span>
+              <span className="text-xs font-medium text-rose-700">sem licenças</span>
             </div>
-            <p className="text-[11px] text-rose-900 mt-1 leading-snug">
-              Desconsidera licenças e dispensas do Dossiê para orientar a Busca Ativa e Tutoria.
+            <p className="text-[11px] text-slate-500 mt-2 leading-snug">
+              Desconsidera licenças para orientar Busca Ativa e Tutoria.
             </p>
           </div>
         </div>
       </div>
 
       {/* ============================================================== */}
-      {/* PROGRESSO POR TURMA (SALVAR E CONTINUAR DEPOIS)                */}
+      {/* PROGRESSO POR TURMA (PILLS DESLIZÁVEIS NO MOBILE)              */}
       {/* ============================================================== */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 space-y-3">
+      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="font-black text-slate-900">Progresso da Chamada por Turma</span>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="font-bold text-slate-900">Progresso da Chamada por Turma</span>
             <span aria-hidden="true" className="text-slate-300">·</span>
-            <span className="font-bold text-slate-600 tabular-nums">
-              {resumoProgressoDia.turmasConcluidas}/{resumoProgressoDia.totalTurmas} turmas concluídas ({resumoProgressoDia.verificadosAlunos}/{resumoProgressoDia.totalAlunos} estudantes verificados)
+            <span className="font-medium text-slate-600 tabular-nums">
+              {resumoProgressoDia.turmasConcluidas}/{resumoProgressoDia.totalTurmas} turmas concluídas ({resumoProgressoDia.verificadosAlunos}/{resumoProgressoDia.totalAlunos} verificados)
             </span>
           </div>
-          <div className="flex items-center gap-2 text-[11px] font-bold">
-            <span className={statusSalvamentoDoc === 'concluida' ? 'text-emerald-700' : 'text-amber-700'}>
+          <div className="flex items-center gap-2 text-[11px] font-semibold">
+            <span
+              className={`px-2.5 py-0.5 rounded-full border-l-4 ${
+                statusSalvamentoDoc === 'concluida'
+                  ? 'bg-emerald-50/90 text-emerald-900 border-emerald-200/60 border-l-emerald-500'
+                  : 'bg-amber-50/90 text-amber-900 border-amber-200/60 border-l-amber-500'
+              }`}
+            >
               {statusSalvamentoDoc === 'concluida'
                 ? 'Chamada Concluída'
                 : statusSalvamentoDoc === 'em_andamento'
@@ -1719,13 +1736,13 @@ export default function PresencaDiariaIA() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar md:flex-wrap pb-0.5">
           <button
             type="button"
             onClick={() => setTurmaSelecionada('TODAS')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer whitespace-nowrap ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer whitespace-nowrap shrink-0 ${
               turmaSelecionada === 'TODAS'
-                ? 'bg-slate-900 text-white border-slate-900'
+                ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
                 : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
             }`}
           >
@@ -1734,11 +1751,11 @@ export default function PresencaDiariaIA() {
           {progressoPorTurma.map((p) => {
             const ativo = turmaSelecionada === p.turma;
             const estadoClasses = ativo
-              ? 'bg-slate-900 text-white border-slate-900'
+              ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
               : p.estado === 'concluida'
-              ? 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100'
+              ? 'bg-emerald-50/90 text-emerald-900 border-emerald-200/80 hover:bg-emerald-100/80'
               : p.estado === 'em_andamento'
-              ? 'bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100'
+              ? 'bg-amber-50/90 text-amber-900 border-amber-200/80 hover:bg-amber-100/80'
               : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100';
 
             return (
@@ -1746,10 +1763,10 @@ export default function PresencaDiariaIA() {
                 key={p.turma}
                 type="button"
                 onClick={() => setTurmaSelecionada(p.turma)}
-                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition cursor-pointer flex items-center gap-1.5 tabular-nums whitespace-nowrap ${estadoClasses}`}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition cursor-pointer flex items-center gap-1.5 tabular-nums whitespace-nowrap shrink-0 ${estadoClasses}`}
               >
                 <span>{p.turma}</span>
-                <span className="opacity-75">
+                <span className="opacity-70 text-[11px]">
                   {p.verificados}/{p.total}
                 </span>
                 {p.estado === 'concluida' && <i className="fa-solid fa-check text-[10px]"></i>}
@@ -1760,12 +1777,12 @@ export default function PresencaDiariaIA() {
       </div>
 
       {/* ============================================================== */}
-      {/* BARRA DE FILTROS & PESQUISA                                    */}
+      {/* COMMAND BAR DE FILTROS & PESQUISA                              */}
       {/* ============================================================== */}
-      <div className="bg-white rounded-2xl p-4 border border-slate-200 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[280px]">
+      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2.5 flex-1">
           <div className="flex items-center gap-2">
-            <label htmlFor="inputDataChamada" className="text-xs font-bold text-slate-600">
+            <label htmlFor="inputDataChamada" className="text-xs font-medium text-slate-500">
               Data:
             </label>
             <input
@@ -1773,19 +1790,19 @@ export default function PresencaDiariaIA() {
               id="inputDataChamada"
               value={dataSelecionada}
               onChange={(e) => setDataSelecionada(e.target.value)}
-              className="px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-cyan-400 cursor-pointer tabular-nums"
+              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/30 cursor-pointer tabular-nums"
             />
           </div>
 
           <div className="flex items-center gap-2">
-            <label htmlFor="selectTurmaChamada" className="text-xs font-bold text-slate-600">
+            <label htmlFor="selectTurmaChamada" className="text-xs font-medium text-slate-500">
               Turma:
             </label>
             <select
               id="selectTurmaChamada"
               value={turmaSelecionada}
               onChange={(e) => setTurmaSelecionada(e.target.value)}
-              className="px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-cyan-400 cursor-pointer"
+              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/30 cursor-pointer"
             >
               <option value="TODAS">Todas as Turmas ({alunosBase.length} alunos)</option>
               {listaTurmas.map((t) => (
@@ -1797,14 +1814,14 @@ export default function PresencaDiariaIA() {
           </div>
 
           <div className="flex items-center gap-2">
-            <label htmlFor="selectStatusFiltro" className="text-xs font-bold text-slate-600">
+            <label htmlFor="selectStatusFiltro" className="text-xs font-medium text-slate-500">
               Status:
             </label>
             <select
               id="selectStatusFiltro"
               value={filtroStatus}
               onChange={(e) => setFiltroStatus(e.target.value)}
-              className="px-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-cyan-400 cursor-pointer"
+              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/30 cursor-pointer"
             >
               <option value="TODOS">Todos</option>
               <option value="PENDENTE">Pendentes de Conferência</option>
@@ -1816,8 +1833,8 @@ export default function PresencaDiariaIA() {
           </div>
         </div>
 
-        <div className="relative w-full sm:w-72">
-          <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400 pointer-events-none">
+        <div className="relative w-full lg:w-72">
+          <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-400 pointer-events-none">
             <i className="fa-solid fa-magnifying-glass text-xs"></i>
           </span>
           <input
@@ -1825,23 +1842,23 @@ export default function PresencaDiariaIA() {
             placeholder="Buscar estudante, RA ou tutor..."
             value={filtroBusca}
             onChange={(e) => setFiltroBusca(e.target.value)}
-            className="w-full pl-9 pr-4 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-cyan-400"
+            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-500/30"
           />
         </div>
       </div>
 
       {/* ============================================================== */}
-      {/* LISTA AGRUPADA POR TURMA (TURMA -> ORDEM ALFABÉTICA)          */}
+      {/* LISTA AGRUPADA POR TURMA (MOBILE CARDS + DESKTOP TABLE)        */}
       {/* ============================================================== */}
       <div className="space-y-4">
         {loading ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500 font-medium text-xs">
-            <i className="fa-solid fa-spinner animate-spin text-2xl text-cyan-600 mb-2 block"></i>
+          <div className="bg-white rounded-3xl border border-slate-200/80 p-12 text-center text-slate-500 font-medium text-xs shadow-2xs">
+            <i className="fa-solid fa-spinner animate-spin text-2xl text-indigo-600 mb-2 block"></i>
             Carregando estudantes, Agenda PEI e integrações...
           </div>
         ) : gruposPorTurma.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center text-slate-500 font-medium text-xs">
-            <i className="fa-solid fa-user-xmark text-3xl text-slate-400 mb-2 block"></i>
+          <div className="bg-white rounded-3xl border border-slate-200/80 p-12 text-center text-slate-500 font-medium text-xs shadow-2xs">
+            <i className="fa-solid fa-user-xmark text-3xl text-slate-300 mb-2 block"></i>
             Nenhum estudante localizado com os filtros selecionados.
           </div>
         ) : (
@@ -1852,16 +1869,16 @@ export default function PresencaDiariaIA() {
             const faltasNoGrupo = grupo.alunos.filter((a) => a.status === 'falta').length;
 
             return (
-              <div key={grupo.turma} className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              <div key={grupo.turma} className="bg-white rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] overflow-hidden">
                 {/* Cabeçalho do Grupo da Turma */}
-                <div className="px-5 py-3.5 bg-slate-50/90 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div className="px-4 sm:px-5 py-3.5 bg-slate-50/70 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-3 flex-wrap">
                     <button
                       type="button"
                       onClick={() =>
                         setTurmasRecolhidas((prev) => ({ ...prev, [grupo.turma]: !prev[grupo.turma] }))
                       }
-                      className="w-7 h-7 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 flex items-center justify-center cursor-pointer transition"
+                      className="w-8 h-8 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 flex items-center justify-center cursor-pointer transition"
                       title={recolhida ? 'Expandir turma' : 'Recolher turma'}
                     >
                       <i className={`fa-solid ${recolhida ? 'fa-chevron-right' : 'fa-chevron-down'} text-xs`}></i>
@@ -1869,18 +1886,17 @@ export default function PresencaDiariaIA() {
 
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h2 className="text-sm font-black text-slate-900">{grupo.turma}</h2>
-                        <span className="text-xs text-slate-500 font-semibold tabular-nums">
+                        <h2 className="text-sm font-bold text-slate-900">{grupo.turma}</h2>
+                        <span className="text-xs text-slate-500 font-medium tabular-nums">
                           · {grupo.verificadosTurma}/{grupo.totalTurma} verificados
                         </span>
-                        <span aria-hidden="true" className="text-slate-300">·</span>
                         <span
-                          className={`text-xs font-bold ${
+                          className={`px-2 py-0.5 rounded-md text-[11px] font-semibold border-l-2 ${
                             grupo.estadoTurma === 'concluida'
-                              ? 'text-emerald-700'
+                              ? 'bg-emerald-50 text-emerald-800 border-l-emerald-500'
                               : grupo.estadoTurma === 'em_andamento'
-                              ? 'text-amber-700'
-                              : 'text-slate-500'
+                              ? 'bg-amber-50 text-amber-800 border-l-amber-500'
+                              : 'bg-slate-100 text-slate-600 border-l-slate-400'
                           }`}
                         >
                           {grupo.estadoTurma === 'concluida'
@@ -1890,11 +1906,11 @@ export default function PresencaDiariaIA() {
                             : 'Pendente'}
                         </span>
                       </div>
-                      <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-0.5 tabular-nums">
-                        <span>{grupo.alunos.length} estudante(s) exibido(s) em ordem alfabética</span>
-                        {atrasosNoGrupo > 0 && <span className="text-amber-700 font-bold">{atrasosNoGrupo} atraso(s)</span>}
-                        {dispensasNoGrupo > 0 && <span className="text-blue-700 font-bold">{dispensasNoGrupo} dispensado(s)</span>}
-                        {faltasNoGrupo > 0 && <span className="text-rose-700 font-bold">{faltasNoGrupo} falta(s)</span>}
+                      <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-slate-500 mt-0.5 tabular-nums">
+                        <span>{grupo.alunos.length} estudante(s) em ordem alfabética</span>
+                        {atrasosNoGrupo > 0 && <span className="text-amber-700 font-semibold">{atrasosNoGrupo} atraso(s)</span>}
+                        {dispensasNoGrupo > 0 && <span className="text-indigo-700 font-semibold">{dispensasNoGrupo} dispensado(s)</span>}
+                        {faltasNoGrupo > 0 && <span className="text-rose-700 font-semibold">{faltasNoGrupo} falta(s)</span>}
                       </div>
                     </div>
                   </div>
@@ -1904,7 +1920,7 @@ export default function PresencaDiariaIA() {
                       type="button"
                       disabled={!podeLancarNoDia}
                       onClick={() => handleConfirmarTurmaPresentes(grupo.turma)}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold rounded-lg transition cursor-pointer whitespace-nowrap flex items-center gap-1.5"
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-semibold rounded-xl transition cursor-pointer whitespace-nowrap flex items-center gap-1.5 shadow-2xs"
                     >
                       <i className="fa-solid fa-check text-[11px]"></i>
                       <span>Confirmar Presentes da Turma</span>
@@ -1913,286 +1929,497 @@ export default function PresencaDiariaIA() {
                 </div>
 
                 {!recolhida && (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-50/50 text-[10px] font-bold uppercase text-slate-500 tracking-wider border-b border-slate-200">
-                        <tr>
-                          <th className="py-2.5 px-4 w-10 text-center">#</th>
-                          <th className="py-2.5 px-3">Estudante (Ordem Alfabética)</th>
-                          <th className="py-2.5 px-3">Tutor PEI</th>
-                          <th className="py-2.5 px-4 text-center">Chamada & Integrações</th>
-                          <th className="py-2.5 px-3 text-center">1ª Faltas Brutas</th>
-                          <th className="py-2.5 px-3 text-center">2ª Licenças/Dispensas</th>
-                          <th className="py-2.5 px-3 text-center bg-rose-50/70 text-rose-900 border-x border-rose-200">
-                            3ª Faltas Efetivas
-                          </th>
-                          <th className="py-2.5 px-3 text-center">Atrasos</th>
-                          <th className="py-2.5 px-3 text-center">Ações</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {grupo.alunos.map((aluno, idx) => {
-                          const isCritico = aluno.faltasEfetivas >= 15;
-                          const isAlerta = aluno.faltasEfetivas >= 8 && aluno.faltasEfetivas < 15;
+                  <>
+                    {/* VISÃO MOBILE (< md): CARDS LIMPOS E TOUCH-FRIENDLY */}
+                    <div className="md:hidden divide-y divide-slate-100">
+                      {grupo.alunos.map((aluno, idx) => {
+                        const isCritico = aluno.faltasEfetivas >= 15;
+                        const isAlerta = aluno.faltasEfetivas >= 8 && aluno.faltasEfetivas < 15;
+                        const msgIndividual = `Olá! Sou da coordenação da EE Prof. Clóvis de Lucca. Registramos a ausência/atraso do(a) estudante ${aluno.nome} (${aluno.turma}) hoje. Por favor, confirme o recebimento ou informe se há justificativa médica.`;
+                        const encoded = encodeURIComponent(msgIndividual);
+                        const foneLimpo = String(aluno.telefone || '').replace(/\D/g, '');
+                        const waHref = foneLimpo
+                          ? `https://wa.me/55${foneLimpo}?text=${encoded}`
+                          : `https://web.whatsapp.com/send?text=${encoded}`;
 
-                          return (
-                            <tr
-                              key={aluno.ra || aluno.id || idx}
-                              className={`hover:bg-slate-50/80 transition ${
-                                aluno.status === 'falta'
-                                  ? 'bg-rose-50/35'
-                                  : aluno.status === 'atrasado'
-                                  ? 'bg-amber-50/35'
-                                  : aluno.status === 'licenca'
-                                  ? 'bg-blue-50/40'
-                                  : ''
-                              }`}
-                            >
-                              <td className="py-2.5 px-4 text-center font-mono text-[11px] text-slate-400 tabular-nums">
-                                {idx + 1}
-                              </td>
+                        return (
+                          <div
+                            key={aluno.ra || aluno.id || idx}
+                            className={`p-4 space-y-3 ${
+                              aluno.status === 'falta'
+                                ? 'bg-rose-50/40'
+                                : aluno.status === 'atrasado'
+                                ? 'bg-amber-50/40'
+                                : aluno.status === 'licenca'
+                                ? 'bg-indigo-50/40'
+                                : 'bg-white'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-[11px] font-mono text-slate-400 tabular-nums">#{idx + 1}</span>
+                                  <span className="font-semibold text-slate-900 text-sm">{aluno.nome}</span>
+                                  {!aluno.verificado && (
+                                    <span className="text-[10px] font-medium text-slate-400">· Pendente</span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-slate-500 mt-0.5 tabular-nums">
+                                  RA {aluno.ra} · Tutor: <span className="font-medium text-slate-700">{aluno.tutor}</span>
+                                </div>
+                                {aluno.dispensaAtiva && (
+                                  <div className="mt-1.5 inline-block px-2 py-0.5 rounded-md border-l-4 bg-indigo-50/90 text-indigo-900 border-l-indigo-500 text-[11px] font-medium">
+                                    Dispensa ({aluno.dispensaAtiva.motivo}): {formatarDiaCurtoBr(aluno.dispensaAtiva.dataInicio)} a {formatarDiaCurtoBr(aluno.dispensaAtiva.dataFim)}
+                                  </div>
+                                )}
+                                {aluno.atrasoOcorrencia && (
+                                  <div className="mt-1 inline-block px-2 py-0.5 rounded-md border-l-4 bg-amber-50/90 text-amber-900 border-l-amber-500 text-[11px] font-medium">
+                                    Atraso Ocorrências às {aluno.atrasoOcorrencia.horario}
+                                  </div>
+                                )}
+                              </div>
 
-                              <td className="py-2.5 px-3">
-                                <div className="flex items-center gap-2.5">
+                              <div className="flex items-center gap-1 shrink-0">
+                                <a
+                                  href={waHref}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center"
+                                  title="Enviar WhatsApp"
+                                >
+                                  <i className="fa-brands fa-whatsapp text-sm"></i>
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (typeof (window as any).abrirFichaAluno === 'function') {
+                                      (window as any).abrirFichaAluno(aluno.ra);
+                                    } else if (typeof (window as any).navegarEAbrirFichaAluno === 'function') {
+                                      (window as any).navegarEAbrirFichaAluno(aluno.ra);
+                                    }
+                                  }}
+                                  className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center cursor-pointer"
+                                  title="Abrir Dossiê"
+                                >
+                                  <i className="fa-solid fa-address-card text-xs"></i>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Botões Touch de Chamada */}
+                            <div className="grid grid-cols-4 gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleAlterarStatus(aluno.ra, 'presente')}
+                                className={`py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1 ${
+                                  aluno.status === 'presente' && aluno.verificado
+                                    ? 'bg-emerald-600 text-white'
+                                    : aluno.status === 'presente'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-slate-100 text-slate-600'
+                                }`}
+                              >
+                                <i className="fa-solid fa-check text-[10px]"></i>
+                                <span>Pres.</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const horaAtual = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                                  handleAlterarStatus(aluno.ra, 'atrasado', { horarioAtraso: aluno.horarioAtraso || horaAtual });
+                                }}
+                                className={`py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1 ${
+                                  aluno.status === 'atrasado' ? 'bg-amber-500 text-slate-950' : 'bg-slate-100 text-slate-600'
+                                }`}
+                              >
+                                <i className="fa-solid fa-clock text-[10px]"></i>
+                                <span>Atraso</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleAlterarStatus(aluno.ra, 'falta')}
+                                className={`py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1 ${
+                                  aluno.status === 'falta' ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-600'
+                                }`}
+                              >
+                                <i className="fa-solid fa-xmark text-[10px]"></i>
+                                <span>Falta</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleAlterarStatus(aluno.ra, 'licenca', { motivoLicenca: aluno.motivoLicenca || 'Atestado Médico' })
+                                }
+                                className={`py-2 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1 ${
+                                  aluno.status === 'licenca' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'
+                                }`}
+                              >
+                                <i className="fa-solid fa-file-medical text-[10px]"></i>
+                                <span>Lic.</span>
+                              </button>
+                            </div>
+
+                            {aluno.status === 'atrasado' && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-medium text-amber-800">Horário:</span>
+                                <input
+                                  type="text"
+                                  value={aluno.horarioAtraso || ''}
+                                  placeholder="07:15"
+                                  onChange={(e) =>
+                                    handleAlterarStatus(aluno.ra, 'atrasado', { horarioAtraso: e.target.value })
+                                  }
+                                  className="w-20 px-2 py-1 text-xs font-mono font-semibold text-center border border-amber-300 rounded-lg bg-white tabular-nums"
+                                />
+                              </div>
+                            )}
+
+                            {aluno.status === 'licenca' && (
+                              <select
+                                value={aluno.motivoLicenca || 'Atestado Médico'}
+                                onChange={(e) =>
+                                  handleAlterarStatus(aluno.ra, 'licenca', { motivoLicenca: e.target.value })
+                                }
+                                className="w-full text-xs font-medium border border-indigo-200 rounded-xl px-2.5 py-1.5 bg-white text-indigo-900"
+                              >
+                                <option value="Atestado Médico">Atestado Médico</option>
+                                <option value="Licença Saúde / Internação">Licença Saúde / Internação</option>
+                                <option value="Afastamento Legal / Judicial">Afastamento Legal / Judicial</option>
+                                <option value="Dispensa Esportiva / Cultural">Dispensa Esportiva / Cultural</option>
+                                <option value="Óbito / Luto Familiar">Óbito / Luto Familiar</option>
+                                <option value="Outros Afastamentos Justificados">Outros Afastamentos Justificados</option>
+                              </select>
+                            )}
+
+                            {/* Métricas Compactas Mobile */}
+                            <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-100 text-[11px] tabular-nums">
+                              <div>
+                                <span className="text-slate-400 block">Brutas</span>
+                                <span className="font-semibold text-slate-700">{aluno.faltasTotais}</span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block">Licenças</span>
+                                <div className="flex items-center gap-1 mt-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAjustarLicencaExtra(aluno.ra, -1, aluno.licencasAfastamentos)}
+                                    disabled={aluno.licencasAfastamentos <= 0}
+                                    className="w-5 h-5 rounded bg-slate-100 text-slate-600 text-[10px] font-bold disabled:opacity-30"
+                                  >
+                                    -
+                                  </button>
+                                  <span className="font-semibold text-indigo-700">{aluno.licencasAfastamentos}d</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAjustarLicencaExtra(aluno.ra, 1, aluno.licencasAfastamentos)}
+                                    className="w-5 h-5 rounded bg-indigo-50 text-indigo-700 text-[10px] font-bold"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+                              <div>
+                                <span className="text-rose-600 block font-medium">Efetivas</span>
+                                <span
+                                  className={`font-bold ${
+                                    isCritico ? 'text-rose-700' : isAlerta ? 'text-amber-700' : 'text-emerald-700'
+                                  }`}
+                                >
+                                  {aluno.faltasEfetivas}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-slate-400 block">Atrasos</span>
+                                <span className={aluno.atrasosAcumulados > 0 ? 'font-semibold text-amber-700' : 'text-slate-400'}>
+                                  {aluno.atrasosAcumulados}x
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* VISÃO DESKTOP (>= md): TABELA REFINADA */}
+                    <div className="hidden md:block overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50/70 text-[11px] font-semibold text-slate-500 border-b border-slate-200/80">
+                          <tr>
+                            <th className="py-2.5 px-4 w-10 text-center">#</th>
+                            <th className="py-2.5 px-3">Estudante (Ordem Alfabética)</th>
+                            <th className="py-2.5 px-3">Tutor PEI</th>
+                            <th className="py-2.5 px-4 text-center">Chamada &amp; Integrações</th>
+                            <th className="py-2.5 px-3 text-center">1ª Faltas Brutas</th>
+                            <th className="py-2.5 px-3 text-center">2ª Licenças/Dispensas</th>
+                            <th className="py-2.5 px-3 text-center bg-rose-50/60 text-rose-800 border-x border-rose-100">
+                              3ª Faltas Efetivas
+                            </th>
+                            <th className="py-2.5 px-3 text-center">Atrasos</th>
+                            <th className="py-2.5 px-3 text-center">Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {grupo.alunos.map((aluno, idx) => {
+                            const isCritico = aluno.faltasEfetivas >= 15;
+                            const isAlerta = aluno.faltasEfetivas >= 8 && aluno.faltasEfetivas < 15;
+
+                            return (
+                              <tr
+                                key={aluno.ra || aluno.id || idx}
+                                className={`hover:bg-slate-50/80 transition ${
+                                  aluno.status === 'falta'
+                                    ? 'bg-rose-50/35'
+                                    : aluno.status === 'atrasado'
+                                    ? 'bg-amber-50/35'
+                                    : aluno.status === 'licenca'
+                                    ? 'bg-indigo-50/35'
+                                    : ''
+                                }`}
+                              >
+                                <td className="py-2.5 px-4 text-center font-mono text-[11px] text-slate-400 tabular-nums">
+                                  {idx + 1}
+                                </td>
+
+                                <td className="py-2.5 px-3">
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="font-extrabold text-slate-900 text-xs">{aluno.nome}</span>
+                                      <span className="font-semibold text-slate-900 text-xs">{aluno.nome}</span>
                                       {!aluno.verificado && (
-                                        <span className="text-[10px] font-semibold text-slate-400">· Pendente</span>
+                                        <span className="text-[10px] font-medium text-slate-400">· Pendente</span>
                                       )}
                                     </div>
-                                    <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono tabular-nums mt-0.5 flex-wrap">
+                                    <div className="flex items-center gap-2 text-[11px] text-slate-500 font-mono tabular-nums mt-0.5 flex-wrap">
                                       <span>RA {aluno.ra}</span>
                                       {aluno.dispensaAtiva && (
-                                        <span className="font-sans font-bold text-blue-800">
+                                        <span className="font-sans font-semibold text-indigo-700">
                                           · Dispensa ({aluno.dispensaAtiva.motivo}): {formatarDiaCurtoBr(aluno.dispensaAtiva.dataInicio)} a{' '}
                                           {formatarDiaCurtoBr(aluno.dispensaAtiva.dataFim)}
                                         </span>
                                       )}
                                       {aluno.atrasoOcorrencia && (
-                                        <span className="font-sans font-bold text-amber-800">
+                                        <span className="font-sans font-semibold text-amber-700">
                                           · Atraso Ocorrências às {aluno.atrasoOcorrencia.horario}
                                         </span>
                                       )}
                                     </div>
                                   </div>
-                                </div>
-                              </td>
+                                </td>
 
-                              <td className="py-2.5 px-3 text-slate-600 font-medium">
-                                <span className="truncate block max-w-[140px]" title={aluno.tutor}>
-                                  {aluno.tutor}
-                                </span>
-                              </td>
-
-                              <td className="py-2.5 px-4">
-                                <div className="flex items-center justify-center gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAlterarStatus(aluno.ra, 'presente')}
-                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition cursor-pointer flex items-center gap-1 ${
-                                      aluno.status === 'presente' && aluno.verificado
-                                        ? 'bg-emerald-600 text-white'
-                                        : aluno.status === 'presente'
-                                        ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                    }`}
-                                    title="Presente"
-                                  >
-                                    <i className="fa-solid fa-check text-[9px]"></i>
-                                    <span>P</span>
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const horaAtual = new Date().toLocaleTimeString('pt-BR', {
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                      });
-                                      handleAlterarStatus(aluno.ra, 'atrasado', {
-                                        horarioAtraso: aluno.horarioAtraso || horaAtual
-                                      });
-                                    }}
-                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition cursor-pointer flex items-center gap-1 ${
-                                      aluno.status === 'atrasado'
-                                        ? 'bg-amber-500 text-slate-950'
-                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                    }`}
-                                    title="Atrasado"
-                                  >
-                                    <i className="fa-solid fa-clock text-[9px]"></i>
-                                    <span>A</span>
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAlterarStatus(aluno.ra, 'falta')}
-                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition cursor-pointer flex items-center gap-1 ${
-                                      aluno.status === 'falta'
-                                        ? 'bg-rose-600 text-white'
-                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                    }`}
-                                    title="Falta Injustificada"
-                                  >
-                                    <i className="fa-solid fa-xmark text-[9px]"></i>
-                                    <span>F</span>
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleAlterarStatus(aluno.ra, 'licenca', {
-                                        motivoLicenca: aluno.motivoLicenca || 'Atestado Médico'
-                                      })
-                                    }
-                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black transition cursor-pointer flex items-center gap-1 ${
-                                      aluno.status === 'licenca'
-                                        ? 'bg-blue-700 text-white'
-                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                    }`}
-                                    title="Licença / Dispensa Justificada"
-                                  >
-                                    <i className="fa-solid fa-file-medical text-[9px]"></i>
-                                    <span>L</span>
-                                  </button>
-                                </div>
-
-                                {aluno.status === 'atrasado' && (
-                                  <div className="mt-1 flex items-center justify-center gap-1">
-                                    <input
-                                      type="text"
-                                      value={aluno.horarioAtraso || ''}
-                                      placeholder="07:15"
-                                      onChange={(e) =>
-                                        handleAlterarStatus(aluno.ra, 'atrasado', { horarioAtraso: e.target.value })
-                                      }
-                                      className="w-14 px-1 py-0.5 text-[10px] font-mono font-bold text-center border border-amber-300 rounded bg-white tabular-nums"
-                                    />
-                                    {aluno.origem === 'atraso_ocorrencia' && (
-                                      <span className="text-[10px] font-bold text-amber-800">Portaria</span>
-                                    )}
-                                  </div>
-                                )}
-
-                                {aluno.status === 'licenca' && (
-                                  <div className="mt-1 flex items-center justify-center gap-1">
-                                    <select
-                                      value={aluno.motivoLicenca || 'Atestado Médico'}
-                                      onChange={(e) =>
-                                        handleAlterarStatus(aluno.ra, 'licenca', { motivoLicenca: e.target.value })
-                                      }
-                                      className="text-[10px] font-bold border border-blue-300 rounded px-1 py-0.5 bg-white text-blue-900 max-w-[160px]"
-                                    >
-                                      <option value="Atestado Médico">Atestado Médico</option>
-                                      <option value="Licença Saúde / Internação">Licença Saúde / Internação</option>
-                                      <option value="Afastamento Legal / Judicial">Afastamento Legal / Judicial</option>
-                                      <option value="Dispensa Esportiva / Cultural">Dispensa Esportiva / Cultural</option>
-                                      <option value="Óbito / Luto Familiar">Óbito / Luto Familiar</option>
-                                      <option value="Outros Afastamentos Justificados">Outros Afastamentos Justificados</option>
-                                    </select>
-                                  </div>
-                                )}
-                              </td>
-
-                              <td className="py-2.5 px-3 text-center font-bold text-slate-700 tabular-nums">
-                                {aluno.faltasTotais}
-                              </td>
-
-                              <td className="py-2.5 px-3 text-center font-bold text-blue-700 tabular-nums">
-                                <div className="inline-flex items-center gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAjustarLicencaExtra(aluno.ra, -1, aluno.licencasAfastamentos)}
-                                    disabled={aluno.licencasAfastamentos <= 0}
-                                    className="w-5 h-5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-black flex items-center justify-center cursor-pointer disabled:opacity-30"
-                                    title="Remover 1 dia de licença ajustada"
-                                  >
-                                    -
-                                  </button>
-                                  <span className="min-w-[24px] text-center font-extrabold text-[11px] text-blue-800">
-                                    {aluno.licencasAfastamentos}d
+                                <td className="py-2.5 px-3 text-slate-600 font-medium">
+                                  <span className="truncate block max-w-[140px]" title={aluno.tutor}>
+                                    {aluno.tutor}
                                   </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAjustarLicencaExtra(aluno.ra, 1, aluno.licencasAfastamentos)}
-                                    className="w-5 h-5 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-black flex items-center justify-center cursor-pointer"
-                                    title="Adicionar +1 dia de licença"
-                                  >
-                                    +
-                                  </button>
-                                </div>
-                              </td>
+                                </td>
 
-                              <td className="py-2.5 px-3 text-center bg-rose-50/60 border-x border-rose-200 tabular-nums">
-                                <span
-                                  className={`font-black text-xs ${
-                                    isCritico
-                                      ? 'text-rose-700'
-                                      : isAlerta
-                                      ? 'text-amber-700'
-                                      : 'text-emerald-700'
-                                  }`}
-                                >
-                                  {aluno.faltasEfetivas}
-                                </span>
-                                {aluno.faltasConsecutivas >= 2 && (
-                                  <div className="text-[10px] font-bold text-rose-700">
-                                    {aluno.faltasConsecutivas}d seguidos
-                                  </div>
-                                )}
-                              </td>
+                                <td className="py-2.5 px-4">
+                                  <div className="flex items-center justify-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAlterarStatus(aluno.ra, 'presente')}
+                                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 ${
+                                        aluno.status === 'presente' && aluno.verificado
+                                          ? 'bg-emerald-600 text-white'
+                                          : aluno.status === 'presente'
+                                          ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                      }`}
+                                      title="Presente"
+                                    >
+                                      <i className="fa-solid fa-check text-[9px]"></i>
+                                      <span>P</span>
+                                    </button>
 
-                              <td className="py-2.5 px-3 text-center font-bold tabular-nums">
-                                <span className={aluno.atrasosAcumulados > 0 ? 'text-amber-700' : 'text-slate-400'}>
-                                  {aluno.atrasosAcumulados}x
-                                </span>
-                              </td>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const horaAtual = new Date().toLocaleTimeString('pt-BR', {
+                                          hour: '2-digit',
+                                          minute: '2-digit'
+                                        });
+                                        handleAlterarStatus(aluno.ra, 'atrasado', {
+                                          horarioAtraso: aluno.horarioAtraso || horaAtual
+                                        });
+                                      }}
+                                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 ${
+                                        aluno.status === 'atrasado'
+                                          ? 'bg-amber-500 text-slate-950'
+                                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                      }`}
+                                      title="Atrasado"
+                                    >
+                                      <i className="fa-solid fa-clock text-[9px]"></i>
+                                      <span>A</span>
+                                    </button>
 
-                              <td className="py-2.5 px-3 text-center">
-                                <div className="flex items-center justify-center gap-1">
-                                  {(() => {
-                                    const msgIndividual = `Olá! Sou da coordenação da EE Prof. Clóvis de Lucca. Registramos a ausência/atraso do(a) estudante ${aluno.nome} (${aluno.turma}) hoje. Por favor, confirme o recebimento ou informe se há justificativa médica.`;
-                                    const encoded = encodeURIComponent(msgIndividual);
-                                    const foneLimpo = String(aluno.telefone || '').replace(/\D/g, '');
-                                    const waHref = foneLimpo
-                                      ? `https://wa.me/55${foneLimpo}?text=${encoded}`
-                                      : `https://web.whatsapp.com/send?text=${encoded}`;
-                                    return (
-                                      <a
-                                        href={waHref}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg transition cursor-pointer inline-flex items-center justify-center"
-                                        title="Enviar WhatsApp para o responsável"
-                                      >
-                                        <i className="fa-brands fa-whatsapp text-sm"></i>
-                                      </a>
-                                    );
-                                  })()}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAlterarStatus(aluno.ra, 'falta')}
+                                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 ${
+                                        aluno.status === 'falta'
+                                          ? 'bg-rose-600 text-white'
+                                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                      }`}
+                                      title="Falta Injustificada"
+                                    >
+                                      <i className="fa-solid fa-xmark text-[9px]"></i>
+                                      <span>F</span>
+                                    </button>
 
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (typeof (window as any).abrirFichaAluno === 'function') {
-                                        (window as any).abrirFichaAluno(aluno.ra);
-                                      } else if (typeof (window as any).navegarEAbrirFichaAluno === 'function') {
-                                        (window as any).navegarEAbrirFichaAluno(aluno.ra);
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleAlterarStatus(aluno.ra, 'licenca', {
+                                          motivoLicenca: aluno.motivoLicenca || 'Atestado Médico'
+                                        })
                                       }
-                                    }}
-                                    className="p-1.5 text-blue-700 hover:bg-blue-50 rounded-lg transition cursor-pointer"
-                                    title="Abrir Dossiê (onde Secretaria, CGPG e Direção podem lançar Dispensa)"
+                                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer flex items-center gap-1 ${
+                                        aluno.status === 'licenca'
+                                          ? 'bg-indigo-600 text-white'
+                                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                      }`}
+                                      title="Licença / Dispensa Justificada"
+                                    >
+                                      <i className="fa-solid fa-file-medical text-[9px]"></i>
+                                      <span>L</span>
+                                    </button>
+                                  </div>
+
+                                  {aluno.status === 'atrasado' && (
+                                    <div className="mt-1.5 flex items-center justify-center gap-1">
+                                      <input
+                                        type="text"
+                                        value={aluno.horarioAtraso || ''}
+                                        placeholder="07:15"
+                                        onChange={(e) =>
+                                          handleAlterarStatus(aluno.ra, 'atrasado', { horarioAtraso: e.target.value })
+                                        }
+                                        className="w-14 px-1 py-0.5 text-[10px] font-mono font-semibold text-center border border-amber-300 rounded-md bg-white tabular-nums"
+                                      />
+                                      {aluno.origem === 'atraso_ocorrencia' && (
+                                        <span className="text-[10px] font-semibold text-amber-800">Portaria</span>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {aluno.status === 'licenca' && (
+                                    <div className="mt-1.5 flex items-center justify-center gap-1">
+                                      <select
+                                        value={aluno.motivoLicenca || 'Atestado Médico'}
+                                        onChange={(e) =>
+                                          handleAlterarStatus(aluno.ra, 'licenca', { motivoLicenca: e.target.value })
+                                        }
+                                        className="text-[10px] font-medium border border-indigo-200 rounded-lg px-1.5 py-0.5 bg-white text-indigo-900 max-w-[160px]"
+                                      >
+                                        <option value="Atestado Médico">Atestado Médico</option>
+                                        <option value="Licença Saúde / Internação">Licença Saúde / Internação</option>
+                                        <option value="Afastamento Legal / Judicial">Afastamento Legal / Judicial</option>
+                                        <option value="Dispensa Esportiva / Cultural">Dispensa Esportiva / Cultural</option>
+                                        <option value="Óbito / Luto Familiar">Óbito / Luto Familiar</option>
+                                        <option value="Outros Afastamentos Justificados">Outros Afastamentos Justificados</option>
+                                      </select>
+                                    </div>
+                                  )}
+                                </td>
+
+                                <td className="py-2.5 px-3 text-center font-semibold text-slate-700 tabular-nums">
+                                  {aluno.faltasTotais}
+                                </td>
+
+                                <td className="py-2.5 px-3 text-center font-semibold text-indigo-700 tabular-nums">
+                                  <div className="inline-flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAjustarLicencaExtra(aluno.ra, -1, aluno.licencasAfastamentos)}
+                                      disabled={aluno.licencasAfastamentos <= 0}
+                                      className="w-5 h-5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold flex items-center justify-center cursor-pointer disabled:opacity-30"
+                                      title="Remover 1 dia de licença ajustada"
+                                    >
+                                      -
+                                    </button>
+                                    <span className="min-w-[24px] text-center font-semibold text-[11px] text-indigo-800">
+                                      {aluno.licencasAfastamentos}d
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAjustarLicencaExtra(aluno.ra, 1, aluno.licencasAfastamentos)}
+                                      className="w-5 h-5 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center cursor-pointer"
+                                      title="Adicionar +1 dia de licença"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
+                                </td>
+
+                                <td className="py-2.5 px-3 text-center bg-rose-50/50 border-x border-rose-100 tabular-nums">
+                                  <span
+                                    className={`font-bold text-xs ${
+                                      isCritico
+                                        ? 'text-rose-700'
+                                        : isAlerta
+                                        ? 'text-amber-700'
+                                        : 'text-emerald-700'
+                                    }`}
                                   >
-                                    <i className="fa-solid fa-address-card text-xs"></i>
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                                    {aluno.faltasEfetivas}
+                                  </span>
+                                  {aluno.faltasConsecutivas >= 2 && (
+                                    <div className="text-[10px] font-semibold text-rose-700">
+                                      {aluno.faltasConsecutivas}d seguidos
+                                    </div>
+                                  )}
+                                </td>
+
+                                <td className="py-2.5 px-3 text-center font-semibold tabular-nums">
+                                  <span className={aluno.atrasosAcumulados > 0 ? 'text-amber-700' : 'text-slate-400'}>
+                                    {aluno.atrasosAcumulados}x
+                                  </span>
+                                </td>
+
+                                <td className="py-2.5 px-3 text-center">
+                                  <div className="flex items-center justify-center gap-1">
+                                    {(() => {
+                                      const msgIndividual = `Olá! Sou da coordenação da EE Prof. Clóvis de Lucca. Registramos a ausência/atraso do(a) estudante ${aluno.nome} (${aluno.turma}) hoje. Por favor, confirme o recebimento ou informe se há justificativa médica.`;
+                                      const encoded = encodeURIComponent(msgIndividual);
+                                      const foneLimpo = String(aluno.telefone || '').replace(/\D/g, '');
+                                      const waHref = foneLimpo
+                                        ? `https://wa.me/55${foneLimpo}?text=${encoded}`
+                                        : `https://web.whatsapp.com/send?text=${encoded}`;
+                                      return (
+                                        <a
+                                          href={waHref}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg transition cursor-pointer inline-flex items-center justify-center"
+                                          title="Enviar WhatsApp para o responsável"
+                                        >
+                                          <i className="fa-brands fa-whatsapp text-sm"></i>
+                                        </a>
+                                      );
+                                    })()}
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (typeof (window as any).abrirFichaAluno === 'function') {
+                                          (window as any).abrirFichaAluno(aluno.ra);
+                                        } else if (typeof (window as any).navegarEAbrirFichaAluno === 'function') {
+                                          (window as any).navegarEAbrirFichaAluno(aluno.ra);
+                                        }
+                                      }}
+                                      className="p-1.5 text-indigo-700 hover:bg-indigo-50 rounded-lg transition cursor-pointer"
+                                      title="Abrir Dossiê (onde Secretaria, CGPG e Direção podem lançar Dispensa)"
+                                    >
+                                      <i className="fa-solid fa-address-card text-xs"></i>
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 )}
               </div>
             );
@@ -2201,18 +2428,19 @@ export default function PresencaDiariaIA() {
       </div>
 
       {/* ============================================================== */}
-      {/* MODAL: MENSAGEM WHATSAPP PARA OS PAIS DOS FALTOSOS DO DIA      */}
+      {/* MODAL: MENSAGEM WHATSAPP (BOTTOM-SHEET MOBILE)                 */}
       {/* ============================================================== */}
       {modalWhatsappAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-xs sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200/80 max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
+            <div className="px-5 py-4 flex items-center justify-between border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-lg">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-lg">
                   <i className="fa-brands fa-whatsapp"></i>
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900">Mensagem dos Faltosos do Dia para os Pais</h3>
+                  <h3 className="text-base font-bold text-slate-900">Mensagem dos Faltosos do Dia</h3>
                   <p className="text-xs text-slate-500 font-medium">
                     Boletim oficial em conformidade com a LGPD para envio no WhatsApp.
                   </p>
@@ -2221,25 +2449,25 @@ export default function PresencaDiariaIA() {
               <button
                 type="button"
                 onClick={() => setModalWhatsappAberto(false)}
-                className="text-slate-400 hover:text-slate-700 p-2 rounded-lg cursor-pointer transition"
+                className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 cursor-pointer transition"
               >
-                <i className="fa-solid fa-xmark text-lg"></i>
+                <i className="fa-solid fa-xmark text-base"></i>
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-3">
-              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-900 flex flex-wrap items-center justify-between gap-2">
+            <div className="p-5 flex-1 overflow-y-auto space-y-3">
+              <div className="p-3 bg-emerald-50/90 rounded-xl border border-emerald-200/60 border-l-4 border-l-emerald-500 text-xs text-emerald-900 flex flex-wrap items-center justify-between gap-2">
                 <span>Proteção LGPD ativa: iniciais preservadas sem expor dados médicos.</span>
                 {origemMensagemIa && (
-                  <span className="font-bold text-emerald-800">
+                  <span className="font-semibold text-emerald-800">
                     {origemMensagemIa === 'gemini' ? 'Redigido por IA' : 'Modelo Oficial'}
                   </span>
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-slate-600 mr-1">Tom:</span>
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-2.5 rounded-2xl border border-slate-200/80">
+                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                  <span className="text-xs font-medium text-slate-500 mr-1">Tom:</span>
                   {(
                     [
                       { id: 'acolhedor', label: 'Acolhedor' },
@@ -2252,10 +2480,10 @@ export default function PresencaDiariaIA() {
                       type="button"
                       disabled={gerandoMensagemIa}
                       onClick={() => handleGerarMensagemWhatsapp(tOpt.id)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
                         tomComunicado === tOpt.id
-                          ? 'bg-emerald-700 text-white'
-                          : 'bg-white text-slate-600 border border-slate-300 hover:bg-slate-100'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
                       }`}
                     >
                       {tOpt.label}
@@ -2266,7 +2494,7 @@ export default function PresencaDiariaIA() {
                   type="button"
                   disabled={gerandoMensagemIa}
                   onClick={() => handleGerarMensagemWhatsapp()}
-                  className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   <i className={`fa-solid ${gerandoMensagemIa ? 'fa-spinner animate-spin' : 'fa-wand-magic-sparkles'}`}></i>
                   <span>{gerandoMensagemIa ? 'Gerando...' : 'Regerar com IA'}</span>
@@ -2274,7 +2502,7 @@ export default function PresencaDiariaIA() {
               </div>
 
               {gerandoMensagemIa ? (
-                <div className="p-10 text-center text-slate-500 text-xs font-bold bg-slate-50 rounded-xl border border-slate-200">
+                <div className="p-10 text-center text-slate-500 text-xs font-medium bg-slate-50 rounded-2xl border border-slate-200/80">
                   <i className="fa-solid fa-spinner animate-spin text-2xl text-emerald-600 mb-2 block"></i>
                   Redigindo boletim diário com IA...
                 </div>
@@ -2282,31 +2510,31 @@ export default function PresencaDiariaIA() {
                 <textarea
                   value={textoMensagemWhatsapp}
                   onChange={(e) => setTextoMensagemWhatsapp(e.target.value)}
-                  rows={12}
-                  className="w-full p-4 font-mono text-xs text-slate-800 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                  rows={11}
+                  className="w-full p-4 font-mono text-xs text-slate-800 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500/30 resize-none"
                 />
               )}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3">
-              <div className="text-xs text-slate-500 font-bold tabular-nums">{textoMensagemWhatsapp.length} caracteres</div>
+            <div className="px-5 py-3.5 border-t border-slate-100 bg-slate-50/60 flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <div className="text-xs text-slate-500 font-medium tabular-nums">{textoMensagemWhatsapp.length} caracteres</div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={handleCopiarMensagem}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition flex items-center gap-2 cursor-pointer"
+                  className="px-4 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold rounded-xl transition flex items-center gap-2 cursor-pointer"
                 >
                   <i className="fa-regular fa-copy"></i>
-                  <span>Copiar Mensagem</span>
+                  <span>Copiar</span>
                 </button>
                 <a
                   href={whatsappWebUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition flex items-center gap-2 cursor-pointer"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl transition flex items-center gap-2 cursor-pointer"
                 >
                   <i className="fa-brands fa-whatsapp text-sm"></i>
-                  <span>Abrir no WhatsApp Web</span>
+                  <span>WhatsApp Web</span>
                 </a>
               </div>
             </div>
@@ -2315,18 +2543,19 @@ export default function PresencaDiariaIA() {
       )}
 
       {/* ============================================================== */}
-      {/* MODAL: ANÁLISE COMPORTAMENTAL IA 2027                          */}
+      {/* MODAL: ANÁLISE COMPORTAMENTAL IA 2027 (BOTTOM-SHEET MOBILE)    */}
       {/* ============================================================== */}
       {modalIaAnaliseAberto && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 shadow-2xl border border-slate-200 space-y-5 max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/40 backdrop-blur-xs sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-3xl w-full shadow-2xl border border-slate-200/80 max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
+            <div className="px-5 py-4 flex items-center justify-between border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-700 text-white flex items-center justify-center text-lg">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-lg">
                   <i className="fa-solid fa-brain"></i>
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-900">Mapeamento Comportamental IA · 2027</h3>
+                  <h3 className="text-base font-bold text-slate-900">Mapeamento Comportamental IA · 2027</h3>
                   <p className="text-xs text-slate-500 font-medium">
                     Padrões de atrasos, faltas consecutivas e análise da 3ª Métrica sem licenças.
                   </p>
@@ -2335,13 +2564,13 @@ export default function PresencaDiariaIA() {
               <button
                 type="button"
                 onClick={() => setModalIaAnaliseAberto(false)}
-                className="text-slate-400 hover:text-slate-700 p-2 rounded-lg cursor-pointer transition"
+                className="text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 cursor-pointer transition"
               >
-                <i className="fa-solid fa-xmark text-lg"></i>
+                <i className="fa-solid fa-xmark text-base"></i>
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+            <div className="p-5 flex-1 overflow-y-auto space-y-4">
               {gerandoAnaliseIa ? (
                 <div className="p-12 text-center text-slate-500 font-medium text-xs">
                   <i className="fa-solid fa-spinner animate-spin text-3xl text-indigo-600 mb-3 block"></i>
@@ -2349,19 +2578,19 @@ export default function PresencaDiariaIA() {
                 </div>
               ) : analiseIaDados ? (
                 <>
-                  <div className="bg-indigo-50/70 border border-indigo-200 p-4 rounded-xl text-xs text-indigo-950 space-y-1">
-                    <span className="text-[11px] font-bold text-indigo-700">Diagnóstico Executivo</span>
+                  <div className="bg-indigo-50/80 border border-indigo-200/60 border-l-4 border-l-indigo-600 p-4 rounded-2xl text-xs text-slate-800 space-y-1">
+                    <span className="text-[11px] font-semibold text-indigo-700">Diagnóstico Executivo</span>
                     <p className="font-medium leading-relaxed">{analiseIaDados.diagnosticoGeral}</p>
                   </div>
 
                   {analiseIaDados.analiseTerceiraMetrica && (
-                    <div className="bg-rose-50/70 border border-rose-200 p-4 rounded-xl space-y-2">
+                    <div className="bg-rose-50/80 border border-rose-200/60 border-l-4 border-l-rose-500 p-4 rounded-2xl space-y-2">
                       <div className="flex items-center justify-between text-xs font-bold text-rose-900">
                         <span>Terceira Métrica (Faltas Efetivas Reais)</span>
                         <span className="tabular-nums">Total: {analiseIaDados.analiseTerceiraMetrica.totalFaltasEfetivas}</span>
                       </div>
                       <p className="text-xs text-rose-900">{analiseIaDados.analiseTerceiraMetrica.explicacao}</p>
-                      <p className="text-xs text-rose-950 font-bold">
+                      <p className="text-xs text-rose-950 font-semibold">
                         Conclusão: {analiseIaDados.analiseTerceiraMetrica.conclusaoPedagogica}
                       </p>
                     </div>
@@ -2369,15 +2598,15 @@ export default function PresencaDiariaIA() {
 
                   {Array.isArray(analiseIaDados.padroesDetectados) && (
                     <div className="space-y-2">
-                      <h4 className="text-xs font-black text-slate-700">Padrões Identificados</h4>
+                      <h4 className="text-xs font-bold text-slate-700">Padrões Identificados</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                         {analiseIaDados.padroesDetectados.map((p: any, idx: number) => (
-                          <div key={idx} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                          <div key={idx} className="p-3 bg-slate-50/80 border border-slate-200/80 rounded-2xl space-y-1">
                             <div className="flex items-center justify-between">
-                              <span className="font-bold text-xs text-slate-900">{p.titulo}</span>
+                              <span className="font-semibold text-xs text-slate-900">{p.titulo}</span>
                               <span
-                                className={`text-[10px] font-bold ${
-                                  p.grau === 'ALTO' ? 'text-rose-700' : 'text-amber-700'
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                                  p.grau === 'ALTO' ? 'bg-rose-50 text-rose-700' : 'bg-amber-50 text-amber-700'
                                 }`}
                               >
                                 {p.grau}
@@ -2392,19 +2621,19 @@ export default function PresencaDiariaIA() {
 
                   {Array.isArray(analiseIaDados.projecaoRisco2027) && analiseIaDados.projecaoRisco2027.length > 0 && (
                     <div className="space-y-2">
-                      <h4 className="text-xs font-black text-slate-700">Estudantes Prioritários para Tutoria</h4>
-                      <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white">
+                      <h4 className="text-xs font-bold text-slate-700">Estudantes Prioritários para Tutoria</h4>
+                      <div className="divide-y divide-slate-100 border border-slate-200/80 rounded-2xl overflow-hidden bg-white">
                         {analiseIaDados.projecaoRisco2027.map((al: any, idx: number) => (
                           <div key={idx} className="p-3 text-xs space-y-0.5">
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-slate-900">{al.nome}</span>
-                              <span className="text-slate-500 font-semibold">· {al.turma}</span>
-                              <span className={al.nivelRisco === 'CRÍTICO' ? 'text-rose-700 font-black' : 'text-amber-700 font-bold'}>
+                              <span className="font-semibold text-slate-900">{al.nome}</span>
+                              <span className="text-slate-500 font-medium">· {al.turma}</span>
+                              <span className={al.nivelRisco === 'CRÍTICO' ? 'text-rose-700 font-bold' : 'text-amber-700 font-semibold'}>
                                 · {al.nivelRisco}
                               </span>
                             </div>
                             <p className="text-[11px] text-slate-600">{al.motivo}</p>
-                            <p className="text-[11px] text-indigo-900 font-bold">Ação: {al.acaoTutoria2027}</p>
+                            <p className="text-[11px] text-indigo-800 font-semibold">Ação: {al.acaoTutoria2027}</p>
                           </div>
                         ))}
                       </div>
@@ -2413,8 +2642,8 @@ export default function PresencaDiariaIA() {
 
                   {Array.isArray(analiseIaDados.acoesImediatas) && analiseIaDados.acoesImediatas.length > 0 && (
                     <div className="space-y-2">
-                      <h4 className="text-xs font-black text-slate-700">Ações Imediatas Sugeridas (Tempo Real)</h4>
-                      <ul className="space-y-2 bg-slate-50 border border-slate-200 rounded-xl p-3">
+                      <h4 className="text-xs font-bold text-slate-700">Ações Imediatas Sugeridas (Tempo Real)</h4>
+                      <ul className="space-y-2 bg-slate-50/80 border border-slate-200/80 rounded-2xl p-3">
                         {analiseIaDados.acoesImediatas.map((acao: any, idx: number) => {
                           if (typeof acao === 'string') {
                             return (
@@ -2425,16 +2654,16 @@ export default function PresencaDiariaIA() {
                             );
                           }
                           return (
-                            <li key={idx} className="bg-white border border-slate-200 rounded-lg p-2.5 space-y-1 text-xs">
+                            <li key={idx} className="bg-white border border-slate-200/80 rounded-xl p-2.5 space-y-1 text-xs">
                               <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="font-bold text-slate-900">{acao?.titulo || 'Ação Pedagógica'}</span>
+                                <span className="font-semibold text-slate-900">{acao?.titulo || 'Ação Pedagógica'}</span>
                                 {acao?.prioridade && (
-                                  <span className="text-[10px] font-black text-indigo-700">{acao.prioridade}</span>
+                                  <span className="text-[10px] font-bold text-indigo-700">{acao.prioridade}</span>
                                 )}
                               </div>
                               {acao?.descricao && <p className="text-[11px] text-slate-600">{acao.descricao}</p>}
                               {acao?.responsavel && (
-                                <p className="text-[10px] font-bold text-slate-500">Responsável: {acao.responsavel}</p>
+                                <p className="text-[10px] font-medium text-slate-500">Responsável: {acao.responsavel}</p>
                               )}
                             </li>
                           );
@@ -2446,11 +2675,11 @@ export default function PresencaDiariaIA() {
               ) : null}
             </div>
 
-            <div className="border-t border-slate-100 pt-3 flex justify-end">
+            <div className="px-5 py-3.5 border-t border-slate-100 bg-slate-50/60 flex justify-end shrink-0">
               <button
                 type="button"
                 onClick={() => setModalIaAnaliseAberto(false)}
-                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl cursor-pointer"
+                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl cursor-pointer transition"
               >
                 Fechar Painel
               </button>

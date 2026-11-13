@@ -1248,29 +1248,35 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
   };
 
   return (
-    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto text-slate-800">
-      
+    <div className="min-h-screen bg-[#F8FAFC] p-3 sm:p-6 space-y-5 sm:space-y-6 max-w-7xl mx-auto text-slate-800 antialiased">
+
       {/* 1. TOPO: Identificação Executiva & Comutador de Cargo */}
-      <header className="bg-white rounded-2xl p-4 sm:p-6 border border-slate-200/80 shadow-xs flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3.5 sm:gap-4">
+      <header className="sticky top-2 z-20 bg-white/90 backdrop-blur-md rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5 sm:gap-4">
-          <img 
-            src={customLogoUrl} 
-            alt="Brasão Oficial EE Prof. Clóvis de Lucca" 
-            className="w-14 h-14 sm:w-16 sm:h-16 object-contain shrink-0 drop-shadow-sm logo-escola-img" 
-          />
+          <div className="w-13 h-13 sm:w-15 sm:h-15 rounded-2xl bg-slate-50 border border-slate-200/80 p-1.5 flex items-center justify-center shrink-0">
+            <img
+              src={customLogoUrl}
+              alt="Brasão Oficial EE Prof. Clóvis de Lucca"
+              onError={(e) => {
+                (e.currentTarget as HTMLImageElement).src = '/assets/aistudio/Logo_Clovis_df1054e5.jpeg';
+              }}
+              className="w-full h-full object-contain logo-escola-img"
+            />
+          </div>
           <div className="space-y-1">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-medium text-slate-500 capitalize">
                 {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
               </span>
               <span className="text-slate-300">·</span>
-              <span className={`text-xs font-bold px-2.5 py-0.5 rounded-md border ${
-                anoLetivo === '2027' ? 'text-cyan-900 bg-cyan-100 border-cyan-300' : 'text-sky-700 bg-sky-50 border-sky-200'
+              <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${
+                anoLetivo === '2027' ? 'text-cyan-800 bg-cyan-50/90 border-cyan-200/70' : 'text-indigo-700 bg-indigo-50/80 border-indigo-200/60'
               }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${anoLetivo === '2027' ? 'bg-cyan-500' : 'bg-indigo-500'}`}></span>
                 Semana PEI {anoLetivo}
               </span>
               {revalidando ? (
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-indigo-700 bg-indigo-50/80 px-2.5 py-0.5 rounded-full border border-indigo-200/60">
                   <i className="fa-solid fa-arrows-rotate animate-spin text-[10px]"></i>
                   <span>Sincronizando...</span>
                 </span>
@@ -1278,23 +1284,23 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                 <button
                   type="button"
                   onClick={() => carregarDadosCompletos(true)}
-                  className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 hover:text-blue-900 bg-slate-100 hover:bg-blue-50 px-2.5 py-0.5 rounded-full border border-slate-200 hover:border-blue-300 transition-all cursor-pointer shadow-2xs"
+                  className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-600 hover:text-indigo-700 bg-slate-100/80 hover:bg-indigo-50/80 px-2.5 py-0.5 rounded-full border border-slate-200/80 hover:border-indigo-200 transition-all cursor-pointer"
                   title="Clique para forçar atualização em tempo real com o banco"
                 >
-                  <i className="fa-solid fa-arrows-rotate text-[10px] text-slate-400 hover:text-blue-600"></i>
+                  <i className="fa-solid fa-arrows-rotate text-[10px] text-slate-400"></i>
                   <span>Atualizar dados</span>
                 </button>
               )}
             </div>
 
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
               Olá, {effectiveUser.nome.split(' ')[0]}!
             </h1>
-            <p className="text-sm text-slate-600">
-              Painel Executivo da EE Clóvis de Lucca. Perfil:{' '}
-              <strong className="text-slate-900 font-bold">{activeRole}</strong>
+            <p className="text-sm text-slate-500">
+              Painel Executivo da EE Clóvis de Lucca · Perfil:{' '}
+              <span className="font-semibold text-slate-800">{activeRole}</span>
               {selectedEmployeeId ? (
-                <span className="ml-1.5 text-xs font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                <span className="ml-2 inline-flex items-center text-xs font-medium text-purple-800 bg-purple-50/90 px-2.5 py-0.5 rounded-full border border-purple-200/70">
                   Visualizando: {effectiveUser.nome}
                 </span>
               ) : null}
@@ -1304,16 +1310,15 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
         {/* Comutador de Visão: EXCLUSIVO PARA O DIRETOR com seleção de cada funcionário individualmente */}
         {isRealDirector && (
-          <div className="flex flex-col gap-2 w-full lg:w-auto bg-slate-50 p-3 rounded-xl border border-slate-200 shadow-2xs">
+          <div className="flex flex-col gap-2.5 w-full lg:w-auto bg-slate-50/90 p-3 rounded-2xl border border-slate-200/80">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                <i className="fa-solid fa-user-shield text-blue-900"></i>
-                Comutador de Visão (Gestão Direção)
+              <span className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+                <i className="fa-solid fa-user-shield text-indigo-600"></i>
+                Comutador de Visão (Direção)
               </span>
 
-              {/* Seletor Individual de Funcionário */}
               <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-semibold text-slate-500">Funcionário:</span>
+                <span className="text-[11px] font-medium text-slate-500">Funcionário:</span>
                 <select
                   value={selectedEmployeeId}
                   onChange={(e) => {
@@ -1330,7 +1335,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                       setSelectedTeacherName('');
                     }
                   }}
-                  className="p-1.5 text-xs bg-white border border-slate-300 rounded-lg text-slate-900 font-bold outline-none focus:ring-2 focus:ring-blue-900 cursor-pointer max-w-[220px] truncate"
+                  className="px-2.5 py-1.5 text-xs bg-white border border-slate-200/90 rounded-xl text-slate-800 font-semibold outline-none focus:ring-2 focus:ring-indigo-500/30 cursor-pointer max-w-[220px] truncate"
                 >
                   <option value="">Meu Perfil (Direção)</option>
                   <optgroup label="Equipe Escolar & Funcionários">
@@ -1345,8 +1350,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
               </div>
             </div>
 
-            {/* Alternar por Cargo Genérico */}
-            <div className="flex items-center gap-1 flex-wrap pt-1 border-t border-slate-200/80">
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pt-1.5 border-t border-slate-200/70">
               {['PROFESSOR', 'SECRETARIA', 'PAAC', 'CGPG', 'VICE_DIRETOR', 'DIRETOR'].map(roleOption => {
                 const isActive = activeRole === roleOption;
                 const labels: Record<string, string> = {
@@ -1365,10 +1369,10 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                       setSimulatedRole(roleOption);
                       setSelectedEmployeeId('');
                     }}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
                       isActive
-                        ? 'bg-blue-900 text-white shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/70'
+                        ? 'bg-slate-900 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-white'
                     }`}
                   >
                     {labels[roleOption]}
@@ -1380,7 +1384,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         )}
       </header>
 
-      {/* CENTRAL DE PENDÊNCIAS E ALERTAS RÁPIDOS POR CARGO (Ação Imediata & Zero Perda) */}
+      {/* CENTRAL DE PENDÊNCIAS E ALERTAS RÁPIDOS POR CARGO */}
       <CentralPendenciasPerfil
         activeRole={activeRole}
         effectiveUser={effectiveUser}
@@ -1407,53 +1411,62 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         onAbrirRecado={(rec) => setModalRecado(rec)}
       />
 
-      {/* 2. BARRA DE INDICADORES RÁPIDOS (KPIs) POR CARGO - TUDO CLICÁVEL */}
+      {/* 2. BARRA DE INDICADORES RÁPIDOS (BENTO KPIs) POR CARGO */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3.5 sm:gap-4">
         {/* Bloco 1 */}
         {activeRole === 'SECRETARIA' ? (
           <div
             onClick={() => onNavigate ? onNavigate('dashboard-atrasos') : window.switchTab?.('dashboard-atrasos')}
-            className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs hover:border-amber-400 hover:shadow-sm transition-all cursor-pointer group"
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-amber-300 transition-all cursor-pointer group"
             title="Clique para abrir o Dashboard de Atrasos"
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500 group-hover:text-amber-800 transition-colors">Atrasos Registrados Hoje</span>
-              <i className="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-300 group-hover:text-amber-600 transition-colors"></i>
+            <div className="flex items-center justify-between gap-2">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-sm shrink-0">
+                <i className="fa-solid fa-clock-rotate-left"></i>
+              </div>
+              <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-amber-600 transition-colors"></i>
             </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-amber-600 font-mono tabular-nums mt-1">
+            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums mt-3">
               {atrasosHoje.length}
             </div>
-            <span className="text-[11px] text-slate-500 mt-1 block">Entradas tardias computadas</span>
+            <span className="text-xs font-semibold text-slate-700 block mt-0.5">Atrasos Hoje</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block">Entradas tardias computadas</span>
           </div>
         ) : activeRole === 'PROFESSOR' || activeRole === 'PAAC' ? (
           <div
             onClick={() => onNavigate ? onNavigate('horarios') : window.switchTab?.('horarios')}
-            className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs hover:border-blue-400 hover:shadow-sm transition-all cursor-pointer group"
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-indigo-300 transition-all cursor-pointer group"
             title="Clique para consultar a grade completa de horários"
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500 group-hover:text-blue-900 transition-colors">Aulas Ativas na Semana</span>
-              <i className="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-300 group-hover:text-blue-800 transition-colors"></i>
+            <div className="flex items-center justify-between gap-2">
+              <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm shrink-0">
+                <i className="fa-solid fa-chalkboard-user"></i>
+              </div>
+              <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-indigo-600 transition-colors"></i>
             </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-blue-900 font-mono tabular-nums mt-1">
+            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums mt-3">
               {aulasSemanaisAtivas.length}
             </div>
-            <span className="text-[11px] text-slate-500 mt-1 block">{aulasHojeAtivas.length} ativas hoje ({aulasHoje.length} no total da agenda)</span>
+            <span className="text-xs font-semibold text-slate-700 block mt-0.5">Aulas Ativas na Semana</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block tabular-nums">{aulasHojeAtivas.length} ativas hoje ({aulasHoje.length} no total)</span>
           </div>
         ) : (
           <div
             onClick={() => onNavigate ? onNavigate('dashboard') : window.switchTab?.('dashboard')}
-            className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs hover:border-emerald-400 hover:shadow-sm transition-all cursor-pointer group"
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-emerald-300 transition-all cursor-pointer group"
             title="Clique para consultar métricas gerais de presença"
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500 group-hover:text-emerald-900 transition-colors">Presença Geral da Escola</span>
-              <i className="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-300 group-hover:text-emerald-800 transition-colors"></i>
+            <div className="flex items-center justify-between gap-2">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-sm shrink-0">
+                <i className="fa-solid fa-chart-line"></i>
+              </div>
+              <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-emerald-600 transition-colors"></i>
             </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-emerald-600 font-mono tabular-nums mt-1">
+            <div className="text-2xl sm:text-3xl font-bold text-emerald-600 tabular-nums mt-3">
               92.4%
             </div>
-            <span className="text-[11px] text-slate-500 mt-1 block">Média anual acumulada</span>
+            <span className="text-xs font-semibold text-slate-700 block mt-0.5">Presença Geral</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block">Média anual acumulada</span>
           </div>
         )}
 
@@ -1461,17 +1474,20 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         {activeRole === 'SECRETARIA' ? (
           <div
             onClick={() => onNavigate ? onNavigate('alunos') : window.switchTab?.('alunos')}
-            className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs hover:border-blue-400 hover:shadow-sm transition-all cursor-pointer group"
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-indigo-300 transition-all cursor-pointer group"
             title="Clique para acessar a lista de estudantes"
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500 group-hover:text-blue-900 transition-colors">Estudantes Matriculados</span>
-              <i className="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-300 group-hover:text-blue-800 transition-colors"></i>
+            <div className="flex items-center justify-between gap-2">
+              <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm shrink-0">
+                <i className="fa-solid fa-user-graduate"></i>
+              </div>
+              <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-indigo-600 transition-colors"></i>
             </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono tabular-nums mt-1">
+            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums mt-3">
               {alunos.filter(isAlunoAtivo).length || alunos.length || 746}
             </div>
-            <span className="text-[11px] text-slate-500 mt-1 block">Ativos no sistema PEI</span>
+            <span className="text-xs font-semibold text-slate-700 block mt-0.5">Estudantes Matriculados</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block">Ativos no sistema PEI</span>
           </div>
         ) : activeRole === 'PROFESSOR' || activeRole === 'PAAC' ? (
           <div
@@ -1480,32 +1496,38 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
               if (el) el.scrollIntoView({ behavior: 'smooth' });
               else if (onNavigate) onNavigate('alunos');
             }}
-            className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs hover:border-cyan-400 hover:shadow-sm transition-all cursor-pointer group"
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-cyan-300 transition-all cursor-pointer group"
             title="Clique para ver os alunos sob sua tutoria"
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500 group-hover:text-cyan-900 transition-colors">Estudantes Tutorados</span>
-              <i className="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-300 group-hover:text-cyan-800 transition-colors"></i>
+            <div className="flex items-center justify-between gap-2">
+              <div className="w-9 h-9 rounded-xl bg-cyan-500/10 text-cyan-700 flex items-center justify-center text-sm shrink-0">
+                <i className="fa-solid fa-users"></i>
+              </div>
+              <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-cyan-700 transition-colors"></i>
             </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-cyan-700 font-mono tabular-nums mt-1">
+            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums mt-3">
               {tutoradosDoProfessor.length}
             </div>
-            <span className="text-[11px] text-slate-500 mt-1 block">Sob seu acompanhamento</span>
+            <span className="text-xs font-semibold text-slate-700 block mt-0.5">Estudantes Tutorados</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block">Sob seu acompanhamento</span>
           </div>
         ) : (
           <div
             onClick={() => onNavigate ? onNavigate('busca-ativa') : window.switchTab?.('busca-ativa')}
-            className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs hover:border-rose-400 hover:shadow-sm transition-all cursor-pointer group"
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-rose-300 transition-all cursor-pointer group"
             title="Clique para abrir o painel de Busca Ativa"
           >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-500 group-hover:text-rose-900 transition-colors">Alunos em Busca Ativa</span>
-              <i className="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-300 group-hover:text-rose-800 transition-colors"></i>
+            <div className="flex items-center justify-between gap-2">
+              <div className="w-9 h-9 rounded-xl bg-rose-500/10 text-rose-600 flex items-center justify-center text-sm shrink-0">
+                <i className="fa-solid fa-magnifying-glass-location"></i>
+              </div>
+              <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-rose-600 transition-colors"></i>
             </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-rose-600 font-mono tabular-nums mt-1">
+            <div className="text-2xl sm:text-3xl font-bold text-rose-600 tabular-nums mt-3">
               {alunosBuscaAtiva.length}
             </div>
-            <span className="text-[11px] text-slate-500 mt-1 block">Casos de risco de infrequência</span>
+            <span className="text-xs font-semibold text-slate-700 block mt-0.5">Alunos em Busca Ativa</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block">Casos de risco de infrequência</span>
           </div>
         )}
 
@@ -1521,23 +1543,26 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
               else if (typeof window.switchTab === 'function') window.switchTab('mural');
             }
           }}
-          className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs hover:border-purple-400 hover:shadow-sm transition-all cursor-pointer group"
+          className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-purple-300 transition-all cursor-pointer group"
           title="Clique para consultar notificações e ciências"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500 group-hover:text-purple-900 transition-colors">
-              {['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'PAAC'].includes(activeRole)
-                ? 'Alertas Pedagógicos'
-                : 'Recados Direcionados'}
-            </span>
-            <i className="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-300 group-hover:text-purple-800 transition-colors"></i>
+          <div className="flex items-center justify-between gap-2">
+            <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center text-sm shrink-0">
+              <i className="fa-solid fa-bell"></i>
+            </div>
+            <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-purple-600 transition-colors"></i>
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-purple-700 font-mono tabular-nums mt-1">
+          <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums mt-3">
             {['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'PAAC'].includes(activeRole)
               ? notificacoesPedagogicasDirecao.length
               : recadosDirecionados.length}
           </div>
-          <span className="text-[11px] text-slate-500 mt-1 block">
+          <span className="text-xs font-semibold text-slate-700 block mt-0.5">
+            {['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'PAAC'].includes(activeRole)
+              ? 'Alertas Pedagógicos'
+              : 'Recados Direcionados'}
+          </span>
+          <span className="text-[11px] text-slate-500 mt-0.5 block">
             {['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'PAAC'].includes(activeRole)
               ? `${notificacoesPedagogicasDirecao.length} pendente(s) da equipe`
               : 'Comunicados para seu perfil'}
@@ -1547,38 +1572,41 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         {/* Bloco 4: Tarefas */}
         <div
           onClick={() => onNavigate ? onNavigate('rotina-pdca') : window.switchTab?.('rotina-pdca')}
-          className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs hover:border-amber-400 hover:shadow-sm transition-all cursor-pointer group"
+          className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-amber-300 transition-all cursor-pointer group"
           title="Clique para abrir o módulo de Tarefas (PDCA)"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-slate-500 group-hover:text-amber-900 transition-colors">Tarefas Pendentes</span>
-            <i className="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-300 group-hover:text-amber-800 transition-colors"></i>
+          <div className="flex items-center justify-between gap-2">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-sm shrink-0">
+              <i className="fa-solid fa-list-check"></i>
+            </div>
+            <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-amber-600 transition-colors"></i>
           </div>
-          <div className="text-2xl sm:text-3xl font-extrabold text-amber-700 font-mono tabular-nums mt-1">
+          <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums mt-3">
             {tarefasFiltradas.length}
           </div>
-          <span className="text-[11px] text-slate-500 mt-1 block">Rotinas e prazos a realizar</span>
+          <span className="text-xs font-semibold text-slate-700 block mt-0.5">Tarefas Pendentes</span>
+          <span className="text-[11px] text-slate-500 mt-0.5 block">Rotinas e prazos a realizar</span>
         </div>
       </section>
 
       {/* CENTRAL DE LINKS E AÇÕES RÁPIDAS DE RESOLUÇÃO */}
-      <section className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/90 shadow-2xs space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
-          <div className="flex items-center gap-2">
-            <span className="w-8 h-8 rounded-lg bg-blue-100 text-blue-900 flex items-center justify-center font-bold text-sm">
+      <section className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-3.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm shrink-0">
               <i className="fa-solid fa-compass"></i>
-            </span>
+            </div>
             <div>
-              <h2 className="text-sm sm:text-base font-black text-slate-900 tracking-tight flex items-center gap-2">
-                <span>Central de Acesso Rápido às Resoluções</span>
-                <span className="text-[10px] font-bold text-slate-400 font-mono hidden sm:inline">1 clique</span>
+              <h2 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                <span>Central de Acesso Rápido</span>
+                <span className="text-[11px] font-medium text-slate-400 hidden sm:inline">· 1 clique</span>
               </h2>
-              <p className="text-[11px] text-slate-500">
-                Links diretos para resolver qualquer pendência ou acessar os módulos essenciais do seu perfil.
+              <p className="text-xs text-slate-500">
+                Links diretos para resolver pendências e acessar os módulos essenciais do seu perfil.
               </p>
             </div>
           </div>
-          <span className="text-xs font-bold text-blue-900 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200 self-start sm:self-auto">
+          <span className="text-xs font-medium text-indigo-700 bg-indigo-50/80 px-2.5 py-1 rounded-full border border-indigo-200/60 self-start sm:self-auto">
             Perfil: {activeRole}
           </span>
         </div>
@@ -1588,16 +1616,16 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
           <button
             type="button"
             onClick={() => onNavigate ? onNavigate('registros') : window.switchTab?.('registros')}
-            className="p-3 bg-slate-50 hover:bg-rose-50/80 border border-slate-200 hover:border-rose-300 rounded-xl transition-all text-left group cursor-pointer shadow-2xs flex flex-col justify-between"
+            className="p-3 bg-slate-50/70 hover:bg-rose-50/70 border border-slate-200/70 hover:border-rose-200 rounded-2xl transition-all text-left group cursor-pointer flex flex-col justify-between"
           >
-            <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center text-sm font-bold group-hover:scale-105 transition-transform">
+            <div className="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-600 flex items-center justify-center text-sm group-hover:scale-105 transition-transform">
               <i className="fa-solid fa-pen-to-square"></i>
             </div>
-            <div className="mt-2">
-              <span className="text-xs font-black text-slate-900 group-hover:text-rose-950 block leading-tight">
+            <div className="mt-2.5">
+              <span className="text-xs font-semibold text-slate-900 group-hover:text-rose-900 block leading-tight">
                 Lançar Ocorrência
               </span>
-              <span className="text-[10px] text-slate-500 mt-0.5 block truncate">
+              <span className="text-[11px] text-slate-500 mt-0.5 block truncate">
                 Registros pedagógicos
               </span>
             </div>
@@ -1607,16 +1635,16 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
           <button
             type="button"
             onClick={() => onNavigate ? onNavigate('rotina-pdca') : window.switchTab?.('rotina-pdca')}
-            className="p-3 bg-slate-50 hover:bg-amber-50/80 border border-slate-200 hover:border-amber-300 rounded-xl transition-all text-left group cursor-pointer shadow-2xs flex flex-col justify-between"
+            className="p-3 bg-slate-50/70 hover:bg-amber-50/70 border border-slate-200/70 hover:border-amber-200 rounded-2xl transition-all text-left group cursor-pointer flex flex-col justify-between"
           >
-            <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center text-sm font-bold group-hover:scale-105 transition-transform">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-sm group-hover:scale-105 transition-transform">
               <i className="fa-solid fa-list-check"></i>
             </div>
-            <div className="mt-2">
-              <span className="text-xs font-black text-slate-900 group-hover:text-amber-950 block leading-tight">
+            <div className="mt-2.5">
+              <span className="text-xs font-semibold text-slate-900 group-hover:text-amber-900 block leading-tight">
                 Rotina PDCA
               </span>
-              <span className="text-[10px] text-slate-500 mt-0.5 block truncate">
+              <span className="text-[11px] text-slate-500 mt-0.5 block truncate tabular-nums">
                 {tarefasFiltradas.length} tarefa{tarefasFiltradas.length === 1 ? '' : 's'} ativa{tarefasFiltradas.length === 1 ? '' : 's'}
               </span>
             </div>
@@ -1626,16 +1654,16 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
           <button
             type="button"
             onClick={() => onNavigate ? onNavigate('mural') : window.switchTab?.('mural')}
-            className="p-3 bg-slate-50 hover:bg-purple-50/80 border border-slate-200 hover:border-purple-300 rounded-xl transition-all text-left group cursor-pointer shadow-2xs flex flex-col justify-between"
+            className="p-3 bg-slate-50/70 hover:bg-purple-50/70 border border-slate-200/70 hover:border-purple-200 rounded-2xl transition-all text-left group cursor-pointer flex flex-col justify-between"
           >
-            <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-800 flex items-center justify-center text-sm font-bold group-hover:scale-105 transition-transform">
+            <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center text-sm group-hover:scale-105 transition-transform">
               <i className="fa-solid fa-bullhorn"></i>
             </div>
-            <div className="mt-2">
-              <span className="text-xs font-black text-slate-900 group-hover:text-purple-950 block leading-tight">
+            <div className="mt-2.5">
+              <span className="text-xs font-semibold text-slate-900 group-hover:text-purple-900 block leading-tight">
                 Mural de Recados
               </span>
-              <span className="text-[10px] text-slate-500 mt-0.5 block truncate">
+              <span className="text-[11px] text-slate-500 mt-0.5 block truncate tabular-nums">
                 {recadosSemCienciaUsuario.length > 0 ? `${recadosSemCienciaUsuario.length} sem ciência` : 'Comunicados'}
               </span>
             </div>
@@ -1645,16 +1673,16 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
           <button
             type="button"
             onClick={() => onNavigate ? onNavigate('alunos') : window.switchTab?.('alunos')}
-            className="p-3 bg-slate-50 hover:bg-cyan-50/80 border border-slate-200 hover:border-cyan-300 rounded-xl transition-all text-left group cursor-pointer shadow-2xs flex flex-col justify-between"
+            className="p-3 bg-slate-50/70 hover:bg-cyan-50/70 border border-slate-200/70 hover:border-cyan-200 rounded-2xl transition-all text-left group cursor-pointer flex flex-col justify-between"
           >
-            <div className="w-8 h-8 rounded-lg bg-cyan-100 text-cyan-800 flex items-center justify-center text-sm font-bold group-hover:scale-105 transition-transform">
+            <div className="w-8 h-8 rounded-xl bg-cyan-500/10 text-cyan-700 flex items-center justify-center text-sm group-hover:scale-105 transition-transform">
               <i className="fa-solid fa-user-graduate"></i>
             </div>
-            <div className="mt-2">
-              <span className="text-xs font-black text-slate-900 group-hover:text-cyan-950 block leading-tight">
+            <div className="mt-2.5">
+              <span className="text-xs font-semibold text-slate-900 group-hover:text-cyan-900 block leading-tight">
                 Buscar Estudante
               </span>
-              <span className="text-[10px] text-slate-500 mt-0.5 block truncate">
+              <span className="text-[11px] text-slate-500 mt-0.5 block truncate">
                 RA e prontuário PEI
               </span>
             </div>
@@ -1664,55 +1692,57 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
           <button
             type="button"
             onClick={() => onNavigate ? onNavigate('horarios') : window.switchTab?.('horarios')}
-            className="p-3 bg-slate-50 hover:bg-blue-50/80 border border-slate-200 hover:border-blue-300 rounded-xl transition-all text-left group cursor-pointer shadow-2xs flex flex-col justify-between"
+            className="p-3 bg-slate-50/70 hover:bg-indigo-50/70 border border-slate-200/70 hover:border-indigo-200 rounded-2xl transition-all text-left group cursor-pointer flex flex-col justify-between"
           >
-            <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-900 flex items-center justify-center text-sm font-bold group-hover:scale-105 transition-transform">
+            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm group-hover:scale-105 transition-transform">
               <i className="fa-solid fa-clock"></i>
             </div>
-            <div className="mt-2">
-              <span className="text-xs font-black text-slate-900 group-hover:text-blue-950 block leading-tight">
+            <div className="mt-2.5">
+              <span className="text-xs font-semibold text-slate-900 group-hover:text-indigo-900 block leading-tight">
                 Grade de Horários
               </span>
-              <span className="text-[10px] text-slate-500 mt-0.5 block truncate">
+              <span className="text-[11px] text-slate-500 mt-0.5 block truncate tabular-nums">
                 {aulasHojeAtivas.length} aula(s) hoje
               </span>
             </div>
           </button>
 
-          {/* 6. Substituição PEI */}
-          <button
-            type="button"
-            onClick={() => onNavigate ? onNavigate('substituicao-pei') : window.switchTab?.('substituicao-pei')}
-            className="p-3 bg-slate-50 hover:bg-amber-50/80 border border-slate-200 hover:border-amber-400 rounded-xl transition-all text-left group cursor-pointer shadow-2xs flex flex-col justify-between"
-          >
-            <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-900 flex items-center justify-center text-sm font-bold group-hover:scale-105 transition-transform">
-              <i className="fa-solid fa-shuffle"></i>
-            </div>
-            <div className="mt-2">
-              <span className="text-xs font-black text-slate-900 group-hover:text-amber-950 block leading-tight">
-                Substituições PEI
-              </span>
-              <span className="text-[10px] text-slate-500 mt-0.5 block truncate">
-                {substituicoesHoje.length} registrada(s)
-              </span>
-            </div>
-          </button>
+          {/* 6. Substituição PEI (oculto para Professor comum) */}
+          {!isProfessor && (
+            <button
+              type="button"
+              onClick={() => onNavigate ? onNavigate('substituicao-pei') : window.switchTab?.('substituicao-pei')}
+              className="p-3 bg-slate-50/70 hover:bg-amber-50/70 border border-slate-200/70 hover:border-amber-200 rounded-2xl transition-all text-left group cursor-pointer flex flex-col justify-between"
+            >
+              <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-sm group-hover:scale-105 transition-transform">
+                <i className="fa-solid fa-shuffle"></i>
+              </div>
+              <div className="mt-2.5">
+                <span className="text-xs font-semibold text-slate-900 group-hover:text-amber-900 block leading-tight">
+                  Substituições PEI
+                </span>
+                <span className="text-[11px] text-slate-500 mt-0.5 block truncate tabular-nums">
+                  {substituicoesHoje.length} registrada(s)
+                </span>
+              </div>
+            </button>
+          )}
 
           {/* 7. Busca Ativa (Gestão) ou Atrasos (Secretaria) */}
           {(isDirecao || isCoord || isPAAC) ? (
             <button
               type="button"
               onClick={() => onNavigate ? onNavigate('busca-ativa') : window.switchTab?.('busca-ativa')}
-              className="p-3 bg-slate-50 hover:bg-rose-50/80 border border-slate-200 hover:border-rose-400 rounded-xl transition-all text-left group cursor-pointer shadow-2xs flex flex-col justify-between"
+              className="p-3 bg-slate-50/70 hover:bg-rose-50/70 border border-slate-200/70 hover:border-rose-200 rounded-2xl transition-all text-left group cursor-pointer flex flex-col justify-between"
             >
-              <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-800 flex items-center justify-center text-sm font-bold group-hover:scale-105 transition-transform">
+              <div className="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-600 flex items-center justify-center text-sm group-hover:scale-105 transition-transform">
                 <i className="fa-solid fa-magnifying-glass-location"></i>
               </div>
-              <div className="mt-2">
-                <span className="text-xs font-black text-slate-900 group-hover:text-rose-950 block leading-tight">
+              <div className="mt-2.5">
+                <span className="text-xs font-semibold text-slate-900 group-hover:text-rose-900 block leading-tight">
                   Busca Ativa SEDUC
                 </span>
-                <span className="text-[10px] text-slate-500 mt-0.5 block truncate">
+                <span className="text-[11px] text-slate-500 mt-0.5 block truncate tabular-nums">
                   {alunosBuscaAtiva.length} em risco crítico
                 </span>
               </div>
@@ -1721,16 +1751,16 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             <button
               type="button"
               onClick={() => onNavigate ? onNavigate('dashboard-atrasos') : window.switchTab?.('dashboard-atrasos')}
-              className="p-3 bg-slate-50 hover:bg-amber-50/80 border border-slate-200 hover:border-amber-400 rounded-xl transition-all text-left group cursor-pointer shadow-2xs flex flex-col justify-between"
+              className="p-3 bg-slate-50/70 hover:bg-amber-50/70 border border-slate-200/70 hover:border-amber-200 rounded-2xl transition-all text-left group cursor-pointer flex flex-col justify-between"
             >
-              <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center text-sm font-bold group-hover:scale-105 transition-transform">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-sm group-hover:scale-105 transition-transform">
                 <i className="fa-solid fa-clock-rotate-left"></i>
               </div>
-              <div className="mt-2">
-                <span className="text-xs font-black text-slate-900 group-hover:text-amber-950 block leading-tight">
+              <div className="mt-2.5">
+                <span className="text-xs font-semibold text-slate-900 group-hover:text-amber-900 block leading-tight">
                   Atrasos no Portão
                 </span>
-                <span className="text-[10px] text-slate-500 mt-0.5 block truncate">
+                <span className="text-[11px] text-slate-500 mt-0.5 block truncate tabular-nums">
                   {atrasosHoje.length} hoje
                 </span>
               </div>
@@ -1742,16 +1772,16 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             <button
               type="button"
               onClick={() => onNavigate ? onNavigate('comparativo-frequencia') : window.switchTab?.('comparativo-frequencia')}
-              className="p-3 bg-slate-50 hover:bg-cyan-50/80 border border-slate-200 hover:border-cyan-400 rounded-xl transition-all text-left group cursor-pointer shadow-2xs flex flex-col justify-between"
+              className="p-3 bg-slate-50/70 hover:bg-cyan-50/70 border border-slate-200/70 hover:border-cyan-200 rounded-2xl transition-all text-left group cursor-pointer flex flex-col justify-between"
             >
-              <div className="w-8 h-8 rounded-lg bg-cyan-100 text-cyan-900 flex items-center justify-center text-sm font-bold group-hover:scale-105 transition-transform">
+              <div className="w-8 h-8 rounded-xl bg-cyan-500/10 text-cyan-700 flex items-center justify-center text-sm group-hover:scale-105 transition-transform">
                 <i className="fa-solid fa-scale-balanced"></i>
               </div>
-              <div className="mt-2">
-                <span className="text-xs font-black text-slate-900 group-hover:text-cyan-950 block leading-tight">
+              <div className="mt-2.5">
+                <span className="text-xs font-semibold text-slate-900 group-hover:text-cyan-900 block leading-tight">
                   SED vs Mapão
                 </span>
-                <span className="text-[10px] text-slate-500 mt-0.5 block truncate">
+                <span className="text-[11px] text-slate-500 mt-0.5 block truncate">
                   Auditoria de notas/freq
                 </span>
               </div>
@@ -1763,16 +1793,16 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             <button
               type="button"
               onClick={() => onNavigate ? onNavigate('secretaria') : window.switchTab?.('secretaria')}
-              className="p-3 bg-slate-50 hover:bg-purple-50/80 border border-slate-200 hover:border-purple-300 rounded-xl transition-all text-left group cursor-pointer shadow-2xs flex flex-col justify-between"
+              className="p-3 bg-slate-50/70 hover:bg-purple-50/70 border border-slate-200/70 hover:border-purple-200 rounded-2xl transition-all text-left group cursor-pointer flex flex-col justify-between"
             >
-              <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-800 flex items-center justify-center text-sm font-bold group-hover:scale-105 transition-transform">
+              <div className="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center text-sm group-hover:scale-105 transition-transform">
                 <i className="fa-solid fa-building-columns"></i>
               </div>
-              <div className="mt-2">
-                <span className="text-xs font-black text-slate-900 group-hover:text-purple-950 block leading-tight">
+              <div className="mt-2.5">
+                <span className="text-xs font-semibold text-slate-900 group-hover:text-purple-900 block leading-tight">
                   Secretaria Escolar
                 </span>
-                <span className="text-[10px] text-slate-500 mt-0.5 block truncate">
+                <span className="text-[11px] text-slate-500 mt-0.5 block truncate">
                   Balcão e documentos
                 </span>
               </div>
@@ -1784,16 +1814,16 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             <button
               type="button"
               onClick={() => onNavigate ? onNavigate('auditoria') : window.switchTab?.('auditoria')}
-              className="p-3 bg-slate-50 hover:bg-slate-200/80 border border-slate-200 hover:border-slate-400 rounded-xl transition-all text-left group cursor-pointer shadow-2xs flex flex-col justify-between"
+              className="p-3 bg-slate-50/70 hover:bg-slate-100 border border-slate-200/70 hover:border-slate-300 rounded-2xl transition-all text-left group cursor-pointer flex flex-col justify-between"
             >
-              <div className="w-8 h-8 rounded-lg bg-slate-200 text-slate-800 flex items-center justify-center text-sm font-bold group-hover:scale-105 transition-transform">
+              <div className="w-8 h-8 rounded-xl bg-slate-500/10 text-slate-700 flex items-center justify-center text-sm group-hover:scale-105 transition-transform">
                 <i className="fa-solid fa-shield-halved"></i>
               </div>
-              <div className="mt-2">
-                <span className="text-xs font-black text-slate-900 group-hover:text-slate-950 block leading-tight">
+              <div className="mt-2.5">
+                <span className="text-xs font-semibold text-slate-900 block leading-tight">
                   Auditoria Geral
                 </span>
-                <span className="text-[10px] text-slate-500 mt-0.5 block truncate">
+                <span className="text-[11px] text-slate-500 mt-0.5 block truncate">
                   Logs e integridade
                 </span>
               </div>
@@ -1806,37 +1836,38 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       {/* 3. CONTEÚDO PRINCIPAL DIVIDIDO POR CARGO */}
       {/* ======================================================== */}
 
-      {/* -------------------------------------------------------- */}
-      {/* A. VISÃO PROFESSOR / PAAC (Horários + Tutorados) */}
-      {/* -------------------------------------------------------- */}
+      {/* A. VISÃO PROFESSOR / PAAC / CGPG */}
       {(activeRole === 'PROFESSOR' || activeRole === 'PAAC' || activeRole === 'CGPG') && (
-        <div className="space-y-6">
+        <div className="space-y-5 sm:space-y-6">
 
           {/* Horários Individuais do Professor */}
-          <section className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
+          <section className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-              <div>
-                <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                  <i className="fa-solid fa-clock text-blue-800"></i>
-                  Meus Horários Individuais de Aula
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Aulas programadas para hoje ({DIAS_SEMANA_LABELS[diaSemanaHoje] || 'Hoje'}) e grade semanal.
-                </p>
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm shrink-0">
+                  <i className="fa-solid fa-clock"></i>
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                    Meus Horários Individuais de Aula
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Aulas programadas para hoje ({DIAS_SEMANA_LABELS[diaSemanaHoje] || 'Hoje'}) e grade semanal.
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => onNavigate ? onNavigate('horarios') : window.switchTab?.('horarios')}
-                className="text-xs font-bold text-cyan-800 hover:text-cyan-900 flex items-center gap-1 cursor-pointer"
+                className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
               >
-                <span>Ver Grade Completa da Escola</span>
+                <span>Ver Grade Completa</span>
                 <i className="fa-solid fa-arrow-right text-[10px]"></i>
               </button>
             </div>
 
-            {/* Aulas de Hoje (mostra ativas e inativas, tudo clicável) */}
             {aulasHoje.length === 0 ? (
-              <div className="p-6 text-center text-slate-500 text-xs bg-slate-50 rounded-xl border border-slate-200">
+              <div className="p-6 text-center text-slate-500 text-xs bg-slate-50/80 rounded-2xl border border-slate-200/70">
                 Nenhuma aula atribuída para {effectiveTeacher.nome} neste dia ({diaSemanaHoje}).
               </div>
             ) : (
@@ -1847,37 +1878,37 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                     <div
                       key={`${aula.dia}-${aula.periodoId}-${aula.turma}-${aula.disciplina || ''}`}
                       onClick={() => setModalAula(aula)}
-                      className={`p-3.5 rounded-xl border transition-all space-y-1.5 cursor-pointer group shadow-2xs hover:shadow-xs ${
+                      className={`p-3.5 rounded-2xl border border-l-4 transition-all space-y-1.5 cursor-pointer group ${
                         isAtiva
-                          ? 'bg-slate-50/90 border-slate-200 hover:bg-white hover:border-cyan-400'
-                          : 'bg-slate-100/70 border-slate-200/90 opacity-80 hover:opacity-100 hover:border-slate-400'
+                          ? 'bg-white border-slate-200/80 border-l-indigo-600 hover:border-indigo-300 shadow-2xs'
+                          : 'bg-slate-50/80 border-slate-200/80 border-l-slate-400 opacity-85 hover:opacity-100'
                       }`}
                       title="Clique para consultar os detalhes desta aula"
                     >
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-extrabold text-blue-900">
+                          <span className="text-xs font-bold text-slate-900 tabular-nums">
                             {aula.periodoId}ª Aula
                           </span>
                           <span
-                            className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded uppercase ${
+                            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
                               isAtiva
-                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                                : 'bg-slate-200 text-slate-700 border border-slate-300'
+                                ? 'bg-emerald-50/90 text-emerald-800 border-emerald-200/70'
+                                : 'bg-slate-100 text-slate-600 border-slate-200'
                             }`}
                           >
                             {isAtiva ? 'Ativa' : 'Inativa / Intervalo'}
                           </span>
                         </div>
-                        <span className="text-[11px] font-mono font-semibold text-slate-500">
+                        <span className="text-[11px] tabular-nums font-medium text-slate-500">
                           {PERIODOS_HORARIOS[Number(aula.periodoId)] || 'Horário Integral'}
                         </span>
                       </div>
-                      <div className="flex items-baseline justify-between">
-                        <span className="text-sm font-black text-slate-900 group-hover:text-blue-950">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-sm font-bold text-slate-900 group-hover:text-indigo-900">
                           {aula.turma && aula.turma !== '-' ? aula.turma : 'Sem Turma'}
                         </span>
-                        <span className="text-xs font-bold text-slate-700 truncate max-w-[130px]">
+                        <span className="text-xs font-medium text-slate-600 truncate max-w-[140px]">
                           {aula.disciplina || 'Componente'}
                         </span>
                       </div>
@@ -1886,8 +1917,8 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                           <i className="fa-solid fa-location-dot text-slate-400 text-[10px]"></i>
                           <span>{aula.sala && aula.sala !== '-' ? aula.sala : 'Ambiente Escolar'}</span>
                         </div>
-                        <span className="text-[10px] font-bold text-cyan-800 opacity-0 group-hover:opacity-100 transition-opacity">
-                          Ver detalhes →
+                        <span className="text-[11px] font-semibold text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                          Detalhes →
                         </span>
                       </div>
                     </div>
@@ -1898,21 +1929,25 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
           </section>
 
           {/* Informações sobre seus Tutorados */}
-          <section className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
+          <section id="secao-tutorados-professor" className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-              <div>
-                <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                  <i className="fa-solid fa-user-graduate text-cyan-700"></i>
-                  Meus Estudantes Tutorados ({tutoradosDoProfessor.length})
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Acompanhamento individual de rendimento, frequência e Projeto de Vida.
-                </p>
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-cyan-500/10 text-cyan-700 flex items-center justify-center text-sm shrink-0">
+                  <i className="fa-solid fa-user-graduate"></i>
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight tabular-nums">
+                    Meus Estudantes Tutorados ({tutoradosDoProfessor.length})
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Acompanhamento individual de rendimento, frequência e Projeto de Vida.
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => onNavigate ? onNavigate('alunos') : window.switchTab?.('alunos')}
-                className="text-xs font-bold text-cyan-800 hover:text-cyan-900 flex items-center gap-1 cursor-pointer"
+                className="text-xs font-semibold text-cyan-700 hover:text-cyan-900 flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
               >
                 <span>Módulo Alunos Completo</span>
                 <i className="fa-solid fa-arrow-right text-[10px]"></i>
@@ -1920,7 +1955,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             </div>
 
             {tutoradosDoProfessor.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 text-xs bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+              <div className="p-8 text-center text-slate-500 text-xs bg-slate-50/80 rounded-2xl border border-slate-200/70 space-y-2">
                 <i className="fa-solid fa-id-card-clip text-2xl text-slate-400 block"></i>
                 <p>Nenhum aluno vinculado ao tutor {effectiveTeacher.nome} no momento.</p>
                 <p className="text-[11px] text-slate-400">
@@ -1939,19 +1974,21 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                     <div
                       key={aluno.id || aluno.ra}
                       onClick={() => setModalAluno(aluno)}
-                      className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 hover:bg-white hover:border-cyan-400 hover:shadow-xs transition-all flex flex-col justify-between space-y-2 cursor-pointer group"
+                      className={`p-3.5 bg-white rounded-2xl border border-l-4 transition-all flex flex-col justify-between space-y-2 cursor-pointer group shadow-2xs ${
+                        isAlerta ? 'border-slate-200/80 border-l-rose-500 hover:border-rose-300' : 'border-slate-200/80 border-l-cyan-500 hover:border-cyan-300'
+                      }`}
                       title="Clique para consultar os dados deste tutorado"
                     >
                       <div className="space-y-1">
                         <div className="flex items-start justify-between gap-2">
-                          <span className="text-xs font-black text-slate-900 truncate">
+                          <span className="text-xs font-semibold text-slate-900 truncate">
                             {aluno.nome}
                           </span>
-                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 shrink-0">
+                          <span className="text-[10px] tabular-nums font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 shrink-0">
                             {aluno.turma}
                           </span>
                         </div>
-                        <div className="text-[11px] text-slate-500 font-mono">
+                        <div className="text-[11px] text-slate-500 tabular-nums">
                           RA: {aluno.ra}
                         </div>
                         <div className="text-xs text-slate-600 line-clamp-1">
@@ -1960,24 +1997,25 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                         </div>
                       </div>
 
-                      <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 text-xs font-bold">
-                          <span className={isAlerta ? 'text-rose-600 font-mono' : 'text-emerald-700 font-mono'}>
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold">
+                          <span className={`tabular-nums ${isAlerta ? 'text-rose-600' : 'text-emerald-700'}`}>
                             {aluno.presenca_anual || '92%'}
                           </span>
-                          <span className="text-[10px] text-slate-400 font-normal">Frequência</span>
+                          <span className="text-[11px] text-slate-400 font-normal">Frequência</span>
                         </div>
 
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             if (typeof window.abrirFichaAluno === 'function') {
                               window.abrirFichaAluno(aluno.ra);
                             } else if (typeof window.navegarEAbrirFichaAluno === 'function') {
                               window.navegarEAbrirFichaAluno(aluno.ra);
                             }
                           }}
-                          className="px-2.5 py-1 text-[11px] font-bold text-cyan-800 hover:text-cyan-950 bg-cyan-50 hover:bg-cyan-100 rounded-md transition-colors cursor-pointer"
+                          className="px-2.5 py-1 text-[11px] font-semibold text-cyan-800 hover:text-cyan-950 bg-cyan-50/90 hover:bg-cyan-100 rounded-xl transition-colors cursor-pointer"
                         >
                           Ver Ficha
                         </button>
@@ -1991,30 +2029,32 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         </div>
       )}
 
-      {/* -------------------------------------------------------- */}
-      {/* B. VISÃO SECRETARIA (Registro Atrasos, Dash Atrasos, Docs) */}
-      {/* -------------------------------------------------------- */}
+      {/* B. VISÃO SECRETARIA */}
       {activeRole === 'SECRETARIA' && (
-        <div className="space-y-6">
+        <div className="space-y-5 sm:space-y-6">
 
           {/* 1. Local para Registrar os Atrasos */}
-          <section className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
-            <div className="border-b border-slate-100 pb-3">
-              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <i className="fa-solid fa-clock-rotate-left text-amber-600"></i>
-                Registro de Entrada com Atraso
-              </h2>
-              <p className="text-xs text-slate-500">
-                Lance a chegada tardia do estudante para cômputo imediato no sistema e emissão do comprovante.
-              </p>
+          <section className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
+            <div className="border-b border-slate-100 pb-3 flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-sm shrink-0">
+                <i className="fa-solid fa-clock-rotate-left"></i>
+              </div>
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                  Registro de Entrada com Atraso
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Lance a chegada tardia do estudante para cômputo imediato no sistema e emissão do comprovante.
+                </p>
+              </div>
             </div>
 
             <form onSubmit={handleRegistrarAtraso} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                
+
                 {/* Busca e Seleção do Aluno */}
                 <div className="space-y-1.5 md:col-span-1">
-                  <label className="text-xs font-bold text-slate-700">
+                  <label className="text-xs font-semibold text-slate-700">
                     Buscar Aluno (Nome ou RA):
                   </label>
                   <input
@@ -2022,10 +2062,10 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                     value={buscaAlunoAtraso}
                     onChange={(e) => setBuscaAlunoAtraso(e.target.value)}
                     placeholder="Digite para filtrar..."
-                    className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500"
+                    className="w-full p-2.5 text-xs bg-slate-50/80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/30"
                   />
                   {buscaAlunoAtraso.length >= 2 && (
-                    <div className="max-h-36 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-md mt-1 divide-y divide-slate-100">
+                    <div className="max-h-36 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-md mt-1 divide-y divide-slate-100">
                       {alunos
                         .filter(a => {
                           const t = buscaAlunoAtraso.toLowerCase();
@@ -2039,16 +2079,16 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                               setAlunoSelecionadoAtraso(a);
                               setBuscaAlunoAtraso(`${a.nome} (${a.turma})`);
                             }}
-                            className="p-2 text-xs hover:bg-amber-50 cursor-pointer flex justify-between items-center"
+                            className="p-2.5 text-xs hover:bg-amber-50/70 cursor-pointer flex justify-between items-center"
                           >
-                            <span className="font-bold text-slate-800 truncate">{a.nome}</span>
-                            <span className="text-[10px] font-mono text-slate-500 shrink-0">{a.turma}</span>
+                            <span className="font-semibold text-slate-800 truncate">{a.nome}</span>
+                            <span className="text-[11px] tabular-nums text-slate-500 shrink-0">{a.turma}</span>
                           </div>
                         ))}
                     </div>
                   )}
                   {alunoSelecionadoAtraso && (
-                    <div className="text-[11px] text-emerald-800 bg-emerald-50 p-2 rounded border border-emerald-200 mt-1">
+                    <div className="text-[11px] text-emerald-800 bg-emerald-50/90 p-2.5 rounded-xl border border-emerald-200/70 border-l-4 border-l-emerald-500 mt-1">
                       <strong>Selecionado:</strong> {alunoSelecionadoAtraso.nome} · RA {alunoSelecionadoAtraso.ra} ({alunoSelecionadoAtraso.turma})
                     </div>
                   )}
@@ -2056,23 +2096,23 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
                 {/* Horário de Entrada e Motivo */}
                 <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700">
+                  <label className="text-xs font-semibold text-slate-700">
                     Horário da Entrada:
                   </label>
                   <input
                     type="time"
                     value={horarioAtraso}
                     onChange={(e) => setHorarioAtraso(e.target.value)}
-                    className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500 font-mono font-bold"
+                    className="w-full p-2.5 text-xs bg-slate-50/80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/30 tabular-nums font-semibold"
                   />
 
-                  <label className="text-xs font-bold text-slate-700 block mt-2">
+                  <label className="text-xs font-semibold text-slate-700 block mt-2">
                     Motivo do Atraso:
                   </label>
                   <select
                     value={motivoAtraso}
                     onChange={(e) => setMotivoAtraso(e.target.value)}
-                    className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                    className="w-full p-2.5 text-xs bg-slate-50/80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/30 cursor-pointer"
                   >
                     <option value="Transporte / Trânsito">Transporte / Trânsito</option>
                     <option value="Consulta Médica / Odontológica">Consulta Médica / Odontológica</option>
@@ -2086,7 +2126,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                 {/* Justificativa e Ação */}
                 <div className="space-y-1.5 flex flex-col justify-between">
                   <div>
-                    <label className="text-xs font-bold text-slate-700">
+                    <label className="text-xs font-semibold text-slate-700">
                       Observações / Justificativa Adicional:
                     </label>
                     <textarea
@@ -2094,9 +2134,9 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                       value={obsAtraso}
                       onChange={(e) => setObsAtraso(e.target.value)}
                       placeholder="Ex: Apresentou atestado da UBS..."
-                      className="w-full p-2 text-xs bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500"
+                      className="w-full p-2.5 text-xs bg-slate-50/80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/30"
                     />
-                    <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer mt-1">
+                    <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer mt-1.5">
                       <input
                         type="checkbox"
                         checked={justificadoAtraso}
@@ -2110,7 +2150,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                   <button
                     type="submit"
                     disabled={salvandoAtraso}
-                    className="w-full py-2.5 px-4 bg-amber-600 hover:bg-amber-700 text-white font-black text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-2xs transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     <i className="fa-solid fa-check"></i>
                     <span>{salvandoAtraso ? 'Registrando...' : 'Registrar Atraso & Emitir Comprovante'}</span>
@@ -2120,91 +2160,93 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             </form>
           </section>
 
-          {/* 1.5. MÓDULO NOVO: Presença Diária & Inteligência Comportamental 2027 */}
-          <section className="bg-gradient-to-br from-blue-950 via-slate-900 to-blue-900 text-white rounded-3xl p-5 sm:p-6 border border-cyan-400/30 shadow-md relative overflow-hidden space-y-4">
-            <div className="absolute -top-12 -right-12 w-48 h-48 bg-cyan-400/10 rounded-full blur-2xl pointer-events-none"></div>
-            
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
-              <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-cyan-400 text-blue-950 flex items-center justify-center text-xl font-black shadow-md shrink-0">
-                  <i className="fa-solid fa-clipboard-user"></i>
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-400 text-blue-950 shadow-xs">
-                      Novo • Em Tempo Real
-                    </span>
-                    <span className="text-[10px] font-extrabold uppercase text-cyan-300">
-                      Preparação Ano Letivo 2027
-                    </span>
+          {/* 1.5. MÓDULO NOVO: Presença Diária & Inteligência Comportamental 2027 (oculto para Professor comum) */}
+          {!isProfessor && (
+            <section className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200/80 border-l-4 border-l-cyan-500 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-2xl bg-cyan-500/10 text-cyan-700 flex items-center justify-center text-lg shrink-0">
+                    <i className="fa-solid fa-clipboard-user"></i>
                   </div>
-                  <h2 className="text-lg font-black text-white mt-0.5">
-                    Presença Diária &amp; Inteligência Comportamental 2027
-                  </h2>
-                  <p className="text-xs text-slate-300 font-medium">
-                    Chamada rápida no dia, 3ª métrica de faltas (efetivas sem licenças/afastamentos), mensagem automática aos pais e projeções de risco com IA.
-                  </p>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-cyan-50/90 text-cyan-800 border border-cyan-200/70">
+                        Novo · Em Tempo Real
+                      </span>
+                      <span className="text-[11px] font-medium text-slate-500">
+                        Preparação Ano Letivo 2027
+                      </span>
+                    </div>
+                    <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight mt-1">
+                      Presença Diária &amp; Inteligência Comportamental 2027
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Chamada rápida no dia, 3ª métrica de faltas (efetivas sem licenças/afastamentos), mensagem automática aos pais e projeções de risco com IA.
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => onNavigate ? onNavigate('presenca-diaria') : window.switchTab?.('presenca-diaria')}
-                  className="px-4 py-2.5 bg-cyan-400 hover:bg-cyan-300 text-blue-950 text-xs font-black rounded-xl transition shadow-md flex items-center gap-2 cursor-pointer"
+                  className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition shadow-2xs flex items-center gap-2 cursor-pointer shrink-0 self-start sm:self-auto"
                 >
-                  <i className="fa-solid fa-bolt"></i>
+                  <i className="fa-solid fa-bolt text-cyan-400"></i>
                   <span>Fazer Chamada &amp; Analisar IA</span>
                 </button>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-white/10 relative z-10 text-xs">
-              <div className="p-3 bg-white/5 rounded-xl border border-white/10">
-                <span className="text-[10px] font-bold text-cyan-300 uppercase block mb-1">
-                  <i className="fa-solid fa-check-double mr-1"></i> Chamada 1-Clique
-                </span>
-                <p className="text-slate-300 text-[11px]">
-                  Marque presença, atrasos com horário ou licenças médicas em poucos segundos por turma.
-                </p>
-              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-slate-100 text-xs">
+                <div className="p-3 bg-slate-50/80 rounded-2xl border border-slate-200/70 border-l-4 border-l-cyan-500">
+                  <span className="text-xs font-semibold text-cyan-900 block mb-1">
+                    <i className="fa-solid fa-check-double mr-1.5 text-cyan-600"></i> Chamada 1-Clique
+                  </span>
+                  <p className="text-slate-600 text-[11px]">
+                    Marque presença, atrasos com horário ou licenças médicas em poucos segundos por turma.
+                  </p>
+                </div>
 
-              <div className="p-3 bg-white/5 rounded-xl border border-white/10">
-                <span className="text-[10px] font-bold text-rose-300 uppercase block mb-1">
-                  <i className="fa-solid fa-triangle-exclamation mr-1"></i> A 3ª Métrica de Faltas
-                </span>
-                <p className="text-slate-300 text-[11px]">
-                  Desconsidera licenças e atestados médicos para focar exclusivamente na infrequência de descompromisso.
-                </p>
-              </div>
+                <div className="p-3 bg-slate-50/80 rounded-2xl border border-slate-200/70 border-l-4 border-l-rose-500">
+                  <span className="text-xs font-semibold text-rose-900 block mb-1">
+                    <i className="fa-solid fa-triangle-exclamation mr-1.5 text-rose-600"></i> A 3ª Métrica de Faltas
+                  </span>
+                  <p className="text-slate-600 text-[11px]">
+                    Desconsidera licenças e atestados médicos para focar exclusivamente na infrequência de descompromisso.
+                  </p>
+                </div>
 
-              <div className="p-3 bg-white/5 rounded-xl border border-white/10">
-                <span className="text-[10px] font-bold text-purple-300 uppercase block mb-1">
-                  <i className="fa-solid fa-brain mr-1"></i> Projeção Preditiva 2027
-                </span>
-                <p className="text-slate-300 text-[11px]">
-                  Mapeia padrões recorrentes e gera mensagens oficiais LGPD de WhatsApp para os responsáveis.
-                </p>
+                <div className="p-3 bg-slate-50/80 rounded-2xl border border-slate-200/70 border-l-4 border-l-purple-500">
+                  <span className="text-xs font-semibold text-purple-900 block mb-1">
+                    <i className="fa-solid fa-brain mr-1.5 text-purple-600"></i> Projeção Preditiva 2027
+                  </span>
+                  <p className="text-slate-600 text-[11px]">
+                    Mapeia padrões recorrentes e gera mensagens oficiais LGPD de WhatsApp para os responsáveis.
+                  </p>
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
+          )}
 
           {/* 2. Dash dos Atrasos da Secretaria */}
-          <section className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
+          <section className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-              <div>
-                <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                  <i className="fa-solid fa-chart-line text-blue-900"></i>
-                  Dashboard de Atrasos &amp; Assiduidade
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Visão executiva das chegadas tardias hoje e no mês vigente.
-                </p>
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm shrink-0">
+                  <i className="fa-solid fa-chart-line"></i>
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                    Dashboard de Atrasos &amp; Assiduidade
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Visão executiva das chegadas tardias hoje e no mês vigente.
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => onNavigate ? onNavigate('dashboard-atrasos') : window.switchTab?.('dashboard-atrasos')}
-                className="text-xs font-bold text-cyan-800 hover:text-cyan-900 flex items-center gap-1 cursor-pointer"
+                className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
               >
                 <span>Dashboard Completo de Atrasos</span>
                 <i className="fa-solid fa-arrow-right text-[10px]"></i>
@@ -2212,23 +2254,22 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Alunos com atraso Hoje */}
-              <div className="md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <div className="md:col-span-2 bg-slate-50/70 p-4 rounded-2xl border border-slate-200/70 space-y-3">
+                <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5 tabular-nums">
                   <i className="fa-solid fa-list-check text-slate-500"></i>
                   Últimos Atrasos Registrados Hoje ({atrasosHoje.length})
                 </span>
 
                 {atrasosHoje.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic py-4 text-center">
+                  <p className="text-xs text-slate-500 py-4 text-center">
                     Nenhum atraso registrado hoje até o momento.
                   </p>
                 ) : (
-                  <div className="divide-y divide-slate-200 max-h-48 overflow-y-auto">
+                  <div className="divide-y divide-slate-200/70 max-h-48 overflow-y-auto">
                     {atrasosHoje.slice(0, 6).map(o => (
-                      <div key={o.id} className="py-2 flex items-center justify-between text-xs">
+                      <div key={o.id} className="py-2.5 flex items-center justify-between text-xs">
                         <div className="min-w-0 pr-2">
-                          <p className="font-bold text-slate-900 truncate">
+                          <p className="font-semibold text-slate-900 truncate">
                             {o.nomeAluno || o.alunoNome || `RA: ${o.ra}`}
                           </p>
                           <p className="text-[11px] text-slate-500 truncate">
@@ -2236,10 +2277,10 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                           </p>
                         </div>
                         <div className="text-right shrink-0">
-                          <span className="font-mono font-bold text-slate-800">
+                          <span className="tabular-nums font-semibold text-slate-800">
                             {o.horarioAtraso || '07:30'}
                           </span>
-                          <span className={`block text-[10px] font-bold ${o.justificado ? 'text-emerald-700' : 'text-amber-700'}`}>
+                          <span className={`block text-[11px] font-medium ${o.justificado ? 'text-emerald-700' : 'text-amber-700'}`}>
                             {o.justificado ? 'Justificado' : 'Sem justificativa'}
                           </span>
                         </div>
@@ -2249,23 +2290,22 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                 )}
               </div>
 
-              {/* Turmas Mais Reincidentes */}
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <div className="bg-slate-50/70 p-4 rounded-2xl border border-slate-200/70 space-y-3">
+                <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
                   <i className="fa-solid fa-users text-slate-500"></i>
                   Turmas com Mais Atrasos no Mês
                 </span>
 
                 {turmasMaisAtrasos.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic py-4 text-center">
+                  <p className="text-xs text-slate-500 py-4 text-center">
                     Sem dados suficientes no mês.
                   </p>
                 ) : (
                   <div className="space-y-2">
                     {turmasMaisAtrasos.map(([turma, count]) => (
                       <div key={turma} className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-slate-700">{turma}</span>
-                        <span className="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
+                        <span className="font-medium text-slate-700">{turma}</span>
+                        <span className="tabular-nums font-semibold text-slate-900 bg-white px-2.5 py-0.5 rounded-full border border-slate-200/80">
                           {count} registros
                         </span>
                       </div>
@@ -2277,26 +2317,28 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
           </section>
 
           {/* 3. Geração de Documentos de Secretaria */}
-          <section className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
-            <div className="border-b border-slate-100 pb-3">
-              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <i className="fa-solid fa-file-contract text-blue-900"></i>
-                Emissão Rápida de Documentos Oficiais
-              </h2>
-              <p className="text-xs text-slate-500">
-                Gere atestados, declarações e guias formatadas para impressão oficial com 1 clique.
-              </p>
+          <section className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
+            <div className="border-b border-slate-100 pb-3 flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm shrink-0">
+                <i className="fa-solid fa-file-contract"></i>
+              </div>
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                  Emissão Rápida de Documentos Oficiais
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Gere atestados, declarações e guias formatadas para impressão oficial com 1 clique.
+                </p>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              
-              {/* Tipo de Documento */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">Tipo de Documento:</label>
+                <label className="text-xs font-semibold text-slate-700">Tipo de Documento:</label>
                 <select
                   value={tipoDocumento}
                   onChange={(e) => setTipoDocumento(e.target.value as any)}
-                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-800 cursor-pointer"
+                  className="w-full p-2.5 text-xs bg-slate-50/80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/30 cursor-pointer"
                 >
                   <option value="matricula">Atestado de Matrícula</option>
                   <option value="frequencia">Declaração de Frequência</option>
@@ -2305,18 +2347,17 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                 </select>
               </div>
 
-              {/* Busca do Aluno */}
               <div className="space-y-1.5 md:col-span-2">
-                <label className="text-xs font-bold text-slate-700">Aluno Solicitante:</label>
+                <label className="text-xs font-semibold text-slate-700">Aluno Solicitante:</label>
                 <input
                   type="text"
                   value={buscaAlunoDoc}
                   onChange={(e) => setBuscaAlunoDoc(e.target.value)}
                   placeholder="Digite nome ou RA do aluno..."
-                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-800"
+                  className="w-full p-2.5 text-xs bg-slate-50/80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/30"
                 />
                 {buscaAlunoDoc.length >= 2 && (
-                  <div className="max-h-36 overflow-y-auto bg-white border border-slate-200 rounded-lg shadow-md mt-1 divide-y divide-slate-100">
+                  <div className="max-h-36 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-md mt-1 divide-y divide-slate-100">
                     {alunos
                       .filter(a => {
                         const t = buscaAlunoDoc.toLowerCase();
@@ -2330,30 +2371,29 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                             setAlunoSelecionadoDoc(a);
                             setBuscaAlunoDoc(`${a.nome} (${a.turma})`);
                           }}
-                          className="p-2 text-xs hover:bg-blue-50 cursor-pointer flex justify-between items-center"
+                          className="p-2.5 text-xs hover:bg-indigo-50/70 cursor-pointer flex justify-between items-center"
                         >
-                          <span className="font-bold text-slate-800 truncate">{a.nome}</span>
-                          <span className="text-[10px] font-mono text-slate-500 shrink-0">{a.turma}</span>
+                          <span className="font-semibold text-slate-800 truncate">{a.nome}</span>
+                          <span className="text-[11px] tabular-nums text-slate-500 shrink-0">{a.turma}</span>
                         </div>
                       ))}
                   </div>
                 )}
                 {alunoSelecionadoDoc && (
-                  <div className="text-[11px] text-blue-900 bg-blue-50 p-2 rounded border border-blue-200 mt-1">
+                  <div className="text-[11px] text-indigo-900 bg-indigo-50/80 p-2.5 rounded-xl border border-indigo-200/60 border-l-4 border-l-indigo-500 mt-1">
                     <strong>Selecionado:</strong> {alunoSelecionadoDoc.nome} · RA {alunoSelecionadoDoc.ra} ({alunoSelecionadoDoc.turma})
                   </div>
                 )}
               </div>
 
-              {/* Botão de Geração */}
               <div className="flex items-end">
                 <button
                   type="button"
                   onClick={handleGerarDocumento}
-                  className="w-full py-2.5 px-4 bg-blue-900 hover:bg-blue-800 text-white font-black text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-2xs transition flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <i className="fa-solid fa-print"></i>
-                  <span>Visualizar & Imprimir</span>
+                  <span>Visualizar &amp; Imprimir</span>
                 </button>
               </div>
             </div>
@@ -2361,23 +2401,23 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             {tipoDocumento === 'comparecimento' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Nome do Pai / Mãe / Responsável:</label>
+                  <label className="text-xs font-semibold text-slate-700">Nome do Pai / Mãe / Responsável:</label>
                   <input
                     type="text"
                     value={nomeResponsavelDoc}
                     onChange={(e) => setNomeResponsavelDoc(e.target.value)}
                     placeholder="Nome completo do responsável..."
-                    className="w-full p-2 text-xs bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-800"
+                    className="w-full p-2.5 text-xs bg-slate-50/80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/30"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Horário de Permanência na Escola:</label>
+                  <label className="text-xs font-semibold text-slate-700">Horário de Permanência na Escola:</label>
                   <input
                     type="text"
                     value={periodoDoc}
                     onChange={(e) => setPeriodoDoc(e.target.value)}
                     placeholder="Ex: 08:00 às 09:30"
-                    className="w-full p-2 text-xs bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-800"
+                    className="w-full p-2.5 text-xs bg-slate-50/80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500/30"
                   />
                 </div>
               </div>
@@ -2386,35 +2426,34 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         </div>
       )}
 
-      {/* -------------------------------------------------------- */}
       {/* C. VISÃO GESTÃO: PAAC, CGPG, VICE-DIREÇÃO E DIREÇÃO */}
-      {/* -------------------------------------------------------- */}
       {['PAAC', 'CGPG', 'VICE_DIRETOR', 'DIRETOR'].includes(activeRole) && (
-        <div className="space-y-6">
+        <div className="space-y-5 sm:space-y-6">
 
-          {/* PAINEL EXCLUSIVO: QUEM SÃO OS PROFESSORES QUE NÃO DERAM CIÊNCIA NO MURAL */}
-          <section className="bg-white rounded-2xl p-5 sm:p-6 border border-purple-200 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-purple-100 pb-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-purple-600"></span>
-                  <h2 className="text-lg font-black text-slate-900">
-                    Monitoramento de Leitura & Ciência dos Professores no Mural
-                  </h2>
+          {/* MONITORAMENTO DE LEITURA & CIÊNCIA NO MURAL */}
+          <section id="painel-ciencia-mural" className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center text-sm shrink-0">
+                  <i className="fa-solid fa-eye"></i>
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Acompanhamento obrigatório da equipe pedagógica e gestora: verifique quem ainda não deu ciência nos comunicados oficiais.
-                </p>
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                    Monitoramento de Leitura &amp; Ciência no Mural
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Verifique quem ainda não deu ciência nos comunicados oficiais ativos.
+                  </p>
+                </div>
               </div>
 
-              {/* Seletor de Recado Ativo */}
               <div className="flex items-center gap-2 shrink-0">
-                <span className="text-xs font-bold text-slate-600">Comunicado Ativo:</span>
+                <span className="text-xs font-medium text-slate-500">Comunicado:</span>
                 <select
                   value={activeRecadoForMonitor?.id || ''}
                   onChange={(e) => setRecadoSelecionadoMonitor(e.target.value)}
                   disabled={recadosAtivos.length === 0}
-                  className="p-2 text-xs bg-purple-50 border border-purple-200 text-purple-950 font-bold rounded-lg outline-none focus:ring-2 focus:ring-purple-500 cursor-pointer max-w-xs disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-3 py-2 text-xs bg-purple-50/80 border border-purple-200/70 text-purple-900 font-semibold rounded-xl outline-none focus:ring-2 focus:ring-purple-500/30 cursor-pointer max-w-xs disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {recadosAtivos.length === 0 ? (
                     <option value="">Nenhum comunicado ativo</option>
@@ -2433,47 +2472,45 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             </div>
 
             {recadosAtivos.length === 0 ? (
-              <div className="p-6 text-center text-xs font-bold text-slate-500 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <div className="p-6 text-center text-xs font-medium text-slate-500 bg-slate-50/80 rounded-2xl border border-slate-200/70 space-y-1">
                 <i className="fa-solid fa-inbox text-2xl text-slate-400 mb-1 block"></i>
-                <p className="text-slate-700">Nenhum comunicado ativo no Mural no momento.</p>
-                <p className="text-[11px] text-slate-400 font-normal">Apenas comunicados ativos da escola são exibidos para acompanhamento de ciência docente.</p>
+                <p className="text-slate-700 font-semibold">Nenhum comunicado ativo no Mural no momento.</p>
+                <p className="text-[11px] text-slate-400">Apenas comunicados ativos da escola são exibidos para acompanhamento de ciência docente.</p>
               </div>
             ) : (
               <>
-                {/* Barra de Progresso e Métricas */}
-                <div className="bg-purple-50/70 p-4 rounded-xl border border-purple-100 space-y-2">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs font-bold text-purple-950">
+                <div className="bg-purple-50/60 p-4 rounded-2xl border border-purple-200/60 border-l-4 border-l-purple-600 space-y-2.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs font-semibold text-purple-950">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span>
+                      <span className="tabular-nums">
                         {analiseCienciaProfessores.cientes} de {analiseCienciaProfessores.totalProfs} {analiseCienciaProfessores.totalProfs === 1 ? 'docente ciente' : 'professores cientes'}
                       </span>
                       {analiseCienciaProfessores.publicoDescricao && (
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${
                           analiseCienciaProfessores.isRestrito
-                            ? 'bg-amber-100 text-amber-900 border-amber-300'
-                            : 'bg-purple-100 text-purple-800 border-purple-200'
+                            ? 'bg-amber-50/90 text-amber-900 border-amber-200/70'
+                            : 'bg-purple-100/80 text-purple-900 border-purple-200/70'
                         }`}>
-                          <i className={`fa-solid ${analiseCienciaProfessores.isRestrito ? 'fa-user-tag text-amber-700' : 'fa-users text-purple-700'} mr-1 text-[9px]`}></i>
+                          <i className={`fa-solid ${analiseCienciaProfessores.isRestrito ? 'fa-user-tag text-amber-700' : 'fa-users text-purple-700'} mr-1 text-[10px]`}></i>
                           {analiseCienciaProfessores.publicoDescricao}
                         </span>
                       )}
                     </div>
-                    <span className="font-mono text-sm">{analiseCienciaProfessores.taxa}% de adesão</span>
+                    <span className="tabular-nums text-sm font-bold">{analiseCienciaProfessores.taxa}% de adesão</span>
                   </div>
-                  <div className="w-full bg-purple-200/80 rounded-full h-2.5 overflow-hidden">
+                  <div className="w-full bg-purple-200/70 rounded-full h-2 overflow-hidden">
                     <div
-                      className="bg-purple-600 h-2.5 rounded-full transition-all duration-500"
+                      className="bg-purple-600 h-2 rounded-full transition-all duration-500"
                       style={{ width: `${analiseCienciaProfessores.taxa}%` }}
                     ></div>
                   </div>
                 </div>
 
-                {/* Relação dos Professores Pendentes */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xs font-black uppercase tracking-wider text-purple-900 flex items-center gap-1.5">
-                      <i className="fa-solid fa-user-xmark text-rose-600"></i>
-                      {analiseCienciaProfessores.isRestrito ? 'Docentes marcados' : 'Professores'} que NÃO deram ciência neste comunicado ({analiseCienciaProfessores.pendentesCount}):
+                <div className="space-y-2.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <h3 className="text-xs font-semibold text-slate-800 flex items-center gap-1.5 tabular-nums">
+                      <i className="fa-solid fa-user-xmark text-rose-500"></i>
+                      {analiseCienciaProfessores.isRestrito ? 'Docentes marcados' : 'Professores'} pendentes neste comunicado ({analiseCienciaProfessores.pendentesCount}):
                     </h3>
 
                     <div className="flex items-center gap-2">
@@ -2482,7 +2519,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                         value={filtroProfPendentes}
                         onChange={(e) => setFiltroProfPendentes(e.target.value)}
                         placeholder="Filtrar professor..."
-                        className="p-1 px-2.5 text-xs bg-slate-50 border border-slate-200 rounded-md outline-none"
+                        className="py-1.5 px-3 text-xs bg-slate-50/80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500/20"
                       />
                       <button
                         type="button"
@@ -2493,7 +2530,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                             (window as any).showToast('Lista de professores pendentes copiada para a área de transferência!', 'success');
                           }
                         }}
-                        className="px-2.5 py-1 text-[11px] font-bold bg-purple-100 hover:bg-purple-200 text-purple-900 rounded-md transition cursor-pointer"
+                        className="px-3 py-1.5 text-xs font-semibold bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200/70 rounded-xl transition cursor-pointer shrink-0"
                       >
                         <i className="fa-solid fa-copy mr-1"></i>
                         Copiar Lista
@@ -2502,9 +2539,9 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                   </div>
 
                   {analiseCienciaProfessores.profsPendentes.length === 0 ? (
-                    <div className="p-4 text-center text-xs font-bold text-emerald-700 bg-emerald-50 rounded-xl border border-emerald-200">
-                      <i className="fa-solid fa-circle-check text-lg mr-2"></i>
-                      Parabéns! Todos os professores {analiseCienciaProfessores.isRestrito ? 'marcados para este comunicado' : 'da escola'} já deram ciência neste comunicado oficial.
+                    <div className="p-4 text-center text-xs font-semibold text-emerald-800 bg-emerald-50/90 rounded-2xl border border-emerald-200/70 border-l-4 border-l-emerald-500">
+                      <i className="fa-solid fa-circle-check text-base mr-2 text-emerald-600"></i>
+                      Todos os professores {analiseCienciaProfessores.isRestrito ? 'marcados para este comunicado' : 'da escola'} já deram ciência neste comunicado oficial.
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-56 overflow-y-auto pr-1">
@@ -2513,13 +2550,13 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                         .map(p => (
                           <div
                             key={p.id || p.nome}
-                            className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between text-xs"
+                            className="p-2.5 bg-slate-50/80 rounded-xl border border-slate-200/80 border-l-4 border-l-rose-400 flex items-center justify-between text-xs"
                           >
                             <div className="min-w-0 pr-1">
-                              <p className="font-bold text-slate-800 truncate">{p.nome}</p>
-                              <p className="text-[10px] text-slate-500 truncate">{p.disciplina || p.cargo || 'Docente'}</p>
+                              <p className="font-semibold text-slate-800 truncate">{p.nome}</p>
+                              <p className="text-[11px] text-slate-500 truncate">{p.disciplina || p.cargo || 'Docente'}</p>
                             </div>
-                            <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 shrink-0">
+                            <span className="text-[11px] font-semibold text-rose-800 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200/70 shrink-0">
                               Pendente
                             </span>
                           </div>
@@ -2531,47 +2568,44 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             )}
           </section>
 
-          {/* PAINEL PRIORITÁRIO: NOTIFICAÇÕES PEDAGÓGICAS DOS PROFESSORES (Direção e Vice-Direção) */}
-          {/* PAINEL PRIORITÁRIO: NOTIFICAÇÕES PEDAGÓGICAS DOS PROFESSORES (Direção, Vice, PAAC e CGPG) */}
+          {/* PAINEL PRIORITÁRIO: NOTIFICAÇÕES PEDAGÓGICAS DOS PROFESSORES */}
           {['DIRETOR', 'VICE_DIRETOR', 'PAAC', 'CGPG'].includes(activeRole) && (
-            <section id="painel-notificacoes-pedagogicas" className="bg-white rounded-2xl p-5 sm:p-6 border border-rose-200 shadow-xs space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-rose-100 pb-3">
+            <section id="painel-notificacoes-pedagogicas" className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center font-bold text-lg shadow-xs shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-600 flex items-center justify-center text-base shrink-0">
                     <i className="fa-solid fa-bell"></i>
                   </div>
                   <div>
-                    <h2 className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-2">
+                    <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
                       <span>Notificações Pedagógicas (Direção, Vice, PAAC e CGPG)</span>
                       {notificacoesPedagogicasDirecao.length > 0 && (
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-rose-100 text-rose-800 border border-rose-200 animate-pulse">
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-800 border border-rose-200/70 tabular-nums">
                           {notificacoesPedagogicasDirecao.length} pendente{notificacoesPedagogicasDirecao.length > 1 ? 's' : ''}
                         </span>
                       )}
                     </h2>
                     <p className="text-xs text-slate-500">
-                      Alertas urgentes e ocorrências pedagógicas registradas pelos professores demandando ciência e acompanhamento da Direção, Vice, PAAC e CGPG.
+                      Alertas urgentes e ocorrências pedagógicas registradas pelos professores demandando ciência da gestão.
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (onNavigate) onNavigate('registros');
-                      else if (typeof window.switchTab === 'function') window.switchTab('registros');
-                    }}
-                    className="text-xs font-bold text-rose-700 hover:text-rose-900 flex items-center gap-1 cursor-pointer bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-lg border border-rose-200 transition"
-                  >
-                    <span>Módulo de Registros</span>
-                    <i className="fa-solid fa-arrow-right text-[10px]"></i>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onNavigate) onNavigate('registros');
+                    else if (typeof window.switchTab === 'function') window.switchTab('registros');
+                  }}
+                  className="text-xs font-semibold text-rose-700 hover:text-rose-900 flex items-center gap-1.5 cursor-pointer bg-rose-50/90 hover:bg-rose-100 px-3 py-1.5 rounded-xl border border-rose-200/70 transition self-start sm:self-auto"
+                >
+                  <span>Módulo de Registros</span>
+                  <i className="fa-solid fa-arrow-right text-[10px]"></i>
+                </button>
               </div>
 
               {notificacoesPedagogicasDirecao.length === 0 ? (
-                <div className="p-5 text-center text-xs font-bold text-emerald-800 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center justify-center gap-2">
+                <div className="p-5 text-center text-xs font-semibold text-emerald-800 bg-emerald-50/90 rounded-2xl border border-emerald-200/70 border-l-4 border-l-emerald-500 flex items-center justify-center gap-2">
                   <i className="fa-solid fa-circle-check text-base text-emerald-600"></i>
                   <span>Nenhuma notificação pedagógica pendente de atendimento da equipe docente no momento.</span>
                 </div>
@@ -2580,30 +2614,30 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                   {notificacoesPedagogicasDirecao.map(notif => (
                     <div
                       key={notif.id}
-                      className="p-4 bg-rose-50/40 rounded-xl border border-rose-200 hover:border-rose-400 hover:bg-white transition-all space-y-2.5 shadow-2xs"
+                      className="p-4 bg-rose-50/40 rounded-2xl border border-rose-200/70 border-l-4 border-l-rose-500 hover:bg-white transition-all space-y-2.5"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 bg-rose-100 px-2 py-0.5 rounded border border-rose-200 inline-block mb-1">
+                          <span className="text-[11px] font-semibold text-rose-800 bg-rose-100/80 px-2 py-0.5 rounded-full border border-rose-200/60 inline-block mb-1">
                             {notif.tipo || 'Questão Pedagógica'}
                           </span>
-                          <h3 className="text-sm font-black text-slate-900 truncate">
+                          <h3 className="text-sm font-bold text-slate-900 truncate">
                             {notif.nomeAluno || (notif.ra ? `RA ${notif.ra}` : 'Estudante')}
                           </h3>
-                          <p className="text-[11px] text-slate-500 font-mono">
+                          <p className="text-[11px] text-slate-500 tabular-nums">
                             Turma: <strong className="text-slate-700">{notif.turma || 'Não informada'}</strong> · RA: {notif.ra || '—'}
                           </p>
                         </div>
-                        <span className="text-[10px] text-slate-500 font-mono shrink-0">
+                        <span className="text-[11px] text-slate-500 tabular-nums shrink-0">
                           {(notif.notificadoEm || notif.data || notif.criadoEm || '').slice(0, 10).split('-').reverse().join('/')}
                         </span>
                       </div>
 
-                      <div className="text-xs text-slate-700 leading-relaxed bg-white p-2.5 rounded-lg border border-slate-200/80 line-clamp-3">
+                      <div className="text-xs text-slate-700 leading-relaxed bg-white p-3 rounded-xl border border-slate-200/70 line-clamp-3">
                         {notif.descricao || notif.conteudo || 'Sem descrição cadastrada'}
                       </div>
 
-                      <div className="flex items-center justify-between text-[11px] pt-2 border-t border-rose-100">
+                      <div className="flex items-center justify-between text-[11px] pt-2 border-t border-rose-100/80">
                         <span className="text-slate-500 truncate max-w-[180px]">
                           Por: <strong className="text-slate-800">{notif.autor_nome || notif.autor || 'Docente'}</strong>
                         </span>
@@ -2612,16 +2646,14 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                           <button
                             type="button"
                             onClick={() => setModalOcorrencia(notif)}
-                            className="px-2.5 py-1 text-[10px] font-bold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-md transition cursor-pointer"
-                            title="Consultar Detalhes da Ocorrência"
+                            className="px-2.5 py-1 text-[11px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition cursor-pointer"
                           >
                             Ver Detalhes
                           </button>
                           <button
                             type="button"
                             onClick={() => handleAtenderNotificacaoPedagogica(notif.id)}
-                            className="px-2.5 py-1 text-[10px] font-black text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition shadow-2xs cursor-pointer flex items-center gap-1"
-                            title="Marcar Notificação como Ciente / Atendida"
+                            className="px-2.5 py-1 text-[11px] font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition cursor-pointer flex items-center gap-1"
                           >
                             <i className="fa-solid fa-check"></i>
                             <span>Atender</span>
@@ -2637,31 +2669,31 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
           {/* BUSCA ATIVA & OCORRÊNCIAS RECENTES (Vice-Direção e Direção) */}
           {(activeRole === 'VICE_DIRETOR' || activeRole === 'DIRETOR') && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
+
               {/* Painel de Busca Ativa */}
-              <section className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-3 flex flex-col justify-between">
+              <section className="bg-white rounded-2xl sm:rounded-3xl p-5 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-3 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 flex-wrap gap-2">
                     <div className="flex items-center gap-2">
-                      <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-                        <i className="fa-solid fa-magnifying-glass-location text-rose-600"></i>
+                      <div className="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-600 flex items-center justify-center text-xs shrink-0">
+                        <i className="fa-solid fa-magnifying-glass-location"></i>
+                      </div>
+                      <h2 className="text-base font-bold text-slate-900 tracking-tight">
                         Casos Críticos de Busca Ativa
                       </h2>
-                      <span className="text-xs font-mono font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded">
+                      <span className="text-xs tabular-nums font-semibold text-rose-800 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200/60">
                         {alunosBuscaAtiva.length} em alerta
                       </span>
                     </div>
 
-                    {/* Filtro de Matrícula (Padrão: Apenas Ativos) */}
                     <div className="flex items-center gap-1.5 text-xs">
-                      <label htmlFor="filtro-ba-home" className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Filtro:</label>
+                      <label htmlFor="filtro-ba-home" className="text-[11px] font-medium text-slate-500">Filtro:</label>
                       <select
                         id="filtro-ba-home"
                         value={filtroStatusBuscaAtiva}
                         onChange={(e) => setFiltroStatusBuscaAtiva(e.target.value as any)}
-                        className="text-[11px] font-bold py-1 px-2 rounded-lg bg-slate-50 border border-slate-300 text-slate-700 outline-none focus:ring-2 focus:ring-rose-400 cursor-pointer"
-                        title="Filtrar estudantes por situação de matrícula (Padrão: Apenas Ativos)"
+                        className="text-xs font-semibold py-1 px-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 outline-none focus:ring-2 focus:ring-rose-400/30 cursor-pointer"
                       >
                         <option value="ATIVOS">Apenas Alunos Ativos (Padrão)</option>
                         <option value="TODOS">Todos os Alunos (Inclui Inativos)</option>
@@ -2669,13 +2701,13 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                       </select>
                     </div>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-slate-500 mt-1.5">
                     Estudantes com baixa frequência (&lt;75%) demandando intervenção imediata da gestão escolar.
                   </p>
 
                   <div className="divide-y divide-slate-100 mt-3 max-h-60 overflow-y-auto">
                     {alunosBuscaAtiva.length === 0 ? (
-                      <div className="py-6 text-center text-xs text-slate-500 italic">
+                      <div className="py-6 text-center text-xs text-slate-500">
                         <i className="fa-solid fa-circle-check text-emerald-500 mr-1.5 text-sm"></i>
                         Nenhum estudante infrequente encontrado para este filtro.
                       </div>
@@ -2684,27 +2716,27 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                         <div
                           key={aluno.id || aluno.ra}
                           onClick={() => setModalAluno(aluno)}
-                          className="py-2.5 px-2 flex items-center justify-between text-xs hover:bg-rose-50/60 rounded-lg transition-colors cursor-pointer group"
+                          className="py-2.5 px-2.5 flex items-center justify-between text-xs hover:bg-rose-50/50 rounded-xl transition-colors cursor-pointer group"
                           title="Clique para consultar os detalhes deste estudante"
                         >
                           <div className="min-w-0 pr-2">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <p className="font-bold text-slate-900 group-hover:text-rose-950 truncate">{aluno.nome}</p>
+                              <p className="font-semibold text-slate-900 group-hover:text-rose-900 truncate">{aluno.nome}</p>
                               {!isAlunoAtivo(aluno) && (
-                                <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200/70 shrink-0">
                                   {aluno.status || aluno.situacao || 'INATIVO'}
                                 </span>
                               )}
                             </div>
-                            <p className="text-[11px] text-slate-500">
+                            <p className="text-[11px] text-slate-500 tabular-nums">
                               {aluno.turma} · RA {aluno.ra}
                             </p>
                           </div>
                           <div className="text-right shrink-0">
-                            <span className="font-mono font-bold text-rose-700">
+                            <span className="tabular-nums font-bold text-rose-600">
                               {aluno.presenca_anual || '68%'}
                             </span>
-                            <span className="block text-[10px] font-bold text-blue-800 group-hover:underline mt-0.5">
+                            <span className="block text-[11px] font-semibold text-indigo-700 group-hover:underline mt-0.5">
                               Ver Ficha →
                             </span>
                           </div>
@@ -2714,11 +2746,11 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between">
                   <button
                     type="button"
                     onClick={() => onNavigate ? onNavigate('busca-ativa') : window.switchTab?.('busca-ativa')}
-                    className="text-xs font-bold text-cyan-800 hover:text-cyan-900 flex items-center gap-1 cursor-pointer"
+                    className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 flex items-center gap-1.5 cursor-pointer"
                   >
                     <span>Módulo de Busca Ativa SEDUC</span>
                     <i className="fa-solid fa-arrow-right text-[10px]"></i>
@@ -2727,18 +2759,22 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
               </section>
 
               {/* Feed de Ocorrências Recentes */}
-              <section className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-3 flex flex-col justify-between">
+              <section className="bg-white rounded-2xl sm:rounded-3xl p-5 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-3 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-                    <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-                      <i className="fa-solid fa-shield-halved text-blue-900"></i>
-                      Ocorrências Recentes da Escola
-                    </h2>
-                    <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-xs shrink-0">
+                        <i className="fa-solid fa-shield-halved"></i>
+                      </div>
+                      <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                        Ocorrências Recentes
+                      </h2>
+                    </div>
+                    <span className="text-xs tabular-nums font-semibold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full">
                       {ocorrencias.length} no total
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-slate-500 mt-1.5">
                     Últimos registros pedagógicos e disciplinares registrados pela equipe escolar.
                   </p>
 
@@ -2747,14 +2783,14 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                       <div
                         key={oc.id}
                         onClick={() => setModalOcorrencia(oc)}
-                        className="py-2.5 px-2 text-xs space-y-0.5 hover:bg-blue-50/50 rounded-lg transition-colors cursor-pointer group"
+                        className="py-2.5 px-2.5 text-xs space-y-0.5 hover:bg-indigo-50/40 rounded-xl transition-colors cursor-pointer group"
                         title="Clique para consultar os detalhes desta ocorrência"
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-900 group-hover:text-blue-950 truncate">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold text-slate-900 group-hover:text-indigo-900 truncate">
                             {oc.nomeAluno || (oc.ra ? `RA: ${oc.ra}` : 'Geral')}
                           </span>
-                          <span className="text-[10px] text-slate-500 font-mono">
+                          <span className="text-[11px] text-slate-500 tabular-nums shrink-0">
                             {(oc.criadoEm || oc.data || '').slice(0, 10)}
                           </span>
                         </div>
@@ -2767,11 +2803,11 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between">
                   <button
                     type="button"
                     onClick={() => onNavigate ? onNavigate('registros') : window.switchTab?.('registros')}
-                    className="text-xs font-bold text-cyan-800 hover:text-cyan-900 flex items-center gap-1 cursor-pointer"
+                    className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 flex items-center gap-1.5 cursor-pointer"
                   >
                     <span>Ver Todos os Registros</span>
                     <i className="fa-solid fa-arrow-right text-[10px]"></i>
@@ -2787,24 +2823,28 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       {/* ======================================================== */}
       {/* 4. SEÇÕES UNIVERSAIS RELEVANTES: MURAL, TAREFAS & AGENDA */}
       {/* ======================================================== */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
 
         {/* COLUNA 1 & 2: Mensagens Direcionadas do Mural */}
-        <section className="lg:col-span-2 bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div>
-              <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <i className="fa-solid fa-bullhorn text-purple-700"></i>
-                Mensagens Direcionadas a Mim no Mural ({recadosDirecionados.length})
-              </h2>
-              <p className="text-xs text-slate-500">
-                Avisos e orientações institucionais direcionados ao seu perfil e pessoa.
-              </p>
+        <section className="lg:col-span-2 bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3 gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center text-sm shrink-0">
+                <i className="fa-solid fa-bullhorn"></i>
+              </div>
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight tabular-nums">
+                  Mensagens Direcionadas a Mim ({recadosDirecionados.length})
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Avisos e orientações institucionais direcionados ao seu perfil.
+                </p>
+              </div>
             </div>
             <button
               type="button"
               onClick={() => onNavigate ? onNavigate('mural') : window.switchTab?.('mural')}
-              className="text-xs font-bold text-cyan-800 hover:text-cyan-900 flex items-center gap-1 cursor-pointer shrink-0"
+              className="text-xs font-semibold text-purple-700 hover:text-purple-900 flex items-center gap-1.5 cursor-pointer shrink-0"
             >
               <span>Mural Completo</span>
               <i className="fa-solid fa-arrow-right text-[10px]"></i>
@@ -2812,7 +2852,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
           </div>
 
           {recadosDirecionados.length === 0 ? (
-            <div className="p-8 text-center text-xs text-slate-500 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="p-8 text-center text-xs text-slate-500 bg-slate-50/80 rounded-2xl border border-slate-200/70">
               <i className="fa-regular fa-bell-slash text-2xl text-slate-400 block mb-2"></i>
               Nenhum aviso ativo direcionado especificamente a você no momento.
             </div>
@@ -2826,14 +2866,18 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                 return (
                   <div
                     key={recado.id}
-                    className="p-4 rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-white hover:border-purple-300 transition-all space-y-2.5"
+                    className={`p-4 rounded-2xl border border-l-4 transition-all space-y-2.5 ${
+                      deuCiencia
+                        ? 'border-slate-200/80 border-l-emerald-500 bg-slate-50/40'
+                        : 'border-purple-200/70 border-l-purple-600 bg-purple-50/30 hover:bg-white'
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <h3 className="text-sm font-black text-slate-900 tracking-tight">
+                        <h3 className="text-sm font-bold text-slate-900 tracking-tight">
                           {recado.titulo}
                         </h3>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+                        <div className="flex items-center gap-2 text-[11px] text-slate-500 mt-0.5 tabular-nums">
                           <span>{recado.autor || 'Gestão Escolar'}</span>
                           <span>·</span>
                           <span>{new Date(recado.criadoEm || recado.data || Date.now()).toLocaleDateString('pt-BR')}</span>
@@ -2841,7 +2885,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                       </div>
 
                       {deuCiencia ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 shrink-0">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold text-emerald-800 bg-emerald-50/90 border border-emerald-200/70 shrink-0">
                           <i className="fa-solid fa-check"></i>
                           Ciência Registrada
                         </span>
@@ -2849,7 +2893,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                         <button
                           type="button"
                           onClick={() => handleConfirmarCiencia(recado.id)}
-                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg shadow-xs transition flex items-center gap-1.5 cursor-pointer shrink-0"
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-2xs transition flex items-center gap-1.5 cursor-pointer shrink-0"
                         >
                           <i className="fa-solid fa-check"></i>
                           <span>Dar Ciência</span>
@@ -2868,7 +2912,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                       <button
                         type="button"
                         onClick={() => setModalRecado(recado)}
-                        className="font-bold text-purple-700 hover:underline cursor-pointer"
+                        className="font-semibold text-purple-700 hover:underline cursor-pointer"
                       >
                         Ler Comunicado Completo
                       </button>
@@ -2881,22 +2925,26 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         </section>
 
         {/* COLUNA 3: Tarefas & Agenda Integradas */}
-        <div className="space-y-6">
+        <div className="space-y-5 sm:space-y-6">
 
           {/* Painel de Tarefas da Rotina */}
-          <section className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-3.5">
+          <section className="bg-white rounded-2xl sm:rounded-3xl p-5 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-3.5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-              <div>
-                <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-                  <i className="fa-solid fa-list-check text-amber-600"></i>
-                  Minhas Tarefas
-                </h2>
-                <span className="text-[11px] text-slate-500">Prazos e rotinas atribuídas</span>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-xs shrink-0">
+                  <i className="fa-solid fa-list-check"></i>
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                    Minhas Tarefas
+                  </h2>
+                  <span className="text-[11px] text-slate-500">Prazos e rotinas atribuídas</span>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setModalNovaTarefa(true)}
-                className="w-7 h-7 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 flex items-center justify-center font-bold text-xs cursor-pointer"
+                className="w-8 h-8 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/70 flex items-center justify-center font-semibold text-xs cursor-pointer transition"
                 title="Adicionar Tarefa Rápida"
               >
                 <i className="fa-solid fa-plus"></i>
@@ -2904,7 +2952,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             </div>
 
             {tarefasFiltradas.length === 0 ? (
-              <p className="text-xs text-slate-400 italic py-4 text-center">
+              <p className="text-xs text-slate-400 py-4 text-center">
                 Nenhuma tarefa pendente no momento.
               </p>
             ) : (
@@ -2912,10 +2960,10 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                 {tarefasFiltradas.slice(0, 5).map(tarefa => (
                   <div
                     key={tarefa.id}
-                    className={`p-2.5 rounded-lg border text-xs flex items-start gap-2.5 transition-all ${
+                    className={`p-2.5 rounded-xl border border-l-4 text-xs flex items-start gap-2.5 transition-all ${
                       tarefa.concluido
-                        ? 'bg-slate-50 border-slate-200 text-slate-400 line-through'
-                        : 'bg-white border-slate-200 text-slate-800 hover:border-amber-300'
+                        ? 'bg-slate-50 border-slate-200 border-l-slate-300 text-slate-400 line-through'
+                        : 'bg-white border-slate-200/80 border-l-amber-500 text-slate-800 hover:border-amber-300'
                     }`}
                   >
                     <input
@@ -2929,7 +2977,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                         {tarefa.descricao}
                       </p>
                       {tarefa.dataLimite && (
-                        <span className="text-[10px] text-amber-700 font-mono mt-0.5 block">
+                        <span className="text-[11px] text-amber-700 tabular-nums mt-0.5 block">
                           Prazo: {tarefa.dataLimite}
                         </span>
                       )}
@@ -2943,34 +2991,38 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
               <button
                 type="button"
                 onClick={() => onNavigate ? onNavigate('rotina-pdca') : window.switchTab?.('rotina-pdca')}
-                className="w-full text-center text-xs font-bold text-amber-800 hover:text-amber-950 cursor-pointer"
+                className="w-full text-center text-xs font-semibold text-amber-700 hover:text-amber-900 cursor-pointer"
               >
-                Abrir Módulo de Tarefas Completo (PDCA) →
+                Abrir Módulo de Tarefas (PDCA) →
               </button>
             </div>
           </section>
 
           {/* Painel da Agenda Escolar */}
-          <section className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-3.5">
+          <section className="bg-white rounded-2xl sm:rounded-3xl p-5 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-3.5">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-              <div>
-                <h2 className="text-base font-black text-slate-900 flex items-center gap-2">
-                  <i className="fa-regular fa-calendar-days text-blue-900"></i>
-                  Agenda Escolar PEI
-                </h2>
-                <span className="text-[11px] text-slate-500">Próximos compromissos oficiais</span>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-xs shrink-0">
+                  <i className="fa-regular fa-calendar-days"></i>
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                    Agenda Escolar PEI
+                  </h2>
+                  <span className="text-[11px] text-slate-500">Próximos compromissos oficiais</span>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => onNavigate ? onNavigate('agenda') : window.switchTab?.('agenda')}
-                className="text-xs font-bold text-blue-800 hover:underline cursor-pointer"
+                className="text-xs font-semibold text-indigo-700 hover:underline cursor-pointer"
               >
                 Ver Agenda
               </button>
             </div>
 
             {eventosFuturos.length === 0 ? (
-              <p className="text-xs text-slate-400 italic py-4 text-center">
+              <p className="text-xs text-slate-400 py-4 text-center">
                 Nenhum evento futuro ou pendente para os próximos dias.
               </p>
             ) : (
@@ -2979,14 +3031,14 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                   <div
                     key={evento.id}
                     onClick={() => setModalEvento(evento)}
-                    className="p-2.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-white hover:border-blue-300 text-xs space-y-1 transition-all cursor-pointer group shadow-2xs"
+                    className="p-2.5 rounded-xl border border-slate-200/80 border-l-4 border-l-indigo-500 bg-slate-50/60 hover:bg-white hover:border-indigo-300 text-xs space-y-1 transition-all cursor-pointer group"
                     title="Clique para consultar detalhes deste evento"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-900 group-hover:text-blue-950 truncate">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-slate-900 group-hover:text-indigo-900 truncate">
                         {evento.titulo}
                       </span>
-                      <span className="text-[10px] font-mono text-blue-900 font-bold shrink-0">
+                      <span className="text-[11px] tabular-nums text-indigo-700 font-semibold shrink-0">
                         {evento.data ? new Date(evento.data).toLocaleDateString('pt-BR') : 'A definir'}
                       </span>
                     </div>
@@ -2994,11 +3046,11 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                       <span>{evento.categoria || 'Geral'}</span>
                       <div className="flex items-center gap-1.5">
                         {evento.horaInicio && (
-                          <span className="font-mono text-[10px] text-slate-600">
+                          <span className="tabular-nums text-[11px] text-slate-600">
                             {evento.horaInicio}
                           </span>
                         )}
-                        <span className="text-[10px] font-semibold text-blue-800 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="text-[11px] font-semibold text-indigo-700 opacity-0 group-hover:opacity-100 transition-opacity">
                           Ver →
                         </span>
                       </div>
@@ -3018,38 +3070,39 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
       {/* Modal Leitura Recado Completo */}
       {modalRecado && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 space-y-4 shadow-xl border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200/80 max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
+            <div className="flex items-start justify-between border-b border-slate-100 px-5 sm:px-6 py-4 shrink-0">
               <div>
-                <h3 className="text-xl font-black text-slate-900">{modalRecado.titulo}</h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <h3 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">{modalRecado.titulo}</h3>
+                <p className="text-xs text-slate-500 mt-0.5 tabular-nums">
                   Publicado por {modalRecado.autor || 'Gestão'} em {new Date(modalRecado.criadoEm || modalRecado.data || Date.now()).toLocaleDateString('pt-BR')}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setModalRecado(null)}
-                className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer shrink-0 ml-2"
               >
                 ✕
               </button>
             </div>
 
-            <div className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+            <div className="p-5 sm:p-6 overflow-y-auto text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
               {modalRecado.conteudo || modalRecado.mensagem || modalRecado.descricao}
             </div>
 
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-xs text-slate-500">
+            <div className="px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+              <span className="text-xs text-slate-500 tabular-nums">
                 Total de ciências registradas: <strong className="text-slate-800">{(modalRecado.cientes || []).length}</strong>
               </span>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 justify-end">
                 <button
                   type="button"
                   onClick={() => setModalRecado(null)}
-                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl cursor-pointer"
+                  className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
                 >
                   Fechar
                 </button>
@@ -3059,7 +3112,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                     handleConfirmarCiencia(modalRecado.id);
                     setModalRecado(null);
                   }}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-2xs cursor-pointer flex items-center gap-1.5"
                 >
                   <i className="fa-solid fa-check"></i>
                   <span>Confirmar Ciência Agora</span>
@@ -3072,72 +3125,75 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
       {/* Modal Nova Tarefa */}
       {modalNovaTarefa && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl border border-slate-200">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-lg font-black text-slate-900">Nova Tarefa Rápida</h3>
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full shadow-2xl border border-slate-200/80 max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 sm:px-6 py-4 shrink-0">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">Nova Tarefa Rápida</h3>
               <button
                 type="button"
                 onClick={() => setModalNovaTarefa(false)}
-                className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSalvarNovaTarefa} className="space-y-3.5">
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700">Descrição da Tarefa:</label>
-                <textarea
-                  required
-                  rows={3}
-                  value={novaTarefaDesc}
-                  onChange={(e) => setNovaTarefaDesc(e.target.value)}
-                  placeholder="Ex: Entregar relatório de busca ativa no conselho..."
-                  className="w-full p-2.5 text-xs bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Data Limite (Prazo):</label>
-                  <input
-                    type="date"
-                    value={novaTarefaPrazo}
-                    onChange={(e) => setNovaTarefaPrazo(e.target.value)}
-                    className="w-full p-2 text-xs bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500"
+            <form onSubmit={handleSalvarNovaTarefa} className="flex flex-col overflow-hidden">
+              <div className="p-5 sm:p-6 space-y-3.5 overflow-y-auto">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Descrição da Tarefa:</label>
+                  <textarea
+                    required
+                    rows={3}
+                    value={novaTarefaDesc}
+                    onChange={(e) => setNovaTarefaDesc(e.target.value)}
+                    placeholder="Ex: Entregar relatório de busca ativa no conselho..."
+                    className="w-full p-2.5 text-xs bg-slate-50/80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/30"
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Atribuir a:</label>
-                  <select
-                    value={novaTarefaAtribuir}
-                    onChange={(e) => setNovaTarefaAtribuir(e.target.value)}
-                    className="w-full p-2 text-xs bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
-                  >
-                    <option value="">Meu Cargo ({activeRole})</option>
-                    <option value="PROFESSOR">Professores</option>
-                    <option value="SECRETARIA">Secretaria</option>
-                    <option value="CGPG">CGPG</option>
-                    <option value="PAAC">PAAC</option>
-                    <option value="VICE_DIRETOR">Vice-Direção</option>
-                    <option value="DIRETOR">Direção</option>
-                    <option value="TODA A EQUIPE">Toda a Equipe</option>
-                  </select>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700">Data Limite (Prazo):</label>
+                    <input
+                      type="date"
+                      value={novaTarefaPrazo}
+                      onChange={(e) => setNovaTarefaPrazo(e.target.value)}
+                      className="w-full p-2.5 text-xs bg-slate-50/80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/30"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-700">Atribuir a:</label>
+                    <select
+                      value={novaTarefaAtribuir}
+                      onChange={(e) => setNovaTarefaAtribuir(e.target.value)}
+                      className="w-full p-2.5 text-xs bg-slate-50/80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/30 cursor-pointer"
+                    >
+                      <option value="">Meu Cargo ({activeRole})</option>
+                      <option value="PROFESSOR">Professores</option>
+                      <option value="SECRETARIA">Secretaria</option>
+                      <option value="CGPG">CGPG</option>
+                      <option value="PAAC">PAAC</option>
+                      <option value="VICE_DIRETOR">Vice-Direção</option>
+                      <option value="DIRETOR">Direção</option>
+                      <option value="TODA A EQUIPE">Toda a Equipe</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <div className="px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-end gap-2 shrink-0">
                 <button
                   type="button"
                   onClick={() => setModalNovaTarefa(false)}
-                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl cursor-pointer"
+                  className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-black rounded-xl shadow-xs cursor-pointer"
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-2xs cursor-pointer"
                 >
                   Criar Tarefa
                 </button>
@@ -3149,65 +3205,68 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
       {/* Modal Comprovante de Atraso (Slip de Entrada) */}
       {comprovanteAtraso && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200">
-            <div className="text-center border-b border-slate-200 pb-3">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                Governo do Estado de São Paulo · SEDUC-SP
-              </span>
-              <h3 className="text-base font-black text-slate-900 mt-0.5">
-                EE CLÓVIS DE LUCCA · PEI
-              </h3>
-              <p className="text-xs font-bold text-amber-700 mt-1 uppercase">
-                Comprovante de Entrada com Atraso
-              </p>
-            </div>
-
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Protocolo:</span>
-                <span className="font-mono font-bold text-slate-900">{comprovanteAtraso.protocolo}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Estudante:</span>
-                <span className="font-bold text-slate-900">{comprovanteAtraso.alunoNome}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">RA / Turma:</span>
-                <span className="font-mono text-slate-900">{comprovanteAtraso.alunoRa} · {comprovanteAtraso.turma}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Data / Horário:</span>
-                <span className="font-bold text-slate-900">{comprovanteAtraso.data} às {comprovanteAtraso.horario}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Motivo:</span>
-                <span className="text-slate-900">{comprovanteAtraso.motivo}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Situação:</span>
-                <span className={`font-bold ${comprovanteAtraso.justificado ? 'text-emerald-700' : 'text-amber-700'}`}>
-                  {comprovanteAtraso.justificado ? 'Atraso Justificado' : 'Atraso Não Justificado'}
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full shadow-2xl border border-slate-200/80 max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
+            <div className="p-5 sm:p-6 space-y-4 overflow-y-auto">
+              <div className="text-center border-b border-slate-200/80 pb-3">
+                <span className="text-[11px] font-semibold tracking-wide text-slate-400">
+                  Governo do Estado de São Paulo · SEDUC-SP
                 </span>
+                <h3 className="text-base font-bold text-slate-900 mt-0.5">
+                  EE Clóvis de Lucca · PEI
+                </h3>
+                <p className="text-xs font-semibold text-amber-700 mt-1">
+                  Comprovante de Entrada com Atraso
+                </p>
+              </div>
+
+              <div className="bg-slate-50/80 p-4 rounded-2xl border border-slate-200/80 space-y-2 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Protocolo:</span>
+                  <span className="tabular-nums font-bold text-slate-900">{comprovanteAtraso.protocolo}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Estudante:</span>
+                  <span className="font-semibold text-slate-900">{comprovanteAtraso.alunoNome}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">RA / Turma:</span>
+                  <span className="tabular-nums text-slate-900">{comprovanteAtraso.alunoRa} · {comprovanteAtraso.turma}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Data / Horário:</span>
+                  <span className="tabular-nums font-semibold text-slate-900">{comprovanteAtraso.data} às {comprovanteAtraso.horario}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Motivo:</span>
+                  <span className="text-slate-900">{comprovanteAtraso.motivo}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Situação:</span>
+                  <span className={`font-semibold ${comprovanteAtraso.justificado ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {comprovanteAtraso.justificado ? 'Atraso Justificado' : 'Atraso Não Justificado'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-center text-slate-500 border-t border-b border-dashed border-slate-200 py-2.5">
+                Autorizada a entrada em sala de aula pelo docente da aula vigente.
               </div>
             </div>
 
-            <div className="text-[11px] text-center text-slate-500 border-t border-b border-dashed border-slate-200 py-2">
-              Autorizada a entrada em sala de aula pelo docente da aula vigente.
-            </div>
-
-            <div className="flex items-center justify-between gap-3 pt-2">
+            <div className="px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between gap-3 shrink-0">
               <button
                 type="button"
                 onClick={() => setComprovanteAtraso(null)}
-                className="w-1/2 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl cursor-pointer"
+                className="w-1/2 py-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
               >
                 Concluir
               </button>
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="w-1/2 py-2.5 bg-blue-900 hover:bg-blue-800 text-white text-xs font-black rounded-xl shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                className="w-1/2 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-2xs cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <i className="fa-solid fa-print"></i>
                 <span>Imprimir Slip</span>
@@ -3219,93 +3278,95 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
       {/* Modal Documento Oficial Timbrado da Secretaria */}
       {documentoPronto && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-3xl w-full p-8 space-y-6 shadow-2xl border border-slate-200 max-h-[92vh] overflow-y-auto">
-            
-            {/* Cabeçalho Oficial do Documento */}
-            <div className="text-center space-y-1 border-b-2 border-slate-900 pb-4">
-              <p className="text-[11px] font-black uppercase tracking-wider text-slate-600">
-                GOVERNO DO ESTADO DE SÃO PAULO · SECRETARIA DA EDUCAÇÃO
-              </p>
-              <p className="text-xs font-bold text-slate-700">
-                DIRETORIA DE ENSINO DA REGIÃO LESTE 4
-              </p>
-              <h2 className="text-lg font-black text-slate-900">
-                ESCOLA ESTADUAL CLÓVIS DE LUCCA · PROGRAMA ENSINO INTEGRAL
-              </h2>
-              <p className="text-[10px] text-slate-500 font-mono">
-                CIE: 004128 · CNPJ: 48.031.918/0001-20 · Rua do Oratório, São Paulo - SP
-              </p>
-            </div>
-
-            {/* Título do Documento */}
-            <div className="text-center py-2">
-              <h3 className="text-base font-black text-slate-900 uppercase tracking-wide underline underline-offset-4">
-                {documentoPronto.titulo}
-              </h3>
-            </div>
-
-            {/* Corpo Oficial do Documento */}
-            <div className="text-sm text-slate-800 text-justify leading-relaxed p-4 bg-slate-50/50 rounded-xl border border-slate-100">
-              <p className="indent-8 whitespace-pre-wrap">{documentoPronto.corpo}</p>
-            </div>
-
-            {/* Data e Local */}
-            <div className="text-right text-xs text-slate-600 pt-2 font-medium">
-              São Paulo, {documentoPronto.dataExtenso}.
-            </div>
-
-            {/* Campos de Assinatura */}
-            <div className="grid grid-cols-2 gap-8 pt-8 text-center text-xs">
-              <div className="space-y-1">
-                <div className="w-48 h-0.5 bg-slate-400 mx-auto"></div>
-                <p className="font-bold text-slate-800">{documentoPronto.emissor}</p>
-                <p className="text-[10px] text-slate-500 uppercase">{documentoPronto.cargoEmissor}</p>
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-3xl w-full shadow-2xl border border-slate-200/80 max-h-[92vh] flex flex-col overflow-hidden">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
+            <div className="p-6 sm:p-8 space-y-6 overflow-y-auto">
+              {/* Cabeçalho Oficial do Documento */}
+              <div className="text-center space-y-1 border-b-2 border-slate-900 pb-4">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                  GOVERNO DO ESTADO DE SÃO PAULO · SECRETARIA DA EDUCAÇÃO
+                </p>
+                <p className="text-xs font-semibold text-slate-700">
+                  DIRETORIA DE ENSINO DA REGIÃO LESTE 4
+                </p>
+                <h2 className="text-lg font-bold text-slate-900">
+                  ESCOLA ESTADUAL CLÓVIS DE LUCCA · PROGRAMA ENSINO INTEGRAL
+                </h2>
+                <p className="text-[11px] text-slate-500 tabular-nums">
+                  CIE: 004128 · CNPJ: 48.031.918/0001-20 · Rua do Oratório, São Paulo - SP
+                </p>
               </div>
-              <div className="space-y-1">
-                <div className="w-48 h-0.5 bg-slate-400 mx-auto"></div>
-                <p className="font-bold text-slate-800">Direção Escolar</p>
-                <p className="text-[10px] text-slate-500 uppercase">EE Clóvis de Lucca</p>
+
+              {/* Título do Documento */}
+              <div className="text-center py-2">
+                <h3 className="text-base font-bold text-slate-900 uppercase tracking-wide underline underline-offset-4">
+                  {documentoPronto.titulo}
+                </h3>
+              </div>
+
+              {/* Corpo Oficial do Documento */}
+              <div className="text-sm text-slate-800 text-justify leading-relaxed p-4 bg-slate-50/70 rounded-2xl border border-slate-200/70">
+                <p className="indent-8 whitespace-pre-wrap">{documentoPronto.corpo}</p>
+              </div>
+
+              {/* Data e Local */}
+              <div className="text-right text-xs text-slate-600 pt-2 font-medium">
+                São Paulo, {documentoPronto.dataExtenso}.
+              </div>
+
+              {/* Campos de Assinatura */}
+              <div className="grid grid-cols-2 gap-8 pt-8 text-center text-xs">
+                <div className="space-y-1">
+                  <div className="w-48 h-0.5 bg-slate-400 mx-auto"></div>
+                  <p className="font-semibold text-slate-800">{documentoPronto.emissor}</p>
+                  <p className="text-[11px] text-slate-500">{documentoPronto.cargoEmissor}</p>
+                </div>
+                <div className="space-y-1">
+                  <div className="w-48 h-0.5 bg-slate-400 mx-auto"></div>
+                  <p className="font-semibold text-slate-800">Direção Escolar</p>
+                  <p className="text-[11px] text-slate-500">EE Clóvis de Lucca</p>
+                </div>
               </div>
             </div>
 
             {/* Botões de Ação */}
-            <div className="pt-6 border-t border-slate-200 flex items-center justify-between">
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between shrink-0">
               <button
                 type="button"
                 onClick={() => setDocumentoPronto(null)}
-                className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl cursor-pointer"
+                className="px-5 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
               >
                 Voltar
               </button>
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="px-6 py-2.5 bg-blue-900 hover:bg-blue-800 text-white text-xs font-black rounded-xl shadow-xs transition flex items-center gap-2 cursor-pointer"
+                className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-2xs transition flex items-center gap-2 cursor-pointer"
               >
                 <i className="fa-solid fa-print"></i>
                 <span>Imprimir Documento Oficial</span>
               </button>
             </div>
-
           </div>
         </div>
       )}
 
       {/* Modal Consulta de Aula (Grade / Horários) */}
       {modalAula && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full shadow-2xl border border-slate-200/80 max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 sm:px-6 py-4 shrink-0">
               <div className="flex items-center gap-2.5">
-                <span className="w-9 h-9 rounded-xl bg-blue-100 text-blue-900 flex items-center justify-center font-black text-sm">
+                <span className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-700 flex items-center justify-center font-bold text-sm tabular-nums">
                   {modalAula.periodoId}ª
                 </span>
                 <div>
-                  <h3 className="text-base font-black text-slate-900">
+                  <h3 className="text-base font-bold text-slate-900 tracking-tight">
                     {modalAula.turma} · {modalAula.disciplina || 'Aula Regular'}
                   </h3>
-                  <span className="text-xs text-slate-500 font-mono">
+                  <span className="text-xs text-slate-500 tabular-nums">
                     {PERIODOS_HORARIOS[Number(modalAula.periodoId)] || 'Horário Integral PEI'}
                   </span>
                 </div>
@@ -3313,44 +3374,46 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
               <button
                 type="button"
                 onClick={() => setModalAula(null)}
-                className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-2.5 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 font-medium">Docente Responsável:</span>
-                <span className="font-bold text-slate-900">{modalAula.professor}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 font-medium">Dia da Semana:</span>
-                <span className="font-bold text-slate-900">{DIAS_SEMANA_LABELS[String(modalAula.dia).toLowerCase()] || modalAula.dia}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 font-medium">Situação da Aula:</span>
-                <span className={`font-extrabold px-2 py-0.5 rounded text-[10px] uppercase border ${
-                  isRegularTeachingClass(modalAula)
-                    ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                    : 'bg-slate-200 text-slate-700 border-slate-300'
-                }`}>
-                  {isRegularTeachingClass(modalAula) ? 'Aula Ativa (Regular)' : 'Inativa / Intervalo / ATPC'}
-                </span>
-              </div>
-              {modalAula.sala && (
+            <div className="p-5 sm:p-6 overflow-y-auto">
+              <div className="space-y-2.5 text-xs bg-slate-50/80 p-4 rounded-2xl border border-slate-200/80">
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-medium">Ambiente / Sala:</span>
-                  <span className="font-bold text-slate-900">{modalAula.sala}</span>
+                  <span className="text-slate-500 font-medium">Docente Responsável:</span>
+                  <span className="font-semibold text-slate-900">{modalAula.professor}</span>
                 </div>
-              )}
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">Dia da Semana:</span>
+                  <span className="font-semibold text-slate-900">{DIAS_SEMANA_LABELS[String(modalAula.dia).toLowerCase()] || modalAula.dia}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">Situação da Aula:</span>
+                  <span className={`font-semibold px-2.5 py-0.5 rounded-full text-[11px] border ${
+                    isRegularTeachingClass(modalAula)
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200/70'
+                      : 'bg-slate-100 text-slate-700 border-slate-200'
+                  }`}>
+                    {isRegularTeachingClass(modalAula) ? 'Aula Ativa (Regular)' : 'Inativa / Intervalo / ATPC'}
+                  </span>
+                </div>
+                {modalAula.sala && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-medium">Ambiente / Sala:</span>
+                    <span className="font-semibold text-slate-900">{modalAula.sala}</span>
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="flex items-center justify-between gap-3 pt-2">
+            <div className="px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between gap-3 shrink-0">
               <button
                 type="button"
                 onClick={() => setModalAula(null)}
-                className="w-1/2 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl cursor-pointer"
+                className="w-1/2 py-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
               >
                 Fechar
               </button>
@@ -3361,7 +3424,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                   if (onNavigate) onNavigate('horarios');
                   else if (typeof window.switchTab === 'function') window.switchTab('horarios');
                 }}
-                className="w-1/2 py-2.5 bg-blue-900 hover:bg-blue-800 text-white text-xs font-black rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-1/2 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-2xs transition flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <span>Grade Completa</span>
                 <i className="fa-solid fa-arrow-right text-[10px]"></i>
@@ -3373,65 +3436,68 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
       {/* Modal Consulta de Evento da Agenda Escolar PEI */}
       {modalEvento && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200/80 max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
+            <div className="flex items-start justify-between border-b border-slate-100 px-5 sm:px-6 py-4 shrink-0">
               <div>
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                <span className="text-[11px] font-semibold text-indigo-800 bg-indigo-50/90 px-2.5 py-0.5 rounded-full border border-indigo-200/70">
                   {modalEvento.categoria || 'Compromisso Escolar PEI'}
                 </span>
-                <h3 className="text-lg font-black text-slate-900 mt-1.5 leading-snug">{modalEvento.titulo}</h3>
+                <h3 className="text-lg font-bold text-slate-900 mt-1.5 leading-snug tracking-tight">{modalEvento.titulo}</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setModalEvento(null)}
-                className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer shrink-0 ml-2"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer shrink-0 ml-2"
               >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-2.5 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 font-medium">Data do Evento:</span>
-                <span className="font-bold text-slate-900 font-mono">
-                  {modalEvento.data ? modalEvento.data.split('-').reverse().join('/') : 'A definir'}
-                  {modalEvento.dataFim && modalEvento.dataFim !== modalEvento.data ? ` até ${modalEvento.dataFim.split('-').reverse().join('/')}` : ''}
-                </span>
-              </div>
-              {(modalEvento.horaInicio || modalEvento.horario) && (
+            <div className="p-5 sm:p-6 space-y-3 overflow-y-auto">
+              <div className="space-y-2.5 text-xs bg-slate-50/80 p-4 rounded-2xl border border-slate-200/80">
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-medium">Horário Programado:</span>
-                  <span className="font-bold text-slate-900 font-mono">
-                    {modalEvento.horaInicio || modalEvento.horario} {modalEvento.horaFim ? `às ${modalEvento.horaFim}` : ''}
+                  <span className="text-slate-500 font-medium">Data do Evento:</span>
+                  <span className="font-semibold text-slate-900 tabular-nums">
+                    {modalEvento.data ? modalEvento.data.split('-').reverse().join('/') : 'A definir'}
+                    {modalEvento.dataFim && modalEvento.dataFim !== modalEvento.data ? ` até ${modalEvento.dataFim.split('-').reverse().join('/')}` : ''}
                   </span>
                 </div>
-              )}
-              {modalEvento.local && (
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-medium">Local / Espaço:</span>
-                  <span className="font-bold text-slate-900">{modalEvento.local}</span>
-                </div>
-              )}
-              {modalEvento.publicoAlvo && (
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-medium">Público Alvo / Participantes:</span>
-                  <span className="font-bold text-slate-900">{modalEvento.publicoAlvo}</span>
+                {(modalEvento.horaInicio || modalEvento.horario) && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-medium">Horário Programado:</span>
+                    <span className="font-semibold text-slate-900 tabular-nums">
+                      {modalEvento.horaInicio || modalEvento.horario} {modalEvento.horaFim ? `às ${modalEvento.horaFim}` : ''}
+                    </span>
+                  </div>
+                )}
+                {modalEvento.local && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-medium">Local / Espaço:</span>
+                    <span className="font-semibold text-slate-900">{modalEvento.local}</span>
+                  </div>
+                )}
+                {modalEvento.publicoAlvo && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-medium">Público Alvo / Participantes:</span>
+                    <span className="font-semibold text-slate-900">{modalEvento.publicoAlvo}</span>
+                  </div>
+                )}
+              </div>
+
+              {modalEvento.descricao && (
+                <div className="text-xs text-slate-700 leading-relaxed bg-slate-50/50 p-3.5 rounded-2xl border border-slate-200/70 whitespace-pre-wrap">
+                  {modalEvento.descricao}
                 </div>
               )}
             </div>
 
-            {modalEvento.descricao && (
-              <div className="text-xs text-slate-700 leading-relaxed bg-slate-50/50 p-3 rounded-lg border border-slate-200 whitespace-pre-wrap max-h-36 overflow-y-auto">
-                {modalEvento.descricao}
-              </div>
-            )}
-
-            <div className="flex items-center justify-between gap-3 pt-2">
+            <div className="px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between gap-3 shrink-0">
               <button
                 type="button"
                 onClick={() => setModalEvento(null)}
-                className="w-1/2 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl cursor-pointer"
+                className="w-1/2 py-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
               >
                 Fechar
               </button>
@@ -3442,7 +3508,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                   if (onNavigate) onNavigate('agenda');
                   else if (typeof window.switchTab === 'function') window.switchTab('agenda');
                 }}
-                className="w-1/2 py-2.5 bg-blue-900 hover:bg-blue-800 text-white text-xs font-black rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-1/2 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-2xs transition flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <span>Abrir Agenda Completa</span>
                 <i className="fa-solid fa-arrow-right text-[10px]"></i>
@@ -3454,63 +3520,66 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
       {/* Modal Consulta Rápida de Estudante (Tutorado / Busca Ativa / Secretaria) */}
       {modalAluno && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200/80 max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
+            <div className="flex items-start justify-between border-b border-slate-100 px-5 sm:px-6 py-4 shrink-0">
               <div>
-                <span className="text-[10px] font-black uppercase tracking-wider text-cyan-800 bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
+                <span className="text-[11px] font-semibold text-cyan-800 bg-cyan-50/90 px-2.5 py-0.5 rounded-full border border-cyan-200/70">
                   Dossiê / Consulta de Estudante
                 </span>
-                <h3 className="text-lg font-black text-slate-900 mt-1 leading-snug">{modalAluno.nome}</h3>
-                <p className="text-xs text-slate-500 font-mono mt-0.5">RA: {modalAluno.ra} · Turma: {modalAluno.turma}</p>
+                <h3 className="text-lg font-bold text-slate-900 mt-1.5 leading-snug tracking-tight">{modalAluno.nome}</h3>
+                <p className="text-xs text-slate-500 tabular-nums mt-0.5">RA: {modalAluno.ra} · Turma: {modalAluno.turma}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setModalAluno(null)}
-                className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer shrink-0 ml-2"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer shrink-0 ml-2"
               >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-2.5 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 font-medium">Professor Tutor:</span>
-                <span className="font-bold text-slate-900">{modalAluno.tutor || modalAluno.tutorNome || 'Não vinculado'}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 font-medium">Presença Anual:</span>
-                <span className={`font-mono font-bold ${parseFloat(String(modalAluno.presenca_anual || modalAluno.presenca || '100').replace('%', '').replace(',', '.')) < 75 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                  {modalAluno.presenca_anual || modalAluno.presenca || '95%'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 font-medium">Total de Faltas Computadas:</span>
-                <span className="font-mono font-bold text-slate-800">{modalAluno.total_faltas || modalAluno.faltas || 0} aulas</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 font-medium">Status de Matrícula:</span>
-                <span className="font-bold text-slate-800 uppercase">{modalAluno.status || modalAluno.situacao || 'ATIVO'}</span>
-              </div>
-              {modalAluno.telefoneResponsavel && (
+            <div className="p-5 sm:p-6 overflow-y-auto">
+              <div className="space-y-2.5 text-xs bg-slate-50/80 p-4 rounded-2xl border border-slate-200/80">
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-medium">Telefone Responsável:</span>
-                  <span className="font-mono font-bold text-slate-900">{modalAluno.telefoneResponsavel}</span>
+                  <span className="text-slate-500 font-medium">Professor Tutor:</span>
+                  <span className="font-semibold text-slate-900">{modalAluno.tutor || modalAluno.tutorNome || 'Não vinculado'}</span>
                 </div>
-              )}
-              {modalAluno.projetoDeVida && (
-                <div className="pt-2 border-t border-slate-200">
-                  <span className="text-slate-500 font-medium block mb-1">Projeto de Vida / Sonhos:</span>
-                  <p className="text-slate-800 italic bg-white p-2 rounded border border-slate-200">{modalAluno.projetoDeVida}</p>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">Presença Anual:</span>
+                  <span className={`tabular-nums font-bold ${parseFloat(String(modalAluno.presenca_anual || modalAluno.presenca || '100').replace('%', '').replace(',', '.')) < 75 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                    {modalAluno.presenca_anual || modalAluno.presenca || '95%'}
+                  </span>
                 </div>
-              )}
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">Total de Faltas Computadas:</span>
+                  <span className="tabular-nums font-semibold text-slate-800">{modalAluno.total_faltas || modalAluno.faltas || 0} aulas</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">Status de Matrícula:</span>
+                  <span className="font-semibold text-slate-800">{modalAluno.status || modalAluno.situacao || 'ATIVO'}</span>
+                </div>
+                {modalAluno.telefoneResponsavel && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-medium">Telefone Responsável:</span>
+                    <span className="tabular-nums font-semibold text-slate-900">{modalAluno.telefoneResponsavel}</span>
+                  </div>
+                )}
+                {modalAluno.projetoDeVida && (
+                  <div className="pt-2 border-t border-slate-200/80">
+                    <span className="text-slate-500 font-medium block mb-1">Projeto de Vida / Sonhos:</span>
+                    <p className="text-slate-800 bg-white p-2.5 rounded-xl border border-slate-200/70">{modalAluno.projetoDeVida}</p>
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="flex items-center justify-between gap-3 pt-2">
+            <div className="px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between gap-3 shrink-0">
               <button
                 type="button"
                 onClick={() => setModalAluno(null)}
-                className="w-1/2 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl cursor-pointer"
+                className="w-1/2 py-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
               >
                 Fechar
               </button>
@@ -3525,7 +3594,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                     onNavigate('alunos');
                   }
                 }}
-                className="w-1/2 py-2.5 bg-blue-900 hover:bg-blue-800 text-white text-xs font-black rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-1/2 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-2xs transition flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <span>Abrir Dossiê Completo</span>
                 <i className="fa-solid fa-folder-open text-[11px]"></i>
@@ -3537,60 +3606,63 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
       {/* Modal Consulta de Registro de Ocorrência */}
       {modalOcorrencia && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200/80 max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
+            <div className="flex items-start justify-between border-b border-slate-100 px-5 sm:px-6 py-4 shrink-0">
               <div>
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-800 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                <span className="text-[11px] font-semibold text-rose-800 bg-rose-50/90 px-2.5 py-0.5 rounded-full border border-rose-200/70">
                   {modalOcorrencia.tipo || modalOcorrencia.categoria || 'Registro Pedagógico'}
                 </span>
-                <h3 className="text-base font-black text-slate-900 mt-1.5 leading-snug">
+                <h3 className="text-base font-bold text-slate-900 mt-1.5 leading-snug tracking-tight">
                   {modalOcorrencia.nomeAluno || (modalOcorrencia.ra ? `Estudante RA: ${modalOcorrencia.ra}` : 'Ocorrência Geral')}
                 </h3>
                 {modalOcorrencia.turma && (
-                  <p className="text-xs text-slate-500 font-mono mt-0.5">Turma: {modalOcorrencia.turma}</p>
+                  <p className="text-xs text-slate-500 tabular-nums mt-0.5">Turma: {modalOcorrencia.turma}</p>
                 )}
               </div>
               <button
                 type="button"
                 onClick={() => setModalOcorrencia(null)}
-                className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer shrink-0 ml-2"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer shrink-0 ml-2"
               >
                 ✕
               </button>
             </div>
 
-            <div className="space-y-2.5 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 font-medium">Data do Fato:</span>
-                <span className="font-bold text-slate-900 font-mono">
-                  {(modalOcorrencia.data || modalOcorrencia.criadoEm || '').slice(0, 10).split('-').reverse().join('/')}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 font-medium">Registrado por:</span>
-                <span className="font-bold text-slate-900">{modalOcorrencia.autor || modalOcorrencia.autor_nome || 'Equipe Escolar'}</span>
-              </div>
-              {modalOcorrencia.motivo && (
+            <div className="p-5 sm:p-6 space-y-3 overflow-y-auto">
+              <div className="space-y-2.5 text-xs bg-slate-50/80 p-4 rounded-2xl border border-slate-200/80">
                 <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-medium">Motivo Apontado:</span>
-                  <span className="font-bold text-slate-900">{modalOcorrencia.motivo}</span>
+                  <span className="text-slate-500 font-medium">Data do Fato:</span>
+                  <span className="font-semibold text-slate-900 tabular-nums">
+                    {(modalOcorrencia.data || modalOcorrencia.criadoEm || '').slice(0, 10).split('-').reverse().join('/')}
+                  </span>
                 </div>
-              )}
-            </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-500 font-medium">Registrado por:</span>
+                  <span className="font-semibold text-slate-900">{modalOcorrencia.autor || modalOcorrencia.autor_nome || 'Equipe Escolar'}</span>
+                </div>
+                {modalOcorrencia.motivo && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-medium">Motivo Apontado:</span>
+                    <span className="font-semibold text-slate-900">{modalOcorrencia.motivo}</span>
+                  </div>
+                )}
+              </div>
 
-            <div className="space-y-1">
-              <span className="text-xs font-bold text-slate-700">Relato do Fato:</span>
-              <div className="text-xs text-slate-700 leading-relaxed bg-white p-3 rounded-lg border border-slate-200 whitespace-pre-wrap max-h-48 overflow-y-auto">
-                {modalOcorrencia.descricao || 'Sem descrição cadastrada'}
+              <div className="space-y-1.5">
+                <span className="text-xs font-semibold text-slate-700">Relato do Fato:</span>
+                <div className="text-xs text-slate-700 leading-relaxed bg-slate-50/50 p-3.5 rounded-2xl border border-slate-200/70 whitespace-pre-wrap max-h-48 overflow-y-auto">
+                  {modalOcorrencia.descricao || 'Sem descrição cadastrada'}
+                </div>
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-3 pt-2">
+            <div className="px-5 sm:px-6 py-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between gap-3 shrink-0">
               <button
                 type="button"
                 onClick={() => setModalOcorrencia(null)}
-                className="w-1/2 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-xl cursor-pointer"
+                className="w-1/2 py-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-xl cursor-pointer"
               >
                 Fechar
               </button>
@@ -3601,7 +3673,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                   if (onNavigate) onNavigate('registros');
                   else if (typeof window.switchTab === 'function') window.switchTab('registros');
                 }}
-                className="w-1/2 py-2.5 bg-blue-900 hover:bg-blue-800 text-white text-xs font-black rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-1/2 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-2xs transition flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <span>Ver em Ocorrências</span>
                 <i className="fa-solid fa-arrow-right text-[10px]"></i>

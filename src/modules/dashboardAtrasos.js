@@ -20,9 +20,12 @@ function normalizarRa(ra) {
  */
 function isOcorrenciaAtraso(oc) {
   if (!oc) return false;
-  if (oc.isAtraso === true) return true;
   const tipoStr = String(oc.tipo || "").toUpperCase();
   const catStr = String(oc.categoria || "").toUpperCase();
+  if (oc.isDispensa === true || tipoStr.includes("DISPENSA") || catStr.includes("DISPENSA") || tipoStr.includes("AFASTAMENTO")) {
+    return false;
+  }
+  if (oc.isAtraso === true) return true;
   const descStr = String(oc.descricao || "").toUpperCase();
   const tituloStr = String(oc.titulo || "").toUpperCase();
   return (
@@ -896,14 +899,17 @@ if (typeof window !== "undefined") {
   window.atualizarDashboardAtrasos = atualizarDashboardAtrasos;
   window.exportarAtrasosCSV = exportarAtrasosCSV;
 
+  const isDashboardUnificadoAtivo = () =>
+    ["dashboard", "dashboard-atrasos", "dashboard-notas", "dash-projetos-pei"].includes(window.currentActiveTab);
+
   window.addEventListener("studentsdataupdated", () => {
-    if (window.currentActiveTab === "dashboard-atrasos") {
+    if (isDashboardUnificadoAtivo()) {
       atualizarDashboardAtrasos();
     }
   });
 
   window.addEventListener("database-collection-changed", () => {
-    if (window.currentActiveTab === "dashboard-atrasos") {
+    if (isDashboardUnificadoAtivo()) {
       atualizarDashboardAtrasos();
     }
   });
