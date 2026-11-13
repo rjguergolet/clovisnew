@@ -3198,17 +3198,17 @@
         }
       } catch (e) {}
 
-      // Matrix de Permissão de Abas por Nível de Acesso (RBAC - Dashboard Geral e Dashboard de Atrasos liberados para todos os perfis)
+      // Matrix de Permissão de Abas por Nível de Acesso (RBAC - Presença Diária & IA liberada para todos os perfis)
       window.PERMISSOES_ABAS = {
-        DIRETOR: ["inicio", "mural", "alunos", "dashboard-notas", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "auditoria", "comparativo-frequencia"],
-        VICE_DIRETOR: ["inicio", "mural", "alunos", "dashboard-notas", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "auditoria", "comparativo-frequencia"],
-        "VICE-DIRETOR": ["inicio", "mural", "alunos", "dashboard-notas", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "auditoria", "comparativo-frequencia"],
-        CGPG: ["inicio", "mural", "alunos", "dashboard-notas", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "comparativo-frequencia"],
-        CGPCG: ["inicio", "mural", "alunos", "dashboard-notas", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "comparativo-frequencia"],
-        PROFESSOR_PAAC: ["inicio", "mural", "alunos", "dashboard-notas", "professores", "registros", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos"],
-        PAAC: ["inicio", "mural", "alunos", "dashboard-notas", "professores", "registros", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos"],
-        PROFESSOR: ["inicio", "mural", "alunos", "dashboard-notas", "professores", "registros", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos"],
-        SECRETARIA: ["inicio", "mural", "alunos", "dashboard-notas", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "comparativo-frequencia"]
+        DIRETOR: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "auditoria", "comparativo-frequencia"],
+        VICE_DIRETOR: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "auditoria", "comparativo-frequencia"],
+        "VICE-DIRETOR": ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "auditoria", "comparativo-frequencia"],
+        CGPG: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "comparativo-frequencia"],
+        CGPCG: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "comparativo-frequencia"],
+        PROFESSOR_PAAC: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos"],
+        PAAC: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos"],
+        PROFESSOR: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos"],
+        SECRETARIA: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "comparativo-frequencia"]
       };
 
       // Normaliza qualquer string de cargo/nível para um dos perfis oficiais
@@ -3696,23 +3696,243 @@
         }
       };
 
+      // HELPER RBAC: Apenas SECRETARIA, CGPG, DIRETOR e VICE_DIRETOR podem registrar Dispensa / Afastamento Legal
+      window.podeRegistrarDispensa = function() {
+        const roleRaw = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
+        const roleNorm = window.normalizarUserRole
+          ? window.normalizarUserRole(roleRaw)
+          : String(roleRaw || "").toUpperCase().replace(/-/g, "_").trim();
+        return ["SECRETARIA", "CGPG", "DIRETOR", "VICE_DIRETOR"].includes(roleNorm);
+      };
+
+      window.isOcorrenciaDispensa = function(oc) {
+        if (!oc) return false;
+        if (oc.isDispensa === true) return true;
+        const tipoStr = String(oc.tipo || "").toUpperCase();
+        const catStr = String(oc.categoria || "").toUpperCase();
+        return (
+          (tipoStr.includes("DISPENSA") || tipoStr.includes("AFASTAMENTO LEGAL") || catStr.includes("DISPENSA")) &&
+          Boolean(oc.dataInicio || oc.dataFim)
+        ) || tipoStr.includes("DISPENSA / AFASTAMENTO");
+      };
+
+      window.atualizarVisibilidadeDispensaAtraso = function(selectEl) {
+        if (!selectEl) return;
+        const id = selectEl.id;
+        const valUpper = String(selectEl.value || "").trim().toUpperCase();
+        const isDispensa = valUpper.includes("DISPENSA") || valUpper.includes("AFASTAMENTO");
+        const isAtraso = valUpper.includes("ATRASO");
+        const agoraHHMM = new Date().toTimeString().slice(0, 5);
+        const hojeIso = new Date().toISOString().split("T")[0];
+
+        if (id === "tipo-registro") {
+          const contDisp = document.getElementById("container-dispensa-ocorrencia");
+          const ini = document.getElementById("oc-dispensa-inicio");
+          const fim = document.getElementById("oc-dispensa-fim");
+          if (contDisp) {
+            const pode = window.podeRegistrarDispensa();
+            contDisp.classList.toggle("hidden", !(isDispensa && pode));
+            if (isDispensa && pode) {
+              if (ini && !ini.value) ini.value = hojeIso;
+              if (fim && !fim.value) fim.value = hojeIso;
+              if (ini) ini.required = true;
+              if (fim) fim.required = true;
+            } else {
+              if (ini) ini.required = false;
+              if (fim) fim.required = false;
+            }
+          }
+          const contAtr = document.getElementById("container-atraso-ocorrencia");
+          const inpHora = document.getElementById("oc-hora-atraso");
+          if (contAtr) {
+            contAtr.classList.toggle("hidden", !isAtraso);
+            if (isAtraso && inpHora && !inpHora.value) inpHora.value = agoraHHMM;
+          }
+        } else if (id === "modal-acao-tipo") {
+          const contDisp = document.getElementById("modal-acao-container-dispensa");
+          const ini = document.getElementById("modal-acao-dispensa-inicio");
+          const fim = document.getElementById("modal-acao-dispensa-fim");
+          if (contDisp) {
+            const pode = window.podeRegistrarDispensa();
+            contDisp.classList.toggle("hidden", !(isDispensa && pode));
+            if (isDispensa && pode) {
+              if (ini && !ini.value) ini.value = hojeIso;
+              if (fim && !fim.value) fim.value = hojeIso;
+            }
+          }
+          const contAtr = document.getElementById("modal-acao-container-atraso");
+          const inpHora = document.getElementById("modal-acao-hora-atraso");
+          if (contAtr) {
+            contAtr.classList.toggle("hidden", !isAtraso);
+            if (isAtraso && inpHora && !inpHora.value) inpHora.value = agoraHHMM;
+          }
+        } else if (id === "edit-ocorrencia-tipo") {
+          const contDisp = document.getElementById("edit-oc-container-dispensa");
+          if (contDisp) {
+            contDisp.classList.toggle("hidden", !isDispensa);
+          }
+        }
+      };
+
+      // Registro direto de Dispensa / Afastamento Legal pelo painel exclusivo do Dossiê
+      window.salvarDispensaPeloDossie = async function() {
+        if (!window.podeRegistrarDispensa()) {
+          window.showToast("Apenas Secretaria, CGPG, Direção e Vice-Direção possuem permissão para registrar dispensas com datas.", "warning");
+          return;
+        }
+        const ra = document.getElementById("modal-aluno-ra-hidden")?.value;
+        if (!ra) {
+          window.showToast("Salve primeiro o cadastro do estudante antes de registrar uma dispensa.", "warning");
+          return;
+        }
+        const dataInicio = document.getElementById("dossie-dispensa-inicio")?.value || "";
+        const dataFim = document.getElementById("dossie-dispensa-fim")?.value || "";
+        const motivoDispensa = document.getElementById("dossie-dispensa-motivo")?.value || "Atestado Médico";
+        const obs = (document.getElementById("dossie-dispensa-obs")?.value || "").trim();
+
+        if (!dataInicio || !dataFim) {
+          window.showToast("Informe a Data Início e a Data Fim da dispensa.", "warning");
+          return;
+        }
+        if (dataFim < dataInicio) {
+          window.showToast("A Data Fim da dispensa não pode ser anterior à Data Início.", "warning");
+          return;
+        }
+
+        const btn = document.getElementById("btn-salvar-dispensa-dossie");
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin text-xs"></i><span>Salvando Dispensa...</span>`;
+        }
+
+        try {
+          const userDetails = window.obterIdentificacaoUsuarioCompleta ? window.obterIdentificacaoUsuarioCompleta() : { email: "", nome: "", cargo: "", textoCompleto: "" };
+          const aluno = (window.allStudentsData || []).find(s => String(s.ra) === String(ra)) || {};
+          const dtIniBr = dataInicio.split("-").reverse().join("/");
+          const dtFimBr = dataFim.split("-").reverse().join("/");
+          const diasDispensa = Math.max(1, Math.round((new Date(`${dataFim}T12:00:00`).getTime() - new Date(`${dataInicio}T12:00:00`).getTime()) / 86400000) + 1);
+          const descFinal = `Dispensa / Afastamento Legal (${motivoDispensa}) no período de ${dtIniBr} a ${dtFimBr} (${diasDispensa} dia(s)).${obs ? " Obs: " + obs : ""}`;
+
+          // REGRA CRÍTICA DE INTEGRAÇÃO (JSON): estritamente proibido incluir id ou _id no payload enviado ao banco
+          const dispensaPayload = {
+            ra: String(ra),
+            nomeAluno: String(aluno.nome || "").toUpperCase(),
+            turma: String(aluno.turma || "").toUpperCase(),
+            tipo: "Dispensa / Afastamento Legal",
+            categoria: "Dispensa / Afastamento Legal",
+            titulo: `Dispensa Legal (${motivoDispensa})`,
+            encaminhamento: "Afastamento justificado sincronizado com Presença Diária (3ª Métrica)",
+            descricao: descFinal,
+            isDispensa: true,
+            isAtraso: false,
+            dataInicio: dataInicio,
+            dataFim: dataFim,
+            motivoDispensa: motivoDispensa,
+            diasDispensa: diasDispensa,
+            data: new Date().toISOString(),
+            usuario: userDetails.textoCompleto,
+            autor: userDetails.textoCompleto,
+            registradoPor: userDetails.textoCompleto,
+            autor_email: userDetails.email,
+            autor_nome: userDetails.nome,
+            autor_cargo: userDetails.cargo,
+            cargo: userDetails.cargo
+          };
+
+          const docRef = await addDoc(collection(db, "ocorrencias"), dispensaPayload);
+          const dispensaLocal = { ...dispensaPayload, id: docRef.id };
+
+          if (!Array.isArray(window.ocorrenciasTopLevel)) window.ocorrenciasTopLevel = [];
+          window.ocorrenciasTopLevel.unshift(dispensaLocal);
+
+          const registroDispensaAluno = {
+            dataInicio: dataInicio,
+            dataFim: dataFim,
+            motivoDispensa: motivoDispensa,
+            diasDispensa: diasDispensa,
+            descricao: descFinal,
+            registradoPor: userDetails.textoCompleto,
+            data: dispensaPayload.data
+          };
+
+          const resumoAnt = aluno.acoes_2026 || "";
+          const novaLinha = `[${new Date().toLocaleDateString("pt-BR")}] DISPENSA (${dtIniBr} a ${dtFimBr}): ${motivoDispensa}${obs ? " - " + obs : ""}`;
+          const novoResumo = resumoAnt ? `${resumoAnt}\n${novaLinha}` : novaLinha;
+
+          const studentDocRef = doc(db, "alunos", String(ra));
+          try {
+            await updateDoc(studentDocRef, {
+              acoes_2026: novoResumo.toUpperCase(),
+              ocorrencias: arrayUnion(dispensaPayload),
+              dispensas: arrayUnion(registroDispensaAluno)
+            });
+          } catch (eUpd) {
+            await setDoc(studentDocRef, {
+              acoes_2026: novoResumo.toUpperCase(),
+              ocorrencias: arrayUnion(dispensaPayload),
+              dispensas: arrayUnion(registroDispensaAluno)
+            }, { merge: true });
+          }
+
+          if (aluno) {
+            aluno.acoes_2026 = novoResumo.toUpperCase();
+            if (!Array.isArray(aluno.ocorrencias)) aluno.ocorrencias = [];
+            aluno.ocorrencias.push(dispensaLocal);
+            if (!Array.isArray(aluno.dispensas)) aluno.dispensas = [];
+            aluno.dispensas.push(registroDispensaAluno);
+          }
+
+          if (typeof window.consolidarHistoricoOcorrenciasGlobais === "function") {
+            window.consolidarHistoricoOcorrenciasGlobais();
+          }
+          if (typeof window.carregarHistoricoAcoesModal === "function") {
+            await window.carregarHistoricoAcoesModal(ra);
+          }
+
+          const elObs = document.getElementById("dossie-dispensa-obs");
+          if (elObs) elObs.value = "";
+
+          if (typeof window.registrarLogAuditoria === "function") {
+            window.registrarLogAuditoria({
+              modulo: "Dossiê do Aluno",
+              acao: "CRIAR",
+              descricao: `Registrada Dispensa (${dtIniBr} a ${dtFimBr} - ${motivoDispensa}) para ${aluno.nome || ra}`,
+              detalhes: { ra, dataInicio, dataFim, motivoDispensa }
+            });
+          }
+
+          window.showToast(`Dispensa registrada (${dtIniBr} a ${dtFimBr}) e sincronizada com a Presença Diária!`, "success");
+        } catch (err) {
+          window.showErrorToast("Erro ao registrar dispensa do estudante.", err);
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fa-solid fa-calendar-check text-xs"></i><span>Registrar Dispensa e Afastar na Presença</span>`;
+          }
+        }
+      };
+
       // POPULAR/FILTRAR DROPDOWN DE CATEGORIAS DE REGISTRO CONFORME O PERFIL
       window.popularSelectCategoriasOcorrencia = function(selectEl) {
         if (!selectEl) return;
         const roleRaw = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
+        const roleNorm = window.normalizarUserRole
+          ? window.normalizarUserRole(roleRaw)
+          : String(roleRaw || "").toUpperCase().replace(/-/g, "_").trim();
         const role = String(roleRaw || "").toUpperCase().trim();
         const currentVal = selectEl.value;
 
         let optionsList = [];
-        if (role === "PROFESSOR" || role === "PROFESSOR_PAAC" || role === "PAAC") {
-          // PROFESSOR: Apenas opções pedagógicas (sem Atraso nem Saída Antecipada)
+        if (role === "PROFESSOR" || role === "PROFESSOR_PAAC" || role === "PAAC" || roleNorm === "PROFESSOR" || roleNorm === "PROFESSOR_PAAC") {
+          // PROFESSOR: Apenas opções pedagógicas (sem Atraso, Saída Antecipada nem Dispensa)
           optionsList = [
             { val: "Tutoria e Acolhimento", label: "Tutoria e Acolhimento" },
             { val: "Questão Pedagógica", label: "Questão Pedagógica" }
           ];
-        } else if (role === "SECRETARIA") {
+        } else if (role === "SECRETARIA" || roleNorm === "SECRETARIA") {
           optionsList = [
             { val: "Atraso", label: "Atraso" },
+            { val: "Dispensa / Afastamento Legal", label: "Dispensa / Afastamento Legal (Com Datas)" },
             { val: "Saída Antecipada", label: "Saída Antecipada" },
             { val: "Questão Disciplinar", label: "Questão Disciplinar" },
             { val: "Contato WhatsApp/Ligação", label: "Contato WhatsApp/Ligação" },
@@ -3720,12 +3940,13 @@
             { val: "Outros", label: "Outros" }
           ];
         } else {
-          // DIRETOR, VICE_DIRETOR, CGPG e outros gestores
+          // DIRETOR, VICE_DIRETOR, CGPG
           optionsList = [
             { val: "Tutoria e Acolhimento", label: "Tutoria e Acolhimento" },
             { val: "Questão Pedagógica", label: "Questão Pedagógica" },
             { val: "Questão Disciplinar", label: "Questão Disciplinar" },
             { val: "Atraso", label: "Atraso" },
+            { val: "Dispensa / Afastamento Legal", label: "Dispensa / Afastamento Legal (Com Datas)" },
             { val: "Saída Antecipada", label: "Saída Antecipada" },
             { val: "Contato WhatsApp/Ligação", label: "Contato WhatsApp/Ligação" },
             { val: "Registro na SED", label: "Registro na SED" },
@@ -3740,10 +3961,13 @@
           selectEl.value = currentVal;
         }
 
-        // Registrar listener para atualizar visibilidade do motivo e do CONVIVA dinamicamente
+        // Registrar listener para atualizar visibilidade do motivo, dispensa, atraso e CONVIVA dinamicamente
         selectEl.onchange = function() {
           if (selectEl.id === "tipo-registro" && typeof window.atualizarVisibilidadeMotivoSaida === "function") {
             window.atualizarVisibilidadeMotivoSaida();
+          }
+          if (typeof window.atualizarVisibilidadeDispensaAtraso === "function") {
+            window.atualizarVisibilidadeDispensaAtraso(selectEl);
           }
           if (typeof window.atualizarVisibilidadeConviva === "function") {
             window.atualizarVisibilidadeConviva(selectEl);
@@ -3752,6 +3976,9 @@
 
         if (selectEl.id === "tipo-registro" && typeof window.atualizarVisibilidadeMotivoSaida === "function") {
           window.atualizarVisibilidadeMotivoSaida();
+        }
+        if (typeof window.atualizarVisibilidadeDispensaAtraso === "function") {
+          window.atualizarVisibilidadeDispensaAtraso(selectEl);
         }
         if (typeof window.atualizarVisibilidadeConviva === "function") {
           window.atualizarVisibilidadeConviva(selectEl);
@@ -3898,6 +4125,20 @@
         }
         if (chkDossieNotif) {
           chkDossieNotif.checked = false; // Por padrão não notifica a direção, só se o professor marcar mesmo
+        }
+
+        // Controle do Painel de Dispensa / Afastamento Legal no Dossiê (Exclusivo Secretaria, CGPG, Direção e Vice)
+        const contDispDossie = document.getElementById("container-dossie-dispensa-rapida");
+        if (contDispDossie) {
+          const podeDispensa = typeof window.podeRegistrarDispensa === "function" ? window.podeRegistrarDispensa() : false;
+          contDispDossie.classList.toggle("hidden", !podeDispensa);
+          if (podeDispensa) {
+            const hojeIso = new Date().toISOString().split("T")[0];
+            const elIni = document.getElementById("dossie-dispensa-inicio");
+            const elFim = document.getElementById("dossie-dispensa-fim");
+            if (elIni && !elIni.value) elIni.value = hojeIso;
+            if (elFim && !elFim.value) elFim.value = hojeIso;
+          }
         }
       };
 
@@ -4357,9 +4598,46 @@
           const registradoConviva = chkConviva ? chkConviva.checked : false;
           const codigoConviva = registradoConviva ? (inputCodConviva?.value.trim().toUpperCase() || "") : "";
 
-          const descLower = (descricao || "").toLowerCase();
           const tipoLower = (tipo || "").toLowerCase();
-          const isAtraso = tipoLower.includes("atraso") || descLower.includes("atraso") || descLower.includes("atrasos");
+          const isDispensa = tipoLower.includes("dispensa") || tipoLower.includes("afastamento");
+
+          if (isDispensa && !(window.podeRegistrarDispensa && window.podeRegistrarDispensa())) {
+            window.showToast("Apenas Secretaria, CGPG, Direção e Vice-Direção podem registrar Dispensa / Afastamento Legal.", 'warning');
+            return;
+          }
+
+          let dispensaInicio = "";
+          let dispensaFim = "";
+          let dispensaMotivo = "";
+          let diasDispensa = 0;
+
+          if (isDispensa) {
+            dispensaInicio = document.getElementById("oc-dispensa-inicio")?.value || "";
+            dispensaFim = document.getElementById("oc-dispensa-fim")?.value || "";
+            dispensaMotivo = document.getElementById("oc-dispensa-motivo")?.value || "Atestado Médico";
+            if (!dispensaInicio || !dispensaFim) {
+              window.showToast("Informe a Data Início e Data Fim da Dispensa / Afastamento Legal.", 'warning');
+              return;
+            }
+            if (dispensaFim < dispensaInicio) {
+              window.showToast("A Data Fim da dispensa não pode ser anterior à Data Início.", 'warning');
+              return;
+            }
+            diasDispensa = Math.max(1, Math.round((new Date(`${dispensaFim}T12:00:00`).getTime() - new Date(`${dispensaInicio}T12:00:00`).getTime()) / 86400000) + 1);
+            const dtIniBr = dispensaInicio.split("-").reverse().join("/");
+            const dtFimBr = dispensaFim.split("-").reverse().join("/");
+            if (!descricao.includes(dtIniBr)) {
+              descricao = `[Dispensa ${dispensaMotivo}: ${dtIniBr} a ${dtFimBr}] ${descricao}`;
+            }
+          }
+
+          const descLower = (descricao || "").toLowerCase();
+          const isAtraso = !isDispensa && (tipoLower.includes("atraso") || descLower.includes("atraso") || descLower.includes("atrasos"));
+          const horaRealAtraso = isAtraso ? (document.getElementById("oc-hora-atraso")?.value || new Date().toTimeString().slice(0, 5)) : "";
+
+          if (isAtraso && horaRealAtraso && !descricao.includes(horaRealAtraso)) {
+            descricao = `${descricao} (Chegada às ${horaRealAtraso})`;
+          }
 
           if (btnSalvar) {
             btnSalvar.disabled = true;
@@ -4374,10 +4652,11 @@
             if (editOcId) {
               // É EDIÇÃO: Atualizar o documento existente preservando autor original e gravando auditoria da edição
               const docRef = doc(db, "ocorrencias", editOcId);
-              await updateDoc(docRef, {
+              const payloadEdicao = {
                 tipo: tipo,
                 descricao: descricao,
                 isAtraso: isAtraso,
+                isDispensa: isDispensa,
                 cienciaResponsavel: cienciaResponsavel,
                 dataCiencia: dataCiencia,
                 registradoConviva: registradoConviva,
@@ -4390,28 +4669,32 @@
                 editado_por_cargo: userDetails.cargo,
                 editado_por_completo: userDetails.textoCompleto,
                 data_ultima_edicao: new Date().toISOString()
-              });
+              };
+              if (isAtraso && horaRealAtraso) {
+                payloadEdicao.horaRealAtraso = horaRealAtraso;
+                payloadEdicao.horarioAtraso = horaRealAtraso;
+              }
+              if (isDispensa) {
+                payloadEdicao.dataInicio = dispensaInicio;
+                payloadEdicao.dataFim = dispensaFim;
+                payloadEdicao.motivoDispensa = dispensaMotivo;
+                payloadEdicao.diasDispensa = diasDispensa;
+              }
+              await updateDoc(docRef, payloadEdicao);
 
               if (typeof window.registrarLogAuditoria === "function") {
                 window.registrarLogAuditoria({
                   modulo: "Alunos",
                   acao: "ATUALIZAR",
                   descricao: `Atualizada ocorrência (${tipo}) de ${alunoAtual.nome} (${alunoAtual.turma || ''})`,
-                  detalhes: { id: editOcId, tipo, descricao }
+                  detalhes: { ra: alunoAtual.ra, tipo, descricao }
                 });
               }
 
               if (Array.isArray(window.ocorrenciasTopLevel)) {
                 const item = window.ocorrenciasTopLevel.find(o => o.id === editOcId);
                 if (item) {
-                  item.tipo = tipo;
-                  item.descricao = descricao;
-                  item.isAtraso = isAtraso;
-                  item.cienciaResponsavel = cienciaResponsavel;
-                  item.dataCiencia = dataCiencia;
-                  item.registradoConviva = registradoConviva;
-                  item.codigoConviva = codigoConviva;
-                  item.protocoloConviva = codigoConviva;
+                  Object.assign(item, payloadEdicao);
                 }
               }
 
@@ -4432,8 +4715,10 @@
                 nomeAluno: alunoAtual.nome,
                 turma: alunoAtual.turma || "",
                 tipo: tipo,
+                categoria: tipo,
                 descricao: descricao,
                 isAtraso: isAtraso,
+                isDispensa: isDispensa,
                 notificarDirecao: notificarDirecao,
                 notificarGestao: notificarDirecao,
                 notificacaoDirecaoPendente: notificarDirecao,
@@ -4461,6 +4746,17 @@
                 }
               };
 
+              if (isAtraso && horaRealAtraso) {
+                novaOcorrencia.horaRealAtraso = horaRealAtraso;
+                novaOcorrencia.horarioAtraso = horaRealAtraso;
+              }
+              if (isDispensa) {
+                novaOcorrencia.dataInicio = dispensaInicio;
+                novaOcorrencia.dataFim = dispensaFim;
+                novaOcorrencia.motivoDispensa = dispensaMotivo;
+                novaOcorrencia.diasDispensa = diasDispensa;
+              }
+
               const docRef = await addDoc(collection(db, "ocorrencias"), novaOcorrencia);
               const ocorrenciaLocal = { ...novaOcorrencia, id: docRef.id };
 
@@ -4478,23 +4774,43 @@
                 const novoResumo = resumoAnt ? `${resumoAnt}\n${novaLinha}` : novaLinha;
                 const targetRa = stObj.ra || alunoAtual.ra;
                 const studentDocRef = doc(db, "alunos", String(targetRa));
+                const updatePayloadAluno = {
+                  acoes_2026: novoResumo.toUpperCase(),
+                  ocorrencias: arrayUnion(novaOcorrencia)
+                };
+                const registroDispensaAluno = isDispensa ? {
+                  dataInicio: dispensaInicio,
+                  dataFim: dispensaFim,
+                  motivoDispensa: dispensaMotivo,
+                  diasDispensa: diasDispensa,
+                  descricao: descricao,
+                  registradoPor: autorFinal,
+                  data: novaOcorrencia.data
+                } : null;
+                if (registroDispensaAluno) {
+                  updatePayloadAluno.dispensas = arrayUnion(registroDispensaAluno);
+                }
+
                 try {
-                  await updateDoc(studentDocRef, {
-                    acoes_2026: novoResumo.toUpperCase(),
-                    ocorrencias: arrayUnion(novaOcorrencia)
-                  });
+                  await updateDoc(studentDocRef, updatePayloadAluno);
                 } catch (eUpd) {
-                  await setDoc(studentDocRef, {
-                    acoes_2026: novoResumo.toUpperCase(),
-                    ocorrencias: arrayUnion(novaOcorrencia)
-                  }, { merge: true });
+                  await setDoc(studentDocRef, updatePayloadAluno, { merge: true });
                 }
                 stObj.acoes_2026 = novoResumo.toUpperCase();
                 if (!Array.isArray(stObj.ocorrencias)) stObj.ocorrencias = [];
                 stObj.ocorrencias.push(ocorrenciaLocal);
+                if (registroDispensaAluno) {
+                  if (!Array.isArray(stObj.dispensas)) stObj.dispensas = [];
+                  stObj.dispensas.push(registroDispensaAluno);
+                }
               }
 
-              window.showToast("Registro de ocorrência salvo no banco de dados com sucesso!", 'success');
+              window.showToast(
+                isDispensa
+                  ? "Dispensa registrada e sincronizada automaticamente com a Presença Diária!"
+                  : "Registro de ocorrência salvo no banco de dados com sucesso!",
+                'success'
+              );
 
               if (typeof window.registrarLogAuditoria === "function") {
                 window.registrarLogAuditoria({
@@ -5236,9 +5552,15 @@
           const countReinc = oc.reincidencia || 1;
 
           let tipoTag = "bg-blue-50 text-blue-700 border-blue-200";
-          if (tipo.includes("DISCIPLINAR")) tipoTag = "bg-red-50 text-red-700 border-red-200";
+          const isDispensaRow = typeof window.isOcorrenciaDispensa === "function" ? window.isOcorrenciaDispensa(oc) : (tipo.includes("DISPENSA") && Boolean(oc.dataInicio || oc.dataFim));
+          if (isDispensaRow) tipoTag = "bg-blue-100 text-blue-900 border-blue-300 font-black";
+          else if (tipo.includes("DISCIPLINAR")) tipoTag = "bg-red-50 text-red-700 border-red-200";
           else if (tipo.includes("ATRASO")) tipoTag = "bg-amber-50 text-amber-800 border-amber-200 font-bold";
           else if (tipo.includes("WHATSAPP") || tipo.includes("LIGAÇÃO")) tipoTag = "bg-emerald-50 text-emerald-700 border-emerald-200";
+
+          const dispensaPeriodoHtml = isDispensaRow && oc.dataInicio && oc.dataFim
+            ? `<div class="mt-1 text-[10px] font-extrabold text-blue-800"><i class="fa-solid fa-calendar-check mr-1"></i>${String(oc.dataInicio).split('-').reverse().join('/')} a ${String(oc.dataFim).split('-').reverse().join('/')}</div>`
+            : "";
 
           const rowBg = countReinc > 1 ? "bg-amber-50 hover:bg-amber-100/60" : "hover:bg-slate-50";
           const reincBadge = countReinc > 1 
@@ -5319,6 +5641,7 @@
                 <span class="px-2 py-0.5 ${tipoTag} border rounded text-[10px] font-bold uppercase tracking-wider inline-block">
                   ${tipo}
                 </span>
+                ${dispensaPeriodoHtml}
               </td>
               <td class="px-3.5 py-3 text-slate-600 max-w-xs truncate" title="${desc.replace(/"/g, '&quot;')}">${desc}</td>
               <td class="px-3.5 py-3 whitespace-nowrap">${htmlCiencia}</td>
@@ -5418,6 +5741,7 @@
 
       window.isOcorrenciaAtraso = function(oc) {
         if (!oc) return false;
+        if (typeof window.isOcorrenciaDispensa === "function" && window.isOcorrenciaDispensa(oc)) return false;
         const tipoStr = String(oc?.tipo || "").toUpperCase();
         const catStr = String(oc?.categoria || "").toUpperCase();
         const descStr = String(oc?.descricao || "").toUpperCase();
@@ -5486,11 +5810,15 @@
 
         const ocorrenciasGlobaisRaw = (window.ocorrenciasCache || []);
 
-        // Supressão de Dados na Fonte: Perfis pedagógicos (CGPG, PAAC, PROFESSOR) veem EXCLUSIVAMENTE registros de Tutoria e Questões Pedagógicas
+        // Supressão de Dados na Fonte: Perfis pedagógicos (CGPG, PAAC, PROFESSOR) veem Tutoria e Pedagógica; CGPG também vê Dispensa / Afastamento Legal
+        const podeVerDispensa = typeof window.podeRegistrarDispensa === "function" ? window.podeRegistrarDispensa() : false;
         const ocorrenciasGlobais = (ocorrenciasGlobaisRaw || []).filter(registro => {
           if (!registro) return false;
           if (!isPerfilPedagogico) return true; // Diretor, Vice e Secretaria veem tudo
           const tipo = (registro.tipo || registro.categoria || registro.descricao || '').toUpperCase();
+          if (podeVerDispensa && (registro.isDispensa === true || tipo.includes('DISPENSA') || tipo.includes('AFASTAMENTO'))) {
+            return true;
+          }
           return tipo.includes('TUTORIA') || tipo.includes('PEDAGÓGICA') || tipo.includes('PEDAGOGICA');
         });
 
@@ -5505,7 +5833,7 @@
         const comFiltrosGlobais = (ocorrenciasGlobais || []).filter(oc => {
           if (!oc) return false;
 
-          const textFull = `${oc?.nomeAluno || ''} ${oc?.ra || ''} ${oc?.turma || ''} ${oc?.tipo || ''} ${oc?.categoria || ''} ${oc?.descricao || ''} ${oc?.observacao || ''} ${oc?.codigoConviva || ''} ${oc?.protocoloConviva || ''} ${oc?.usuario || ''} ${oc?.autor || ''} ${oc?.autor_nome || ''}`.toLowerCase();
+          const textFull = `${oc?.nomeAluno || ''} ${oc?.ra || ''} ${oc?.turma || ''} ${oc?.tipo || ''} ${oc?.categoria || ''} ${oc?.descricao || ''} ${oc?.observacao || ''} ${oc?.motivoDispensa || ''} ${oc?.codigoConviva || ''} ${oc?.protocoloConviva || ''} ${oc?.usuario || ''} ${oc?.autor || ''} ${oc?.autor_nome || ''}`.toLowerCase();
           if (queryText && !textFull.includes(queryText)) return false;
 
           // Filtro por Turma com normalização de tokens (ex: "6A" casa com "6º ANO A")
@@ -5549,6 +5877,8 @@
               if (!ocTipo.includes("TUTORIA") && !ocTipo.includes("ACOLHIMENTO") && !ocCat.includes("TUTORIA") && !ocDesc.includes("TUTORIA")) return false;
             } else if (selTipoUpper.includes("ATRASO")) {
               if (!isAtrasoFn(oc)) return false;
+            } else if (selTipoUpper.includes("DISPENSA")) {
+              if (!(oc?.isDispensa === true || ocTipo.includes("DISPENSA") || ocCat.includes("DISPENSA"))) return false;
             } else if (selTipoUpper === "CONVIVA") {
               if (!isConviva) return false;
             } else if (selTipoUpper === "POSITIVA") {
@@ -5689,7 +6019,20 @@
         if (tipoSelect) {
           window.popularSelectCategoriasOcorrencia(tipoSelect);
           tipoSelect.value = oc.tipo || "Tutoria e Acolhimento";
+          if (typeof window.atualizarVisibilidadeDispensaAtraso === "function") {
+            window.atualizarVisibilidadeDispensaAtraso(tipoSelect);
+          }
+          if (typeof window.atualizarVisibilidadeConviva === "function") {
+            window.atualizarVisibilidadeConviva(tipoSelect);
+          }
         }
+
+        const inpEditDispIni = document.getElementById("edit-oc-dispensa-inicio");
+        const inpEditDispFim = document.getElementById("edit-oc-dispensa-fim");
+        const selEditDispMot = document.getElementById("edit-oc-dispensa-motivo");
+        if (inpEditDispIni) inpEditDispIni.value = oc.dataInicio || "";
+        if (inpEditDispFim) inpEditDispFim.value = oc.dataFim || "";
+        if (selEditDispMot && oc.motivoDispensa) selEditDispMot.value = oc.motivoDispensa;
 
         if (descTextarea) descTextarea.value = oc.descricao || oc.observacao || "";
 
@@ -5725,6 +6068,22 @@
           const chkConviva = document.getElementById("edit-oc-registrado-conviva")?.checked || false;
           const codigoConviva = chkConviva ? (document.getElementById("edit-oc-codigo-conviva")?.value.trim().toUpperCase() || "") : "";
 
+          const isDispensaEdit = String(tipo || "").toUpperCase().includes("DISPENSA");
+          const editDispIni = isDispensaEdit ? (document.getElementById("edit-oc-dispensa-inicio")?.value || "") : "";
+          const editDispFim = isDispensaEdit ? (document.getElementById("edit-oc-dispensa-fim")?.value || "") : "";
+          const editDispMot = isDispensaEdit ? (document.getElementById("edit-oc-dispensa-motivo")?.value || "Atestado Médico") : "";
+
+          if (isDispensaEdit) {
+            if (typeof window.podeRegistrarDispensa === "function" && !window.podeRegistrarDispensa()) {
+              window.showToast("Apenas Secretaria, CGPG, Direção e Vice-Direção podem editar Dispensas.", "error");
+              return;
+            }
+            if (!editDispIni || !editDispFim || editDispFim < editDispIni) {
+              window.showToast("Informe um período válido (Data Início <= Data Fim) para a dispensa.", "warning");
+              return;
+            }
+          }
+
           if (!id || !descricao) return;
 
           const btnSalvar = document.getElementById("btn-salvar-edit-ocorrencia");
@@ -5735,10 +6094,15 @@
 
           try {
             const userDetails = window.obterIdentificacaoUsuarioCompleta ? window.obterIdentificacaoUsuarioCompleta() : { email: '', nome: '', cargo: '', textoCompleto: '' };
+            const diasDispensaCalc = isDispensaEdit
+              ? Math.max(1, Math.round((new Date(`${editDispFim}T12:00:00`).getTime() - new Date(`${editDispIni}T12:00:00`).getTime()) / 86400000) + 1)
+              : 0;
             const payloadUpdate = {
               tipo: tipo,
+              categoria: tipo,
               descricao: descricao,
               observacao: descricao,
+              isDispensa: isDispensaEdit,
               cienciaResponsavel: chkCiencia,
               dataCiencia: dataCiencia,
               registradoConviva: chkConviva,
@@ -5750,6 +6114,12 @@
               editado_por_completo: userDetails.textoCompleto || "",
               data_ultima_edicao: new Date().toISOString()
             };
+            if (isDispensaEdit) {
+              payloadUpdate.dataInicio = editDispIni;
+              payloadUpdate.dataFim = editDispFim;
+              payloadUpdate.motivoDispensa = editDispMot;
+              payloadUpdate.diasDispensa = diasDispensaCalc;
+            }
 
             // a) Atualiza documento na coleção 'ocorrencias'
             if (!id.startsWith("emb_") && !id.startsWith("oc_local_")) {
@@ -5785,11 +6155,13 @@
                       genId === id || embId === id) {
                     alterou = true;
                     raAlunoAfetado = stRa;
-                    return {
+                    const updatedItem = {
                       ...oc,
                       tipo: tipo,
+                      categoria: tipo,
                       descricao: descricao,
                       observacao: descricao,
+                      isDispensa: isDispensaEdit,
                       cienciaResponsavel: chkCiencia,
                       dataCiencia: dataCiencia,
                       registradoConviva: chkConviva,
@@ -5797,8 +6169,20 @@
                       data_ultima_edicao: new Date().toISOString(),
                       editado_por_nome: userDetails.nome || ""
                     };
+                    if (isDispensaEdit) {
+                      updatedItem.dataInicio = editDispIni;
+                      updatedItem.dataFim = editDispFim;
+                      updatedItem.motivoDispensa = editDispMot;
+                      updatedItem.diasDispensa = diasDispensaCalc;
+                    }
+                    delete updatedItem.id;
+                    delete updatedItem._id;
+                    return updatedItem;
                   }
-                  return oc;
+                  const cleanItem = { ...oc };
+                  delete cleanItem.id;
+                  delete cleanItem._id;
+                  return cleanItem;
                 });
 
                 if (alterou) {
@@ -5826,8 +6210,16 @@
               const itemCache = window.ocorrenciasCache.find(o => String(o.id) === String(id));
               if (itemCache) {
                 itemCache.tipo = tipo;
+                itemCache.categoria = tipo;
                 itemCache.descricao = descricao;
                 itemCache.observacao = descricao;
+                itemCache.isDispensa = isDispensaEdit;
+                if (isDispensaEdit) {
+                  itemCache.dataInicio = editDispIni;
+                  itemCache.dataFim = editDispFim;
+                  itemCache.motivoDispensa = editDispMot;
+                  itemCache.diasDispensa = diasDispensaCalc;
+                }
                 itemCache.cienciaResponsavel = chkCiencia;
                 itemCache.dataCiencia = dataCiencia;
                 itemCache.registradoConviva = chkConviva;
@@ -5840,8 +6232,16 @@
               const itemTop = window.ocorrenciasTopLevel.find(o => String(o.id) === String(id));
               if (itemTop) {
                 itemTop.tipo = tipo;
+                itemTop.categoria = tipo;
                 itemTop.descricao = descricao;
                 itemTop.observacao = descricao;
+                itemTop.isDispensa = isDispensaEdit;
+                if (isDispensaEdit) {
+                  itemTop.dataInicio = editDispIni;
+                  itemTop.dataFim = editDispFim;
+                  itemTop.motivoDispensa = editDispMot;
+                  itemTop.diasDispensa = diasDispensaCalc;
+                }
                 itemTop.cienciaResponsavel = chkCiencia;
                 itemTop.dataCiencia = dataCiencia;
                 itemTop.registradoConviva = chkConviva;
@@ -5859,6 +6259,7 @@
             } else if (typeof renderHistoricoOcorrencias === "function") {
               renderHistoricoOcorrencias(window.ocorrenciasCache);
             }
+            window.dispatchEvent(new CustomEvent("clovis_ocorrencias_updated"));
 
             // d) Se o Dossiê do Aluno estiver aberto, recarrega a timeline de ações imediatamente
             const targetRaDossie = raAlunoAfetado || window.currentDossieRa;
@@ -16114,6 +16515,10 @@ Yasmin Seline`;
               descricao: d.descricao || d.observacao || "Sem descrição",
               usuario: d.usuario || d.autor || "Usuário Registrado",
               isAtraso: d.isAtraso,
+              isDispensa: Boolean(d.isDispensa || (d.tipo && String(d.tipo).toUpperCase().includes("DISPENSA"))),
+              dataInicio: d.dataInicio || "",
+              dataFim: d.dataFim || "",
+              motivoDispensa: d.motivoDispensa || "",
               registradoConviva: Boolean(d.registradoConviva || d.registrado_conviva || d.isConviva || (d.tipo && String(d.tipo).toUpperCase().includes("CONVIVA"))),
               codigoConviva: d.codigoConviva || d.codigo_conviva || "",
               rawDoc: d
@@ -16134,6 +16539,10 @@ Yasmin Seline`;
                   descricao: d.descricao || d.observacao || "Sem descrição",
                   usuario: d.usuario || d.autor || "GESTAO",
                   isAtraso: d.isAtraso,
+                  isDispensa: Boolean(d.isDispensa || (d.tipo && String(d.tipo).toUpperCase().includes("DISPENSA"))),
+                  dataInicio: d.dataInicio || "",
+                  dataFim: d.dataFim || "",
+                  motivoDispensa: d.motivoDispensa || "",
                   registradoConviva: Boolean(d.registradoConviva || d.registrado_conviva || d.isConviva || (d.tipo && String(d.tipo).toUpperCase().includes("CONVIVA"))),
                   codigoConviva: d.codigoConviva || d.codigo_conviva || ""
                 });
@@ -16157,6 +16566,10 @@ Yasmin Seline`;
                   descricao: oc.descricao || oc.observacao || "Sem descrição",
                   usuario: oc.usuario || oc.autor || "GESTAO",
                   isAtraso: oc.isAtraso,
+                  isDispensa: Boolean(oc.isDispensa || (oc.tipo && String(oc.tipo).toUpperCase().includes("DISPENSA"))),
+                  dataInicio: oc.dataInicio || "",
+                  dataFim: oc.dataFim || "",
+                  motivoDispensa: oc.motivoDispensa || "",
                   registradoConviva: Boolean(oc.registradoConviva || oc.registrado_conviva || oc.isConviva || (oc.tipo && String(oc.tipo).toUpperCase().includes("CONVIVA"))),
                   codigoConviva: oc.codigoConviva || oc.codigo_conviva || ""
                 });
@@ -16164,16 +16577,60 @@ Yasmin Seline`;
             });
           }
 
-          // Nota: A coleção de ocorrências já guarda as ações de Busca Ativa devidamente formatadas [BUSCA ATIVA...]
-          // Não se faz a adição dos registros brutos da sub-coleção 'busca_ativa' no Dossiê para evitar triplicação.
-
           // 3. Ordena por data mais recente primeiro
           acoesAluno.sort((a, b) => new Date(b.data || 0) - new Date(a.data || 0));
 
           window.currentModalStudentAcoes = acoesAluno;
 
-          // Contabilização de Atrasos
+          // Renderizar lista resumida de Dispensas com datas no Dossiê
+          const elListaDispensas = document.getElementById("dossie-lista-dispensas");
+          if (elListaDispensas) {
+            const dispensasList = [];
+            const seenDispKey = new Set();
+            acoesAluno.filter(a => a.isDispensa && a.dataInicio && a.dataFim).forEach(d => {
+              const k = `${d.dataInicio}|${d.dataFim}|${d.motivoDispensa}`;
+              if (!seenDispKey.has(k)) {
+                seenDispKey.add(k);
+                dispensasList.push(d);
+              }
+            });
+            if (stObj && Array.isArray(stObj.dispensas)) {
+              stObj.dispensas.forEach(d => {
+                if (d?.dataInicio && d?.dataFim) {
+                  const k = `${d.dataInicio}|${d.dataFim}|${d.motivoDispensa}`;
+                  if (!seenDispKey.has(k)) {
+                    seenDispKey.add(k);
+                    dispensasList.push(d);
+                  }
+                }
+              });
+            }
+            if (dispensasList.length === 0) {
+              elListaDispensas.innerHTML = `<p class="text-[11px] text-slate-500 italic">Nenhuma dispensa com período registrada até o momento.</p>`;
+            } else {
+              const hojeYmd = new Date().toISOString().split("T")[0];
+              elListaDispensas.innerHTML = dispensasList.map(d => {
+                const iniBr = String(d.dataInicio).split("-").reverse().join("/");
+                const fimBr = String(d.dataFim).split("-").reverse().join("/");
+                const vigente = hojeYmd >= d.dataInicio && hojeYmd <= d.dataFim;
+                return `
+                  <div class="p-2 bg-white border ${vigente ? "border-blue-400" : "border-blue-200"} rounded-lg flex items-center justify-between gap-2 flex-wrap">
+                    <div class="flex items-center gap-2">
+                      <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-900 font-black text-[10px] uppercase">${d.motivoDispensa || "Dispensa Legal"}</span>
+                      <span class="font-bold text-slate-800">${iniBr} a ${fimBr}</span>
+                    </div>
+                    <span class="text-[10px] font-bold ${vigente ? "text-emerald-700" : "text-slate-500"}">
+                      ${vigente ? "Vigente hoje na Presença Diária" : (d.dataFim < hojeYmd ? "Período encerrado" : "Programada")}
+                    </span>
+                  </div>
+                `;
+              }).join("");
+            }
+          }
+
+          // Contabilização de Atrasos (desconsidera Dispensas)
           const totalAtrasos = acoesAluno.filter(oc => {
+            if (oc.isDispensa) return false;
             const descLower = (oc.descricao || "").toLowerCase();
             const tipoLower = (oc.tipo || "").toLowerCase();
             return oc.isAtraso === true || tipoLower.includes("atraso") || descLower.includes("atraso") || descLower.includes("atrasos");
@@ -16216,10 +16673,13 @@ Yasmin Seline`;
 
             const descLower = desc.toLowerCase();
             const tipoLower = tipo.toLowerCase();
-            const itemIsAtraso = item.isAtraso === true || tipoLower.includes("atraso") || descLower.includes("atraso") || descLower.includes("atrasos");
+            const itemIsDispensa = Boolean(item.isDispensa || tipoLower.includes("dispensa"));
+            const itemIsAtraso = !itemIsDispensa && (item.isAtraso === true || tipoLower.includes("atraso") || descLower.includes("atraso") || descLower.includes("atrasos"));
 
             let tipoClass = "bg-blue-100 text-blue-800 border-blue-300";
-            if (isBuscaAtiva) {
+            if (itemIsDispensa) {
+              tipoClass = "bg-blue-200 text-blue-950 border-blue-400 font-black";
+            } else if (isBuscaAtiva) {
               tipoClass = "bg-emerald-100 text-emerald-800 border-emerald-300 font-bold";
             } else if (tipo.includes("DISCIPLINAR")) {
               tipoClass = "bg-red-100 text-red-800 border-red-300";
@@ -16234,6 +16694,10 @@ Yasmin Seline`;
             const origemTag = isBuscaAtiva 
               ? `<span class="px-1.5 py-0.5 bg-emerald-200 text-emerald-900 border border-emerald-400 rounded text-[9px] font-black uppercase tracking-wider flex items-center gap-1"><i class="fa-solid fa-magnifying-glass-location"></i> Busca Ativa</span>`
               : `<span class="px-1.5 py-0.5 bg-blue-200 text-blue-900 border border-blue-300 rounded text-[9px] font-bold uppercase tracking-wider flex items-center gap-1"><i class="fa-solid fa-clipboard-list"></i> Ocorrência</span>`;
+
+            const dispensaTag = itemIsDispensa && item.dataInicio && item.dataFim
+              ? `<span class="px-1.5 py-0.5 bg-blue-100 text-blue-950 border border-blue-300 rounded text-[9px] font-black uppercase tracking-wider flex items-center gap-1"><i class="fa-solid fa-calendar-check"></i> ${String(item.dataInicio).split("-").reverse().join("/")} a ${String(item.dataFim).split("-").reverse().join("/")}</span>`
+              : "";
 
             const atrasoTag = itemIsAtraso ? `<span class="px-1.5 py-0.5 bg-amber-200 text-amber-900 border border-amber-300 rounded text-[9px] font-black uppercase tracking-wider flex items-center gap-1"><i class="fa-solid fa-clock"></i> Atraso</span>` : "";
 
@@ -16272,6 +16736,7 @@ Yasmin Seline`;
                   <div class="flex items-center gap-1.5 flex-wrap">
                     ${origemTag}
                     <span class="px-2 py-0.5 ${tipoClass} border text-[9px] font-extrabold rounded uppercase tracking-wider">${tipo}</span>
+                    ${dispensaTag}
                     ${atrasoTag}
                     ${convivaTag}
                   </div>
@@ -16384,9 +16849,44 @@ Yasmin Seline`;
         }
 
         const tipo = document.getElementById("modal-acao-tipo")?.value;
-        const descricao = document.getElementById("modal-acao-descricao")?.value.trim().toUpperCase();
+        let descricao = (document.getElementById("modal-acao-descricao")?.value || "").trim().toUpperCase();
         const chkConviva = document.getElementById("modal-acao-conviva");
         const inputCodConviva = document.getElementById("modal-acao-codigo-conviva");
+
+        const tipoLower = (tipo || "").toLowerCase();
+        const isDispensa = tipoLower.includes("dispensa") || tipoLower.includes("afastamento");
+
+        if (isDispensa && !(window.podeRegistrarDispensa && window.podeRegistrarDispensa())) {
+          window.showToast("Apenas Secretaria, CGPG, Direção e Vice-Direção possuem permissão para registrar Dispensa / Afastamento Legal.", 'warning');
+          return;
+        }
+
+        let dispensaInicio = "";
+        let dispensaFim = "";
+        let dispensaMotivo = "";
+        let diasDispensa = 0;
+
+        if (isDispensa) {
+          dispensaInicio = document.getElementById("modal-acao-dispensa-inicio")?.value || "";
+          dispensaFim = document.getElementById("modal-acao-dispensa-fim")?.value || "";
+          dispensaMotivo = document.getElementById("modal-acao-dispensa-motivo")?.value || "Atestado Médico";
+          if (!dispensaInicio || !dispensaFim) {
+            window.showToast("Informe a Data Início e a Data Fim da dispensa.", 'warning');
+            return;
+          }
+          if (dispensaFim < dispensaInicio) {
+            window.showToast("A Data Fim não pode ser anterior à Data Início.", 'warning');
+            return;
+          }
+          diasDispensa = Math.max(1, Math.round((new Date(`${dispensaFim}T12:00:00`).getTime() - new Date(`${dispensaInicio}T12:00:00`).getTime()) / 86400000) + 1);
+          const iniBr = dispensaInicio.split("-").reverse().join("/");
+          const fimBr = dispensaFim.split("-").reverse().join("/");
+          if (!descricao) {
+            descricao = `DISPENSA / AFASTAMENTO LEGAL (${dispensaMotivo.toUpperCase()}): ${iniBr} A ${fimBr} (${diasDispensa} DIA(S)).`;
+          } else if (!descricao.includes(iniBr)) {
+            descricao = `[DISPENSA ${dispensaMotivo.toUpperCase()}: ${iniBr} A ${fimBr}] ${descricao}`;
+          }
+        }
 
         if (!descricao) {
           window.showToast("Por favor, informe a descrição detalhada da ação pedagógica.", 'warning');
@@ -16397,8 +16897,11 @@ Yasmin Seline`;
         const codigoConviva = registradoConviva ? (inputCodConviva?.value.trim().toUpperCase() || "") : "";
 
         const descLower = (descricao || "").toLowerCase();
-        const tipoLower = (tipo || "").toLowerCase();
-        const isAtraso = tipoLower.includes("atraso") || descLower.includes("atraso") || descLower.includes("atrasos");
+        const isAtraso = !isDispensa && (tipoLower.includes("atraso") || descLower.includes("atraso") || descLower.includes("atrasos"));
+        const horaRealAtraso = isAtraso ? (document.getElementById("modal-acao-hora-atraso")?.value || new Date().toTimeString().slice(0, 5)) : "";
+        if (isAtraso && horaRealAtraso && !descricao.includes(horaRealAtraso)) {
+          descricao = `${descricao} (CHEGADA ÀS ${horaRealAtraso})`;
+        }
 
         const btn = document.getElementById("btn-salvar-acao-modal");
         if (btn) {
@@ -16417,13 +16920,16 @@ Yasmin Seline`;
           const notificarDirecao = (isDocenteModal && chkNotificarDirecao && chkNotificarDirecao.checked) ? true : false;
 
           const aluno = (window.allStudentsData || []).find(s => s.ra === ra) || {};
+          // REGRA CRÍTICA DE INTEGRAÇÃO (JSON): estritamente proibido incluir id ou _id
           const acaoDoc = {
             ra: ra,
             nomeAluno: (aluno.nome || "").toUpperCase(),
             turma: (aluno.turma || "").toUpperCase(),
             tipo: tipo,
+            categoria: tipo,
             descricao: descricao,
             isAtraso: isAtraso,
+            isDispensa: isDispensa,
             notificarDirecao: notificarDirecao,
             notificarGestao: notificarDirecao,
             notificacaoDirecaoPendente: notificarDirecao,
@@ -16449,6 +16955,17 @@ Yasmin Seline`;
             }
           };
 
+          if (isAtraso && horaRealAtraso) {
+            acaoDoc.horaRealAtraso = horaRealAtraso;
+            acaoDoc.horarioAtraso = horaRealAtraso;
+          }
+          if (isDispensa) {
+            acaoDoc.dataInicio = dispensaInicio;
+            acaoDoc.dataFim = dispensaFim;
+            acaoDoc.motivoDispensa = dispensaMotivo;
+            acaoDoc.diasDispensa = diasDispensa;
+          }
+
           const docRef = await addDoc(collection(db, "ocorrencias"), acaoDoc);
           const acaoDocLocal = { ...acaoDoc, id: docRef.id };
 
@@ -16461,22 +16978,37 @@ Yasmin Seline`;
           const novoResumo = resumoAnt ? `${resumoAnt}\n[${new Date().toLocaleDateString("pt-BR")}] ${tipo}${tagConvivaTxt}: ${descricao}` : `[${new Date().toLocaleDateString("pt-BR")}] ${tipo}${tagConvivaTxt}: ${descricao}`;
 
           const studentDocRef = doc(db, "alunos", ra);
+          const updateAlunoPayload = {
+            acoes_2026: novoResumo.toUpperCase(),
+            ocorrencias: arrayUnion(acaoDoc)
+          };
+          const regDispAluno = isDispensa ? {
+            dataInicio: dispensaInicio,
+            dataFim: dispensaFim,
+            motivoDispensa: dispensaMotivo,
+            diasDispensa: diasDispensa,
+            descricao: descricao,
+            registradoPor: userDetails.textoCompleto,
+            data: acaoDoc.data
+          } : null;
+          if (regDispAluno) {
+            updateAlunoPayload.dispensas = arrayUnion(regDispAluno);
+          }
+
           try {
-            await updateDoc(studentDocRef, {
-              acoes_2026: novoResumo.toUpperCase(),
-              ocorrencias: arrayUnion(acaoDoc)
-            });
+            await updateDoc(studentDocRef, updateAlunoPayload);
           } catch (eUpd) {
-            await setDoc(studentDocRef, {
-              acoes_2026: novoResumo.toUpperCase(),
-              ocorrencias: arrayUnion(acaoDoc)
-            }, { merge: true });
+            await setDoc(studentDocRef, updateAlunoPayload, { merge: true });
           }
 
           if (aluno) {
             aluno.acoes_2026 = novoResumo.toUpperCase();
             if (!Array.isArray(aluno.ocorrencias)) aluno.ocorrencias = [];
             aluno.ocorrencias.push(acaoDocLocal);
+            if (regDispAluno) {
+              if (!Array.isArray(aluno.dispensas)) aluno.dispensas = [];
+              aluno.dispensas.push(regDispAluno);
+            }
           }
 
           if ((isAtraso || String(tipo || "").toUpperCase().includes("ATRASO")) && typeof window.verificarGatilhoAtrasosMes === "function") {
@@ -16493,7 +17025,12 @@ Yasmin Seline`;
           if (chkNotificarDirecao) chkNotificarDirecao.checked = false;
           document.getElementById("modal-acao-container-codigo-conviva")?.classList.add("hidden");
 
-          window.showToast("Ação pedagógica registrada com sucesso no histórico!", 'success');
+          window.showToast(
+            isDispensa
+              ? "Dispensa registrada no Dossiê e sincronizada com a Presença Diária!"
+              : "Ação pedagógica registrada com sucesso no histórico!",
+            'success'
+          );
           if (typeof window.registrarLogAuditoria === "function") {
             window.registrarLogAuditoria({
               modulo: "Dossiê do Aluno",
@@ -20585,6 +21122,7 @@ Yasmin Seline`;
       // Lista de abas renderizadas pelo React (<App /> dentro de #content-inicio / #root)
       const REACT_RENDERED_TABS = [
         "inicio",
+        "presenca-diaria",
         "rotina-pdca",
         "agenda",
         "horarios",
@@ -20616,7 +21154,7 @@ Yasmin Seline`;
         contents.forEach(el => el.classList.add("hidden"));
 
         // Atualizar estilos dos botões e manter a ocultação visual estrita (RBAC)
-        const todasAbas = ["inicio", "mural", "alunos", "dashboard-notas", "dashboard-atrasos", "professores", "registros", "secretaria", "busca-ativa", "agenda", "horarios", "substituicao-pei", "admin", "dash-projetos-pei", "rotina-pdca", "dashboard", "auditoria", "comparativo-frequencia"];
+        const todasAbas = ["inicio", "mural", "alunos", "dashboard-notas", "dashboard-atrasos", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "horarios", "substituicao-pei", "admin", "dash-projetos-pei", "rotina-pdca", "dashboard", "auditoria", "comparativo-frequencia"];
         todasAbas.forEach(tab => {
           const navEl = document.getElementById(`nav-${tab}`);
           if (navEl) {
@@ -20647,10 +21185,14 @@ Yasmin Seline`;
           }
         }
 
+        // Disparar evento para que o React atualize seu estado
+        window.dispatchEvent(new CustomEvent('taborrolechange'));
+
         // Atualizar título do cabeçalho
         const pageTitle = document.getElementById("pageTitle");
         const titles = {
           inicio: "Página Inicial & Painel do Usuário",
+          "presenca-diaria": "Presença Diária & Inteligência Comportamental 2027",
           mural: "Mural de Recados & Avisos Institucionais",
           alunos: "Gestão de Alunos",
           "dashboard-notas": "Dashboard de Rendimento & Notas dos Alunos",

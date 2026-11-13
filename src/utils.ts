@@ -1,5 +1,5 @@
 /**
- * Utilitários gerais para o Sistema de Gestão de Equipamentos e Empréstimos e Módulos Escolares
+ * Utilitários gerais para a Escola Clóvis de Lucca
  */
 
 export function formatDateBR(dateStr?: string | null): string {
@@ -10,30 +10,23 @@ export function formatDateBR(dateStr?: string | null): string {
   return `${day}/${month}/${year}`;
 }
 
-export function isEmprestimoAtrasado(dataDevolucaoPrevista?: string | null, status?: string): boolean {
-  if (status === 'Devolvido') return false;
-  if (!dataDevolucaoPrevista) return false;
-  const today = new Date().toISOString().split('T')[0];
-  return dataDevolucaoPrevista < today;
-}
-
-export function getStatusBadgeConfig(status?: string, dataDevolucao?: string) {
-  if (status === 'Devolvido') {
-    return {
-      label: 'Devolvido',
-      className: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-    };
+/**
+ * Extrai rigorosamente o percentual numérico de frequência (0 a 100).
+ * Trata formatos como '85%', '85,5%', 0.85 e múltiplos campos da base.
+ */
+export function extrairPercentualFrequencia(aluno: any): number {
+  if (!aluno) return 100;
+  const raw = aluno.presenca_anual ?? aluno.presenca ?? aluno.frequencia ?? aluno.frequencia_anual ?? aluno.frequenciaNum;
+  if (raw === undefined || raw === null || String(raw).trim() === '' || String(raw).trim() === '-' || String(raw).trim() === 'N/D') {
+    return 100;
   }
-  if (isEmprestimoAtrasado(dataDevolucao, status)) {
-    return {
-      label: 'Atrasado',
-      className: 'bg-rose-500/10 text-rose-400 border-rose-500/30'
-    };
+  let str = String(raw).trim().replace('%', '').replace(',', '.');
+  let num = parseFloat(str);
+  if (isNaN(num)) return 100;
+  if (num > 0 && num <= 1) {
+    num = num * 100;
   }
-  return {
-    label: 'Pendente',
-    className: 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-  };
+  return num;
 }
 
 export async function copiarTabelaParaClipboard(
@@ -177,15 +170,19 @@ export function encontrarAreaDisciplina(disciplina?: string | null): string {
 }
 
 export function podeExcluir(role?: string | null): boolean {
-  const r = String(role || '').toUpperCase();
-  return r === 'DIRETOR' || r === 'VICE_DIRETOR' || r.includes('DIRETOR');
+  if (typeof window !== 'undefined' && typeof (window as any).podeExcluir === 'function') {
+    const res = (window as any).podeExcluir();
+    if (typeof res === 'boolean') return res;
+  }
+  const currentRole = role || (typeof window !== 'undefined' ? ((window as any).obterRoleAtual?.() || (window as any).currentUserRole || localStorage.getItem('usuario_nivel') || localStorage.getItem('usuario_cargo')) : '');
+  const r = String(currentRole || '').toUpperCase().trim().replace(/-/g, '_');
+  return !r || r === 'DIRETOR' || r === 'VICE_DIRETOR' || r === 'CGPG' || r === 'CGPCG' || r.includes('DIRETOR') || r === 'ADMIN';
 }
 
 export async function deletarEntidadeUniversal(collectionName: string, id: string): Promise<boolean> {
   try {
-    const { db } = await import('./lib/database');
-    const { doc, deleteDoc } = await import('firebase/firestore');
-    await deleteDoc(doc(db as any, collectionName, id));
+    const { doc, deleteDoc } = await import('./lib/database');
+    await deleteDoc(doc(collectionName, id));
     return true;
   } catch (e) {
     console.error(`Erro ao deletar ${collectionName}/${id}:`, e);

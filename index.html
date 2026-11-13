@@ -872,6 +872,20 @@
                 <span class="truncate">Busca Ativa</span>
                 <span id="badge-nav-busca-ativa" class="ml-auto hidden px-2 py-0.5 text-[10px] font-black rounded-full bg-rose-500 text-white shadow-2xs">0</span>
               </button>
+
+              <!-- PRESENÇA DIÁRIA & IA 2027 -->
+              <button 
+                onclick="switchTab('presenca-diaria')" 
+                id="nav-presenca-diaria" 
+                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+                title="Chamada Diária, 3ª Métrica de Faltas Efetivas, Mapeamento Preditivo 2027 e Mensagens aos Pais com IA"
+              >
+                <div class="nav-icon-tile bg-cyan-400/20 border-cyan-400/30 text-cyan-300 group-hover:scale-110 transition-transform">
+                  <i class="fa-solid fa-clipboard-user text-xs"></i>
+                </div>
+                <span class="truncate font-bold">Presença Diária &amp; IA</span>
+                <span class="ml-auto px-1.5 py-0.5 text-[9px] font-black rounded-full bg-cyan-400 text-blue-950 shadow-2xs">2027</span>
+              </button>
             </div>
 
             <!-- GRUPO 3: ROTINA, TEMPO & OPERAÇÕES -->
@@ -2168,6 +2182,55 @@
                   />
                 </div>
 
+                <!-- Campo de Horário Real de Chegada (Atraso - sincroniza com Presença Diária) -->
+                <div id="container-atraso-ocorrencia" class="hidden p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                  <div class="flex items-center justify-between gap-2 flex-wrap">
+                    <label for="oc-hora-atraso" class="text-xs font-bold text-amber-900 uppercase flex items-center gap-1.5">
+                      <i class="fa-solid fa-clock text-amber-600"></i>
+                      <span>Horário Real de Chegada (Sincronizado com Presença Diária)</span>
+                    </label>
+                    <input
+                      type="time"
+                      id="oc-hora-atraso"
+                      class="px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+                </div>
+
+                <!-- Painel de Dispensa / Afastamento Legal com Datas (Exclusivo Secretaria, CGPG, Direção e Vice) -->
+                <div id="container-dispensa-ocorrencia" class="hidden p-3.5 bg-blue-50 border border-blue-200 rounded-xl space-y-3">
+                  <div class="flex items-center justify-between gap-2 flex-wrap border-b border-blue-200 pb-2">
+                    <span class="text-xs font-black text-blue-950 uppercase flex items-center gap-1.5">
+                      <i class="fa-solid fa-calendar-check text-blue-700"></i>
+                      <span>Período de Dispensa / Afastamento Legal</span>
+                    </span>
+                    <span class="text-[10px] font-bold text-blue-800">
+                      Afasta automaticamente na Presença Diária
+                    </span>
+                  </div>
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label for="oc-dispensa-inicio" class="block text-[10px] font-bold text-blue-900 uppercase mb-1">Data Início <span class="text-red-500">*</span></label>
+                      <input type="date" id="oc-dispensa-inicio" class="w-full p-2 bg-white border border-blue-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-400" />
+                    </div>
+                    <div>
+                      <label for="oc-dispensa-fim" class="block text-[10px] font-bold text-blue-900 uppercase mb-1">Data Fim <span class="text-red-500">*</span></label>
+                      <input type="date" id="oc-dispensa-fim" class="w-full p-2 bg-white border border-blue-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-400" />
+                    </div>
+                    <div>
+                      <label for="oc-dispensa-motivo" class="block text-[10px] font-bold text-blue-900 uppercase mb-1">Motivo da Dispensa</label>
+                      <select id="oc-dispensa-motivo" class="w-full p-2 bg-white border border-blue-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-400">
+                        <option value="Atestado Médico">Atestado Médico</option>
+                        <option value="Licença Saúde / Internação">Licença Saúde / Internação</option>
+                        <option value="Afastamento Legal / Judicial">Afastamento Legal / Judicial</option>
+                        <option value="Dispensa Esportiva / Cultural">Dispensa Esportiva / Cultural</option>
+                        <option value="Óbito / Luto Familiar">Óbito / Luto Familiar</option>
+                        <option value="Outros Afastamentos Justificados">Outros Afastamentos Justificados</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
                 <div>
                   <label for="descricao-registro" class="block text-xs font-semibold text-slate-600 uppercase mb-1">Descrição Detalhada <span class="text-red-500">*</span></label>
                   <textarea id="descricao-registro" rows="3" placeholder="Descreva os detalhes do atendimento ou ocorrência..." class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-cyan-300 text-slate-700" required></textarea>
@@ -2336,6 +2399,7 @@
                     <option value="Questão Pedagógica">Questão Pedagógica</option>
                     <option value="Tutoria e Acolhimento">Tutoria e Acolhimento</option>
                     <option value="Atraso">Atrasos / Saídas</option>
+                    <option value="Dispensa">Dispensa / Afastamento Legal</option>
                     <option value="Positiva">Atendimentos Positivos</option>
                     <option value="Negativa">Ocorrências Negativas</option>
                   </select>
@@ -4861,6 +4925,14 @@
               <span class="text-[11px] font-bold text-slate-700 truncate w-full">Alunos</span>
             </button>
 
+            <!-- Presença Diária & IA 2027 -->
+            <button type="button" onclick="window.switchTab('presenca-diaria'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-presenca-diaria">
+              <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-700 text-white flex items-center justify-center text-lg shadow-sm">
+                <i class="fa-solid fa-clipboard-user"></i>
+              </div>
+              <span class="text-[11px] font-bold text-slate-700 truncate w-full">Presença IA</span>
+            </button>
+
             <!-- Horários PEI -->
             <button type="button" onclick="window.switchTab('horarios'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-horarios">
               <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-teal-600 to-cyan-600 text-white flex items-center justify-center text-lg shadow-sm">
@@ -5258,6 +5330,63 @@
               </div>
             </div>
           </form>
+
+          <!-- Painel Exclusivo: Dispensa / Afastamento Legal (Secretaria, CGPG, Direção e Vice) -->
+          <div id="container-dossie-dispensa-rapida" class="hidden p-4 bg-blue-50/90 border border-blue-200 rounded-xl space-y-3 mt-4">
+            <div class="flex items-center justify-between flex-wrap gap-2 border-b border-blue-200 pb-2">
+              <div class="flex items-center gap-2">
+                <i class="fa-solid fa-notes-medical text-blue-700 text-sm"></i>
+                <h4 class="text-xs font-black text-blue-950 uppercase tracking-wider">
+                  Dispensa / Afastamento Legal (Ligado à Presença Diária)
+                </h4>
+              </div>
+              <span class="text-[10px] font-bold text-blue-800">
+                Exclusivo: Secretaria, CGPG, Direção e Vice
+              </span>
+            </div>
+
+            <div id="dossie-lista-dispensas" class="space-y-1.5 text-xs">
+              <p class="text-[11px] text-slate-500 italic">Nenhuma dispensa com período registrada.</p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5 pt-2 border-t border-blue-200/80">
+              <div>
+                <label for="dossie-dispensa-inicio" class="block text-[10px] font-bold text-blue-900 uppercase mb-1">Data Início *</label>
+                <input type="date" id="dossie-dispensa-inicio" class="w-full p-2 bg-white border border-blue-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-400" />
+              </div>
+              <div>
+                <label for="dossie-dispensa-fim" class="block text-[10px] font-bold text-blue-900 uppercase mb-1">Data Fim *</label>
+                <input type="date" id="dossie-dispensa-fim" class="w-full p-2 bg-white border border-blue-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-400" />
+              </div>
+              <div>
+                <label for="dossie-dispensa-motivo" class="block text-[10px] font-bold text-blue-900 uppercase mb-1">Motivo Legal</label>
+                <select id="dossie-dispensa-motivo" class="w-full p-2 bg-white border border-blue-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-400">
+                  <option value="Atestado Médico">Atestado Médico</option>
+                  <option value="Licença Saúde / Internação">Licença Saúde / Internação</option>
+                  <option value="Afastamento Legal / Judicial">Afastamento Legal / Judicial</option>
+                  <option value="Dispensa Esportiva / Cultural">Dispensa Esportiva / Cultural</option>
+                  <option value="Óbito / Luto Familiar">Óbito / Luto Familiar</option>
+                  <option value="Outros Afastamentos Justificados">Outros Afastamentos Justificados</option>
+                </select>
+              </div>
+              <div>
+                <label for="dossie-dispensa-obs" class="block text-[10px] font-bold text-blue-900 uppercase mb-1">Documento / Obs.</label>
+                <input type="text" id="dossie-dispensa-obs" placeholder="Ex: CID / Atestado entregue" class="w-full p-2 bg-white border border-blue-300 rounded-lg text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-blue-400" />
+              </div>
+            </div>
+
+            <div class="flex justify-end">
+              <button
+                type="button"
+                id="btn-salvar-dispensa-dossie"
+                onclick="window.salvarDispensaPeloDossie()"
+                class="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-lg text-xs uppercase tracking-wider shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <i class="fa-solid fa-calendar-check text-xs"></i>
+                <span>Registrar Dispensa e Afastar na Presença</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- Conteúdo Aba: Boletim & Rendimento Bimestral -->
@@ -5344,6 +5473,44 @@
               <div class="sm:col-span-2">
                 <label for="modal-acao-descricao" class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Descrição Detalhada</label>
                 <input type="text" id="modal-acao-descricao" placeholder="Descreva a ação tomada ou atendimento realizado..." class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-cyan-300" />
+              </div>
+            </div>
+
+            <!-- Horário Real de Chegada (Atraso no Dossiê) -->
+            <div id="modal-acao-container-atraso" class="hidden p-2.5 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between gap-2">
+              <label for="modal-acao-hora-atraso" class="text-[11px] font-bold text-amber-900 uppercase flex items-center gap-1.5">
+                <i class="fa-solid fa-clock text-amber-600"></i>
+                <span>Horário de Chegada (Presença Diária):</span>
+              </label>
+              <input type="time" id="modal-acao-hora-atraso" class="px-2 py-1 bg-white border border-amber-300 rounded text-xs font-mono font-bold text-slate-800" />
+            </div>
+
+            <!-- Datas de Dispensa / Afastamento Legal (Aba Ações do Dossiê - RBAC estrito) -->
+            <div id="modal-acao-container-dispensa" class="hidden p-3 bg-white border border-blue-300 rounded-xl space-y-2">
+              <div class="flex items-center justify-between text-[10px] font-black text-blue-900 uppercase">
+                <span>Período da Dispensa / Afastamento Legal</span>
+                <span class="text-blue-700 font-bold">Sincroniza automaticamente com Presença Diária</span>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label for="modal-acao-dispensa-inicio" class="block text-[10px] font-bold text-slate-600 uppercase mb-1">Data Início *</label>
+                  <input type="date" id="modal-acao-dispensa-inicio" class="w-full p-1.5 bg-slate-50 border border-blue-300 rounded-lg text-xs font-bold text-slate-800" />
+                </div>
+                <div>
+                  <label for="modal-acao-dispensa-fim" class="block text-[10px] font-bold text-slate-600 uppercase mb-1">Data Fim *</label>
+                  <input type="date" id="modal-acao-dispensa-fim" class="w-full p-1.5 bg-slate-50 border border-blue-300 rounded-lg text-xs font-bold text-slate-800" />
+                </div>
+                <div>
+                  <label for="modal-acao-dispensa-motivo" class="block text-[10px] font-bold text-slate-600 uppercase mb-1">Motivo</label>
+                  <select id="modal-acao-dispensa-motivo" class="w-full p-1.5 bg-slate-50 border border-blue-300 rounded-lg text-xs font-bold text-slate-800">
+                    <option value="Atestado Médico">Atestado Médico</option>
+                    <option value="Licença Saúde / Internação">Licença Saúde / Internação</option>
+                    <option value="Afastamento Legal / Judicial">Afastamento Legal / Judicial</option>
+                    <option value="Dispensa Esportiva / Cultural">Dispensa Esportiva / Cultural</option>
+                    <option value="Óbito / Luto Familiar">Óbito / Luto Familiar</option>
+                    <option value="Outros Afastamentos Justificados">Outros Afastamentos Justificados</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -5660,12 +5827,38 @@
               <option value="Questão Pedagógica">Questão Pedagógica</option>
               <option value="Questão Disciplinar">Questão Disciplinar</option>
               <option value="Atraso">Atraso</option>
+              <option value="Dispensa / Afastamento Legal">Dispensa / Afastamento Legal</option>
               <option value="Contato WhatsApp/Ligação">Contato WhatsApp/Ligação</option>
               <option value="Registro na SED">Registro na SED</option>
               <option value="Encaminhamento - Conselho Tutelar">Encaminhamento - Conselho Tutelar</option>
               <option value="Encaminhamento - Ministério Público">Encaminhamento - Ministério Público</option>
               <option value="Outros">Outros</option>
             </select>
+          </div>
+
+          <div id="edit-oc-container-dispensa" class="hidden p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-2">
+            <span class="text-[10px] font-black text-blue-900 uppercase block">Período da Dispensa / Afastamento Legal</span>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div>
+                <label for="edit-oc-dispensa-inicio" class="block text-[10px] font-bold text-blue-900 uppercase mb-1">Início</label>
+                <input type="date" id="edit-oc-dispensa-inicio" class="w-full p-1.5 bg-white border border-blue-300 rounded text-xs font-bold text-slate-800" />
+              </div>
+              <div>
+                <label for="edit-oc-dispensa-fim" class="block text-[10px] font-bold text-blue-900 uppercase mb-1">Fim</label>
+                <input type="date" id="edit-oc-dispensa-fim" class="w-full p-1.5 bg-white border border-blue-300 rounded text-xs font-bold text-slate-800" />
+              </div>
+              <div>
+                <label for="edit-oc-dispensa-motivo" class="block text-[10px] font-bold text-blue-900 uppercase mb-1">Motivo</label>
+                <select id="edit-oc-dispensa-motivo" class="w-full p-1.5 bg-white border border-blue-300 rounded text-xs font-bold text-slate-800">
+                  <option value="Atestado Médico">Atestado Médico</option>
+                  <option value="Licença Saúde / Internação">Licença Saúde / Internação</option>
+                  <option value="Afastamento Legal / Judicial">Afastamento Legal / Judicial</option>
+                  <option value="Dispensa Esportiva / Cultural">Dispensa Esportiva / Cultural</option>
+                  <option value="Óbito / Luto Familiar">Óbito / Luto Familiar</option>
+                  <option value="Outros Afastamentos Justificados">Outros Afastamentos Justificados</option>
+                </select>
+              </div>
+            </div>
           </div>
 
           <div>

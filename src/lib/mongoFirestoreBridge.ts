@@ -46,10 +46,23 @@ export interface MongoQuerySnapshot<T = any> {
 
 // Ouvintes locais para emular tempo real (onSnapshot)
 const listeners = new Map<string, Set<(snapshot: any) => void>>();
+const docListeners = new Map<string, Set<(snapshot: any) => void>>();
 const notifyDebounceTimers = new Map<string, any>();
 
-export function notifyCollectionChanged(collectionName: string) {
+export function notifyCollectionChanged(collectionName: string, docId?: string) {
   if (!collectionName) return;
+
+  if (docId) {
+    const docKey = `${collectionName}/${docId}`;
+    const dSet = docListeners.get(docKey);
+    if (dSet && dSet.size > 0) {
+      getDoc(doc(null as any, collectionName, docId)).then(snap => {
+        dSet.forEach(cb => {
+          try { cb(snap); } catch (e) { console.warn('Erro no callback do doc onSnapshot:', e); }
+        });
+      }).catch(() => {});
+    }
+  }
 
   if (notifyDebounceTimers.has(collectionName)) {
     clearTimeout(notifyDebounceTimers.get(collectionName));
@@ -66,7 +79,7 @@ export function notifyCollectionChanged(collectionName: string) {
       }).catch(() => {});
     }
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('database-collection-changed', { detail: { collection: collectionName } }));
+      window.dispatchEvent(new CustomEvent('database-collection-changed', { detail: { collection: collectionName, docId } }));
     }
   }, 100);
 
@@ -321,7 +334,7 @@ export async function setDoc(docRef: MongoDocRef, data: any, _options?: { merge?
     throw new Error(errJson.error || errJson.details || `Erro ao salvar documento em ${colName}/${id}`);
   }
 
-  notifyCollectionChanged(colName);
+  notifyCollectionChanged(colName, id);
 }
 
 export async function addDoc(colRef: MongoCollectionRef, data: any): Promise<MongoDocRef> {
@@ -342,7 +355,7 @@ export async function addDoc(colRef: MongoCollectionRef, data: any): Promise<Mon
   const result = await res.json();
   const id = result.id || `gen_${Date.now()}`;
 
-  notifyCollectionChanged(colName);
+  notifyCollectionChanged(colName, id);
 
   return {
     type: 'doc',
@@ -365,7 +378,7 @@ export async function deleteDoc(docRef: MongoDocRef): Promise<void> {
     const errJson = await res.json().catch(() => ({}));
     throw new Error(errJson.error || errJson.details || `Erro ao deletar documento de ${colName}/${id}`);
   }
-  notifyCollectionChanged(colName);
+  notifyCollectionChanged(colName, id);
 }
 
 export function writeBatch(_db?: any) {
@@ -411,14 +424,24 @@ export function onSnapshot(
   let isSubscribed = true;
 
   if (target.type === 'doc') {
+    const docKey = `${target.collection}/${target.id}`;
     getDoc(target).then(snap => {
       if (isSubscribed) onNext(snap);
     }).catch(err => {
       if (_onError) _onError(err);
     });
 
+    if (!docListeners.has(docKey)) {
+      docListeners.set(docKey, new Set());
+    }
+    const dHandler = (snap: any) => {
+      if (isSubscribed) onNext(snap);
+    };
+    docListeners.get(docKey)!.add(dHandler);
+
     return () => {
       isSubscribed = false;
+      docListeners.get(docKey)?.delete(dHandler);
     };
   }
 

@@ -9,6 +9,7 @@ import DashboardNotas from './components/DashboardNotas';
 import Professores from './components/Professores';
 import Auditoria from './components/Auditoria';
 import ComparativoFrequencia from './components/ComparativoFrequencia';
+import PresencaDiariaIA from './components/PresencaDiariaIA';
 import RelatorioAlteracoesModal from './components/RelatorioAlteracoesModal';
 import ModalImportarBoletimPDF from './components/ModalImportarBoletimPDF';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -172,6 +173,8 @@ export default function App() {
         return <Horarios />;
       case 'substituicao-pei':
         return <SubstituicaoPEI />;
+      case 'presenca-diaria':
+        return <PresencaDiariaIA />;
       default:
         return (
           <PaginaInicial

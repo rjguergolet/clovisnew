@@ -1,6 +1,6 @@
 {
   "name": "Clovis de Lucca new",
-  "description": "",
+  "description": "Sistema de gestão escolar para a escola Clóvis de Lucca com banco de dados MongoDB Atlas, módulos organizados por função e autenticação segura.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

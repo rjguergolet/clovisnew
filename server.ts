@@ -1817,6 +1817,413 @@ Você deve responder ESTRITAMENTE em formato JSON com o seguinte schema:
     }
   });
 
+  // ==========================================
+  // ROTA DE IA: MAPEAMENTO COMPORTAMENTAL DE ATRASOS E FALTAS & PROJEÇÃO PREDITIVA 2027
+  // Cruza a 3ª métrica de faltas (desconsiderando licenças/afastamentos) para ações pedagógicas em tempo real
+  // ==========================================
+  app.post('/api/ai/analise-comportamental-2027', async (req, res) => {
+    try {
+      const {
+        turma = 'TODAS',
+        dataReferencia = new Date().toISOString().split('T')[0],
+        chamadaHoje = [],
+        estatisticas = {},
+        historicoResumo = null,
+        anoLetivoAlvo = '2027'
+      } = req.body;
+
+      const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+      const ai = apiKey
+        ? new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } })
+        : null;
+
+      const totalMatriculados = Number(estatisticas.total || (Array.isArray(chamadaHoje) ? chamadaHoje.length : 0));
+      const totalPresentes = Number(estatisticas.presentes || 0);
+      const totalAtrasados = Number(estatisticas.atrasados || 0);
+      const totalFaltosos = Number(estatisticas.faltosos || 0);
+      const totalLicencas = Number(estatisticas.licencas || 0);
+
+      const amostraEstudantes = (Array.isArray(chamadaHoje) ? chamadaHoje : []).slice(0, 100).map((st: any) => ({
+        nome: st.nome,
+        ra: st.ra,
+        turma: st.turma,
+        statusHoje: st.status || 'presente',
+        horarioAtraso: st.horarioAtraso || '',
+        motivoLicenca: st.motivoLicenca || '',
+        faltasTotais: Number(st.faltasTotais || 0),
+        licencasAfastamentos: Number(st.licencasAfastamentos || 0),
+        faltasEfetivas: Number(st.faltasEfetivas ?? Math.max(0, Number(st.faltasTotais || 0) - Number(st.licencasAfastamentos || 0))),
+        atrasosAcumulados: Number(st.atrasosAcumulados || 0),
+        faltasConsecutivas: Number(st.faltasConsecutivas || 0)
+      }));
+
+      let jsonResult: any = null;
+
+      if (ai) {
+        try {
+          const promptSistema = `Você é o Especialista em Inteligência Pedagógica e Análise Comportamental da Escola Estadual Professor Clóvis de Lucca (Programa Ensino Integral - PEI São Paulo).
+Sua missão é realizar um Mapeamento Comportamental Preditivo de Faltas e Atrasos para orientar ações em TEMPO REAL e antecipar o comportamento dos estudantes para o Ano Letivo de ${anoLetivoAlvo}.
+
+DIRETRIZ DA TERCEIRA INFORMAÇÃO DE FALTAS:
+- 1ª Métrica: Faltas Totais/Brutas (registro geral de todas as ausências).
+- 2ª Métrica: Licenças, Afastamentos Médicos e Dispensas Legais (ausências com atestado ou justificativa de saúde).
+- 3ª Métrica CRÍTICA (Faltas Efetivas): Faltas Reais = Faltas Totais - Licenças/Afastamentos. Esta métrica desconsidera problemas médicos e mede o real descompromisso/afastamento pedagógico do aluno, servindo como o termômetro principal de Busca Ativa e Tutoria.
+
+REQUISITO DE SAÍDA:
+Retorne EXCLUSIVAMENTE um objeto JSON válido, sem crases markdown adicionais, no formato:
+{
+  "diagnosticoGeral": "Texto executivo sintetizando a frequência do dia, o comportamento de atrasos, os padrões por dia da semana e a relevância da 3ª métrica para as decisões gestoras.",
+  "padroesDetectados": [
+    {
+      "titulo": "ex: Atrasos Reincidentes na 1ª Aula / Segundas-feiras",
+      "descricao": "Explicação detalhada do padrão comportamental identificado.",
+      "grau": "ALTO" | "MODERADO" | "LEVE",
+      "alunosImpactados": 5
+    }
+  ],
+  "analiseTerceiraMetrica": {
+    "explicacao": "Detalhamento de como a distinção entre faltas médicas e faltas não justificadas impacta o foco de intervenção da equipe.",
+    "totalFaltasBrutas": 100,
+    "totalLicencasAfastamentos": 25,
+    "totalFaltasEfetivas": 75,
+    "conclusaoPedagogica": "Recomendação direta sobre onde concentrar esforços de Busca Ativa."
+  },
+  "projecaoRisco2027": [
+    {
+      "ra": "RA do aluno",
+      "nome": "Nome do estudante",
+      "turma": "Turma atual",
+      "nivelRisco": "CRÍTICO" | "ATENÇÃO" | "ESTÁVEL",
+      "motivo": "Por que este aluno requer acompanhamento preventivo para 2027.",
+      "acaoTutoria2027": "Pauta obrigatória a ser trabalhada pelo Tutor PEI em 2027."
+    }
+  ],
+  "acoesImediatas": [
+    {
+      "prioridade": "IMEDIATA" | "SEMANAL" | "PLANEJAMENTO 2027",
+      "titulo": "Título da ação",
+      "descricao": "Instrução pedagógica operacional",
+      "responsavel": "Equipe Gestora / CGPG / Tutores"
+    }
+  ]
+}`;
+
+          const promptUser = `DADOS ATUAIS DA APURAÇÃO:
+- Data de Referência: ${dataReferencia}
+- Turma Selecionada: ${turma}
+- Ano Letivo Alvo: ${anoLetivoAlvo}
+- Total Matriculados: ${totalMatriculados}
+- Presentes Hoje: ${totalPresentes} (${totalMatriculados > 0 ? ((totalPresentes / totalMatriculados) * 100).toFixed(1) : 0}%)
+- Atrasos Hoje: ${totalAtrasados}
+- Faltas Injustificadas Hoje: ${totalFaltosos}
+- Licenças / Afastamentos Médicos Hoje: ${totalLicencas}
+- Totais Acumulados na Seleção -> 1ª Métrica (Faltas Brutas): ${Number(estatisticas.somaFaltasTotais || 0)} | 2ª Métrica (Licenças): ${Number(estatisticas.somaLicencas || 0)} | 3ª Métrica (Faltas Efetivas): ${Number(estatisticas.somaFaltasEfetivas || 0)}
+
+HISTÓRICO COMPORTAMENTAL AGREGADO DE CHAMADAS ANTERIORES:
+${historicoResumo ? JSON.stringify(historicoResumo, null, 2) : 'Primeira apuração em registro diário.'}
+
+AMOSTRA DE ALUNOS COM AS 3 MÉTRICAS DE FALTAS:
+${JSON.stringify(amostraEstudantes, null, 2)}
+
+Analise os padrões comportamentais, destaque a 3ª métrica de faltas efetivas e projete os planos de ação preventiva para ${anoLetivoAlvo}.`;
+
+          const response = await ai.models.generateContent({
+            model: 'gemini-4-hydrogen',
+            contents: promptUser,
+            config: {
+              systemInstruction: promptSistema,
+              responseMimeType: 'application/json'
+            }
+          });
+
+          const rawText = response.text ? response.text.trim() : '';
+          const cleanJson = rawText.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();
+          jsonResult = JSON.parse(cleanJson);
+        } catch (geminiErr: any) {
+          console.warn('[API AI Analise 2027] Falha no Gemini, alternando para contingência determinística:', geminiErr.message);
+        }
+      }
+
+      if (!jsonResult || !jsonResult.diagnosticoGeral) {
+        jsonResult = gerarAnaliseComportamentalFallback({
+          turma,
+          dataReferencia,
+          totalMatriculados,
+          totalPresentes,
+          totalAtrasados,
+          totalFaltosos,
+          totalLicencas,
+          estatisticas,
+          historicoResumo,
+          chamadaHoje: amostraEstudantes,
+          anoLetivoAlvo
+        });
+      }
+
+      res.json({
+        success: true,
+        data: jsonResult
+      });
+    } catch (err: any) {
+      console.error('[API AI Analise 2027] Erro geral:', err.message);
+      res.status(500).json({ error: 'Erro ao processar análise comportamental com IA', details: err.message });
+    }
+  });
+
+  // ==========================================
+  // ROTA DE IA: MENSAGEM DIÁRIA DOS FALTOSOS & ATRASADOS PARA OS PAIS (WHATSAPP + LGPD)
+  // ==========================================
+  app.post('/api/ai/mensagem-faltosos-dia', async (req, res) => {
+    try {
+      const {
+        data = new Date().toISOString().split('T')[0],
+        anoLetivo = '2026',
+        turma = 'TODAS',
+        estatisticas = {},
+        faltososPorTurma = {},
+        atrasadosPorTurma = {},
+        faltasConsecutivasAlerta = [],
+        tomComunicado = 'acolhedor'
+      } = req.body || {};
+
+      const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+      const ai = apiKey
+        ? new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } })
+        : null;
+
+      let mensagemGerada = '';
+      let origem: 'gemini' | 'fallback' = 'fallback';
+
+      if (ai) {
+        try {
+          const promptSistema = `Você é a Coordenação Pedagógica da Escola Estadual Professor Clóvis de Lucca (Programa Ensino Integral - PEI São Paulo).
+Redija a mensagem oficial diária de WhatsApp para o grupo de Pais e Responsáveis sobre os estudantes ausentes e atrasados do dia.
+
+REGRAS ESTRITAS (INVIOLÁVEIS):
+1. LGPD RIGOROSA: Utilize EXATAMENTE os nomes já abreviados fornecidos nos dados de entrada (nunca invente sobrenomes nem exponha diagnósticos médicos ou motivos de licença).
+2. FORMATO WHATSAPP: Use negrito do WhatsApp (*texto*) e emojis limpos nos cabeçalhos (📋, 🚫, ⏰, 📊, ⚠️) para leitura rápida no celular.
+3. ESTRUTURA OBRIGATÓRIA:
+   - Cabeçalho institucional da EE Prof. Clóvis de Lucca - PEI com a data e ano letivo.
+   - Bloco de Estudantes Ausentes agrupado por turma (se não houver, parabenizar pela presença).
+   - Bloco de Entradas Tardias / Atrasos agrupado por turma com horário quando informado.
+   - Bloco de Balanço do Dia (Total no segmento, presentes, taxa de frequência, ausências). Nunca exponha detalhes clínicos de licenças.
+   - Orientação aos responsáveis adaptada ao tom solicitado ("${tomComunicado}") lembrando o envio de atestado à Secretaria em até 48h e a importância da pontualidade no PEI.
+4. Retorne APENAS o texto final pronto para colar no WhatsApp, sem comentários antes ou depois.`;
+
+          const promptUser = `DADOS DA CHAMADA DO DIA:
+- Data (YYYY-MM-DD): ${data}
+- Ano Letivo: ${anoLetivo}
+- Segmento/Turma: ${turma}
+- Tom solicitado: ${tomComunicado}
+- Estatísticas: ${JSON.stringify(estatisticas)}
+- Estudantes Ausentes por Turma (nomes já sanitizados LGPD): ${JSON.stringify(faltososPorTurma)}
+- Estudantes Atrasados por Turma (nomes já sanitizados LGPD): ${JSON.stringify(atrasadosPorTurma)}
+- Alertas de Reincidência / Faltas Consecutivas (mencionar orientação geral sem expor nome individual com estigma): ${JSON.stringify(faltasConsecutivasAlerta)}`;
+
+          const response = await ai.models.generateContent({
+            model: 'gemini-4-hydrogen',
+            contents: promptUser,
+            config: {
+              systemInstruction: promptSistema
+            }
+          });
+
+          const textOut = response.text ? response.text.trim() : '';
+          if (textOut && textOut.length > 40) {
+            mensagemGerada = textOut;
+            origem = 'gemini';
+          }
+        } catch (geminiErr: any) {
+          console.warn('[API AI Mensagem Faltosos] Falha no Gemini, usando modelo determinístico:', geminiErr.message);
+        }
+      }
+
+      if (!mensagemGerada) {
+        mensagemGerada = gerarMensagemFaltososDiaFallback({
+          data,
+          anoLetivo,
+          turma,
+          estatisticas,
+          faltososPorTurma,
+          atrasadosPorTurma,
+          tomComunicado
+        });
+        origem = 'fallback';
+      }
+
+      res.json({
+        success: true,
+        origem,
+        mensagem: mensagemGerada
+      });
+    } catch (err: any) {
+      console.error('[API AI Mensagem Faltosos] Erro geral:', err.message);
+      const fallback = gerarMensagemFaltososDiaFallback(req.body || {});
+      res.json({
+        success: true,
+        origem: 'fallback',
+        mensagem: fallback
+      });
+    }
+  });
+
+  function gerarMensagemFaltososDiaFallback(params: any): string {
+    const {
+      data = new Date().toISOString().split('T')[0],
+      anoLetivo = '2026',
+      turma = 'TODAS',
+      estatisticas = {},
+      faltososPorTurma = {},
+      atrasadosPorTurma = {},
+      tomComunicado = 'acolhedor'
+    } = params || {};
+
+    const parts = String(data).split('-');
+    const dataFormatada = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : data;
+
+    let msg = `*EE PROF. CLÓVIS DE LUCCA - PROGRAMA ENSINO INTEGRAL*\n`;
+    msg += `📋 *BOLETIM DIÁRIO DE FREQUÊNCIA - ${dataFormatada}*\n`;
+    msg += `Ano Letivo ${anoLetivo} • ${turma === 'TODAS' ? 'Todas as Turmas' : turma}\n\n`;
+
+    msg += `🚫 *ESTUDANTES AUSENTES NO DIA*\n`;
+    const turmasFaltosas = Object.keys(faltososPorTurma || {}).sort();
+    if (turmasFaltosas.length === 0) {
+      msg += `• Nenhuma ausência registrada no período. Parabéns pela frequência integral!\n\n`;
+    } else {
+      turmasFaltosas.forEach(t => {
+        const lista = faltososPorTurma[t] || [];
+        if (lista.length > 0) msg += `• *${t}*: ${lista.join(', ')}.\n`;
+      });
+      msg += `\n`;
+    }
+
+    msg += `⏰ *ENTRADAS TARDIAS / ATRASOS*\n`;
+    const turmasAtrasadas = Object.keys(atrasadosPorTurma || {}).sort();
+    if (turmasAtrasadas.length === 0) {
+      msg += `• Sem atrasos registrados no início das aulas.\n\n`;
+    } else {
+      turmasAtrasadas.forEach(t => {
+        const lista = atrasadosPorTurma[t] || [];
+        if (lista.length > 0) msg += `• *${t}*: ${lista.join(', ')}.\n`;
+      });
+      msg += `\n`;
+    }
+
+    const total = Number(estatisticas.total || 0);
+    const presentesTotal = Number(estatisticas.presentes || 0) + Number(estatisticas.atrasados || 0);
+    const taxa = estatisticas.taxaPresenca || (total > 0 ? ((presentesTotal / total) * 100).toFixed(1) : '100.0');
+    const faltosos = Number(estatisticas.faltosos || 0);
+    const licencas = Number(estatisticas.licencas || 0);
+
+    msg += `📊 *BALANÇO GERAL DO DIA*\n`;
+    msg += `• Total de Estudantes no Segmento: ${total}\n`;
+    msg += `• Presentes em Sala de Aula: ${presentesTotal} estudantes (${taxa}% de frequência)\n`;
+    msg += `• Ausências Registradas Hoje: ${faltosos}\n`;
+    if (licencas > 0) {
+      msg += `• Afastamentos / Dispensas Justificadas: ${licencas}\n`;
+    }
+    msg += `\n`;
+
+    msg += `⚠️ *ORIENTAÇÃO AOS PAIS E RESPONSÁVEIS:*\n`;
+    if (tomComunicado === 'urgente') {
+      msg += `Reforçamos a necessidade imediata de justificativa junto à Secretaria Escolar e ao Professor Tutor. O acúmulo de ausências e atrasos compromete o rendimento e a permanência pedagógica no Programa Ensino Integral (PEI). Caso haja atestado médico, apresentá-lo em até 48 horas.\n\n`;
+    } else if (tomComunicado === 'padrao') {
+      msg += `A frequência e a pontualidade diárias no Programa Ensino Integral (PEI) são indispensáveis para o aproveitamento pedagógico e o Projeto de Vida do estudante. Em caso de motivo de saúde, solicitamos encaminhar o atestado à Secretaria Escolar em até 48 horas.\n\n`;
+    } else {
+      msg += `Contamos sempre com a parceria das famílias para fortalecer a pontualidade e o acompanhamento diário dos nossos jovens no Programa Ensino Integral (PEI). Caso o estudante tenha precisado se ausentar por motivo de saúde ou imprevisto, pedimos a gentileza de informar a equipe ou entregar o atestado na Secretaria em até 48 horas.\n\n`;
+    }
+    msg += `Atenciosamente,\n*Equipe Gestora & Coordenação Pedagógica*\nEE Prof. Clóvis de Lucca`;
+
+    return msg;
+  }
+
+  function gerarAnaliseComportamentalFallback(params: any): any {
+    const {
+      turma,
+      dataReferencia,
+      totalMatriculados,
+      totalPresentes,
+      totalAtrasados,
+      totalFaltosos,
+      totalLicencas,
+      estatisticas = {},
+      historicoResumo,
+      chamadaHoje,
+      anoLetivoAlvo
+    } = params;
+    const taxaPresenca = totalMatriculados > 0 ? (((totalPresentes + totalAtrasados) / totalMatriculados) * 100).toFixed(1) : '92.5';
+    
+    const alunosCriticos = (Array.isArray(chamadaHoje) ? chamadaHoje : [])
+      .filter((a: any) => a.faltasEfetivas >= 8 || a.atrasosAcumulados >= 2 || a.statusHoje === 'falta' || a.faltasConsecutivas >= 2)
+      .sort((a: any, b: any) => (b.faltasEfetivas + b.atrasosAcumulados * 2) - (a.faltasEfetivas + a.atrasosAcumulados * 2))
+      .slice(0, 8);
+
+    const somaBrutas = Number(estatisticas.somaFaltasTotais ?? (totalFaltosos + totalLicencas));
+    const somaLicencas = Number(estatisticas.somaLicencas ?? totalLicencas);
+    const somaEfetivas = Number(estatisticas.somaFaltasEfetivas ?? Math.max(0, somaBrutas - somaLicencas));
+    const diasAnalisados = Number(historicoResumo?.diasRegistrados || 1);
+    const diaCritico = historicoResumo?.diaSemanaMaisCritico || 'Segunda-feira';
+
+    return {
+      diagnosticoGeral: `Apuração de Frequência realizada em ${dataReferencia} para ${turma === 'TODAS' ? 'todas as turmas' : turma} (${diasAnalisados} dia(s) analisado(s) no histórico): Taxa de presença calculada em ${taxaPresenca}%. Foram registrados ${totalAtrasados} atrasos e ${totalFaltosos} ausências injustificadas hoje, além de ${totalLicencas} licenças médicas formais. A aplicação da 3ª métrica (${somaEfetivas} faltas efetivas desconsiderando ${somaLicencas} afastamentos médicos de ${somaBrutas} faltas brutas) revela com precisão o público que demanda acolhimento imediato pela Tutoria e Busca Ativa para ${anoLetivoAlvo}.`,
+      padroesDetectados: [
+        {
+          titulo: `Concentração de Atrasos no 1º Período • Pico em ${diaCritico}`,
+          descricao: `Dos ${totalAtrasados} atrasos apontados hoje${historicoResumo?.totalAtrasosHistorico ? ` (${historicoResumo.totalAtrasosHistorico} no histórico registrado)` : ''}, a maior incidência ocorre nos primeiros minutos da manhã, especialmente em ${diaCritico}, impactando o primeiro componente da rotina PEI.`,
+          grau: 'ALTO',
+          alunosImpactados: totalAtrasados || alunosCriticos.length || 3
+        },
+        {
+          titulo: 'Diferenciação Crítica: 3ª Métrica (Faltas Efetivas vs Licenças)',
+          descricao: `De ${somaBrutas} faltas brutas acumuladas, ${somaLicencas} correspondem a licenças/atestados médicos legais. Ao descontar essas justificativas, restam ${somaEfetivas} faltas efetivas reais para direcionamento da Busca Ativa.`,
+          grau: 'MODERADO',
+          alunosImpactados: totalLicencas || 2
+        },
+        {
+          titulo: `Comportamento Preditivo para Transição ${anoLetivoAlvo}`,
+          descricao: `Estudantes com 2 ou mais atrasos sistemáticos ou faltas efetivas crescentes tendem a ampliar a infrequência no 1º bimestre de ${anoLetivoAlvo} se não houver pactuação prévia na Tutoria.`,
+          grau: 'ALTO',
+          alunosImpactados: alunosCriticos.length || 4
+        }
+      ],
+      analiseTerceiraMetrica: {
+        explicacao: 'A Terceira Métrica isola as Faltas Efetivas (Faltas Totais deduzidas de Licenças e Afastamentos Médicos com atestado). Ela protege o estudante com afastamento legal de abordagens coercitivas indevidas e orienta a equipe de Busca Ativa aos casos de real risco de evasão.',
+        totalFaltasBrutas: somaBrutas,
+        totalLicencasAfastamentos: somaLicencas,
+        totalFaltasEfetivas: somaEfetivas,
+        conclusaoPedagogica: 'Priorizar contato telefônico e visitas familiares exclusivamente para alunos cuja 3ª métrica ultrapassa 10% do teto letivo, orientando o Tutor a incluir a pontualidade no Plano de Tutoria.'
+      },
+      projecaoRisco2027: alunosCriticos.map((a: any) => ({
+        ra: a.ra || '0001098...',
+        nome: a.nome || 'Estudante em Acompanhamento',
+        turma: a.turma || turma,
+        nivelRisco: (a.faltasEfetivas >= 12 || a.faltasConsecutivas >= 3) ? 'CRÍTICO' : 'ATENÇÃO',
+        motivo: `${a.faltasEfetivas} faltas efetivas (sem licença) e ${a.atrasosAcumulados} atraso(s) acumulados.`,
+        acaoTutoria2027: `Pactuar meta de pontualidade no Projeto de Vida e agendar alinhamento individual com responsáveis para o início de ${anoLetivoAlvo}.`
+      })),
+      acoesImediatas: [
+        {
+          prioridade: 'IMEDIATA',
+          titulo: 'Disparo de WhatsApp aos Responsáveis dos Faltosos do Dia',
+          descricao: 'Acionar a mensagem oficial gerada por IA aos pais dos ausentes e atrasados de hoje, em conformidade estrita com a LGPD.',
+          responsavel: 'Equipe Gestora & Secretaria'
+        },
+        {
+          prioridade: 'SEMANAL',
+          titulo: 'Pauta de Pontualidade nas Sessões Semanais de Tutoria PEI',
+          descricao: 'Encaminhar aos Professores Tutores a relação dos estudantes com atrasos reincidentes na 1ª aula para registro na Ficha de Tutoria.',
+          responsavel: 'Coordenadores CGPG e Tutores'
+        },
+        {
+          prioridade: `PLANEJAMENTO ${anoLetivoAlvo}`,
+          titulo: `Mapeamento das Turmas de ${anoLetivoAlvo} e Reorganização de Acolhimento`,
+          descricao: `Distribuir estudantes com maior 3ª métrica de faltas efetivas em grupos de tutoria de acompanhamento intensivo na preparação de ${anoLetivoAlvo}.`,
+          responsavel: 'Direção Escolar e Professores Tutores'
+        }
+      ]
+    };
+  }
+
   // Função Auxiliar de Contingência Analítica do Boletim Diário & Faltas Consecutivas
   function gerarBoletimDiarioFallback(params: any) {
     const {

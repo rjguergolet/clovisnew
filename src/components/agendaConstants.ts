@@ -29,6 +29,17 @@ export const CATEGORIAS_AGENDA: CategoriaAgendaDef[] = [
     isSpecial: 'feriado'
   },
   {
+    id: 'recesso_sem_aulas',
+    nome: 'Recesso Escolar / Sem Aulas',
+    grupo: 'especial',
+    icone: 'fa-solid fa-calendar-xmark',
+    badgeClass: 'bg-rose-100 text-rose-900 border-rose-300 font-black',
+    borderClass: 'border-rose-300',
+    cardClass: 'bg-rose-50/80 border-rose-300 text-rose-950 font-bold hover:bg-rose-100',
+    descricao: 'Recesso escolar, férias ou suspensão de aulas. Integra-se à Presença Diária para bloquear chamadas neste dia.',
+    isSpecial: 'feriado'
+  },
+  {
     id: 'provao_paulista',
     nome: 'Provão Paulista',
     grupo: 'especial',
@@ -244,11 +255,14 @@ export function getCategoryConfig(nomeCategoria: string): CategoriaAgendaDef {
   if (norm.includes('feriado') || norm.includes('facultativo') || norm.includes('ponto facultativo')) {
     return CATEGORIAS_AGENDA[0]; // Feriado / Ponto Facultativo
   }
+  if (norm.includes('recesso') || norm.includes('sem aula') || norm.includes('suspens') || norm.includes('férias') || norm.includes('ferias')) {
+    return CATEGORIAS_AGENDA.find(c => c.id === 'recesso_sem_aulas') || CATEGORIAS_AGENDA[0];
+  }
   if (norm.includes('provão') || norm.includes('provao') || norm.includes('provão paulista')) {
-    return CATEGORIAS_AGENDA[1]; // Provão Paulista
+    return CATEGORIAS_AGENDA.find(c => c.id === 'provao_paulista') || CATEGORIAS_AGENDA[2];
   }
   if (norm.includes('reposição') || norm.includes('reposicao') || norm.includes('sábado letivo') || norm.includes('sabado letivo')) {
-    return CATEGORIAS_AGENDA[2]; // Reposição de Aulas
+    return CATEGORIAS_AGENDA.find(c => c.id === 'reposicao_aulas') || CATEGORIAS_AGENDA[3];
   }
   if (norm.includes('passeio') || norm.includes('saída') || norm.includes('visita') || norm.includes('excurs')) {
     return CATEGORIAS_AGENDA.find(c => c.id === 'passeios_saidas') || CATEGORIAS_AGENDA[0];
@@ -311,12 +325,23 @@ export function checkDayStatus(ymd: string, eventsList: any[]): DayStatusResult 
   const eventsOnDay = (eventsList || []).filter(ev => {
     const start = ev.dataInicio || ev.data || '';
     const end = ev.dataFim || start;
-    return ymd >= start && ymd <= end;
+    return Boolean(start) && ymd >= start && ymd <= end;
   });
 
   const feriadoEvent = eventsOnDay.find(ev => {
     const cat = String(ev.categoria || '').toLowerCase();
-    return cat.includes('feriado') || cat.includes('facultativo');
+    const tit = String(ev.titulo || '').toLowerCase();
+    return (
+      cat.includes('feriado') ||
+      cat.includes('facultativo') ||
+      cat.includes('recesso') ||
+      cat.includes('sem aula') ||
+      cat.includes('suspens') ||
+      cat.includes('férias') ||
+      cat.includes('ferias') ||
+      tit.includes('recesso') ||
+      tit.includes('sem aula')
+    );
   });
 
   const provaoEvent = eventsOnDay.find(ev => {
@@ -334,8 +359,8 @@ export function checkDayStatus(ymd: string, eventsList: any[]): DayStatusResult 
   const hasReposicao = Boolean(reposicaoEvent);
 
   // Regra Essencial:
-  // Feriado/Ponto Facultativo: Tudo para, não tem aula nem ações.
-  // Fim de semana (Sábado e Domingo): Não tem aula (mesma coisa que feriado/ponto facultativo), EXCETO se houver reposição!
+  // Feriado/Ponto Facultativo/Recesso: Tudo para, não tem aula nem ações.
+  // Fim de semana (Sábado e Domingo): Não tem aula, EXCETO se houver reposição!
   // Reposição: Haverá aula presencial seguindo o dia da semana duplicado.
   const isLetivo = (!hasFeriado && !isWeekend) || hasReposicao;
 
@@ -344,20 +369,23 @@ export function checkDayStatus(ymd: string, eventsList: any[]): DayStatusResult 
   let bgCellClass = '';
 
   if (hasFeriado) {
-    statusLabel = '🚫 Feriado / Ponto Facultativo (Sem Aulas)';
+    const catF = String(feriadoEvent?.categoria || '').toLowerCase();
+    statusLabel = (catF.includes('recesso') || catF.includes('sem aula') || catF.includes('férias') || catF.includes('ferias'))
+      ? `Sem Aulas: ${feriadoEvent?.titulo || feriadoEvent?.categoria || 'Recesso Escolar'}`
+      : `Feriado / Ponto Facultativo: ${feriadoEvent?.titulo || 'Sem Aulas'}`;
     badgeClass = 'bg-rose-100 text-rose-900 border-rose-300 font-black';
     bgCellClass = 'bg-rose-50/40 ring-1 ring-rose-200';
   } else if (hasReposicao) {
     const diaDup = reposicaoEvent?.diaDuplicado || 'Segunda-feira';
-    statusLabel = `🎒 Sábado Letivo com Aula (Horário de ${diaDup})`;
+    statusLabel = `Sábado Letivo com Aula (Horário de ${diaDup})`;
     badgeClass = 'bg-emerald-100 text-emerald-950 border-emerald-400 font-black';
     bgCellClass = 'bg-emerald-50/50 ring-1 ring-emerald-300';
   } else if (hasProvao) {
-    statusLabel = '💻 Provão Paulista: Aulas Online (Prova Presencial p/ Turmas)';
+    statusLabel = 'Provão Paulista: Aulas Online (Prova Presencial p/ Turmas)';
     badgeClass = 'bg-purple-100 text-purple-900 border-purple-300 font-black';
     bgCellClass = 'bg-purple-50/40 ring-1 ring-purple-200';
   } else if (isWeekend) {
-    statusLabel = dayOfWeek === 0 ? 'Domingo (Sem Aulas / Suspenso)' : 'Sábado (Sem Aulas / Suspenso)';
+    statusLabel = dayOfWeek === 0 ? 'Domingo (Sem Aulas)' : 'Sábado (Sem Aulas)';
     badgeClass = 'bg-slate-200 text-slate-600 border-slate-300';
     bgCellClass = 'bg-slate-50/70 text-slate-500';
   }

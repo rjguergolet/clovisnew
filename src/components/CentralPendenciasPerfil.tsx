@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { extrairPercentualFrequencia } from '../utils';
 
 export interface CentralPendenciasPerfilProps {
   activeRole: string;
@@ -69,22 +70,6 @@ export default function CentralPendenciasPerfil({
     } else if (typeof (window as any).switchTab === 'function') {
       (window as any).switchTab(tab);
     }
-  };
-
-  // Função utilitária para extrair percentual numérico de frequência (0 a 100)
-  const extrairPercentualFrequencia = (aluno: any): number => {
-    if (!aluno) return 100;
-    const raw = aluno.presenca_anual ?? aluno.presenca ?? aluno.frequencia ?? aluno.frequencia_anual ?? aluno.frequenciaNum;
-    if (raw === undefined || raw === null || String(raw).trim() === '' || String(raw).trim() === '-' || String(raw).trim() === 'N/D') {
-      return 100;
-    }
-    let str = String(raw).trim().replace('%', '').replace(',', '.');
-    let num = parseFloat(str);
-    if (isNaN(num)) return 100;
-    if (num > 0 && num <= 1) {
-      num = num * 100;
-    }
-    return num;
   };
 
   // Apenas tutorados com frequência estritamente abaixo de 75% (< 75%)

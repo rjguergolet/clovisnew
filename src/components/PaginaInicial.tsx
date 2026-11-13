@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db, collection, getDocs, addDoc, updateDoc, doc, setDoc } from '../lib/database';
 import { obterUsuarioAtivoCompleto, normalizarCargo } from '../modules/authHelper';
-import { normalizeTeacherName, isRegularTeachingClass, isAlunoAtivo } from '../utils';
+import { normalizeTeacherName, isRegularTeachingClass, isAlunoAtivo, extrairPercentualFrequencia } from '../utils';
 import CentralPendenciasPerfil from './CentralPendenciasPerfil';
 
 declare global {
@@ -186,7 +186,15 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
     return '/logo-clovis.svg';
   });
 
-  // Sincronização do Usuário Ativo e Logotipo da Escola
+  const [anoLetivo, setAnoLetivo] = useState<'2026' | '2027'>(() => {
+    try {
+      return typeof window !== 'undefined' && localStorage.getItem('clovis_ano_letivo') === '2027' ? '2027' : '2026';
+    } catch {
+      return '2026';
+    }
+  });
+
+  // Sincronização do Usuário Ativo, Ano Letivo e Logotipo da Escola
   useEffect(() => {
     const syncUser = () => {
       const u = (typeof window.obterIdentificacaoUsuarioCompleta === 'function')
@@ -200,16 +208,23 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       setCustomLogoUrl(newLogo);
     };
 
+    const handleAnoChanged = (e: any) => {
+      const novo = e?.detail === '2027' || localStorage.getItem('clovis_ano_letivo') === '2027' ? '2027' : '2026';
+      setAnoLetivo(novo);
+    };
+
     syncUser();
     window.addEventListener('taborrolechange', syncUser);
     window.addEventListener('storage', syncUser);
     window.addEventListener('storage', handleLogoChanged);
     window.addEventListener('clovis_logo_changed', handleLogoChanged);
+    window.addEventListener('clovis_ano_letivo_changed', handleAnoChanged);
     return () => {
       window.removeEventListener('taborrolechange', syncUser);
       window.removeEventListener('storage', syncUser);
       window.removeEventListener('storage', handleLogoChanged);
       window.removeEventListener('clovis_logo_changed', handleLogoChanged);
+      window.removeEventListener('clovis_ano_letivo_changed', handleAnoChanged);
     };
   }, []);
 
@@ -709,22 +724,6 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 4);
   }, [atrasosMes]);
-
-  // Função utilitária para extrair percentual de frequência com rigor (0 a 100)
-  const extrairPercentualFrequencia = (aluno: any): number => {
-    if (!aluno) return 100;
-    const raw = aluno.presenca_anual ?? aluno.presenca ?? aluno.frequencia ?? aluno.frequencia_anual ?? aluno.frequenciaNum;
-    if (raw === undefined || raw === null || String(raw).trim() === '' || String(raw).trim() === '-' || String(raw).trim() === 'N/D') {
-      return 100;
-    }
-    let str = String(raw).trim().replace('%', '').replace(',', '.');
-    let num = parseFloat(str);
-    if (isNaN(num)) return 100;
-    if (num > 0 && num <= 1) {
-      num = num * 100;
-    }
-    return num;
-  };
 
   // Busca Ativa - Alunos Infrequentes (< 75%)
   // REGRA CRÍTICA: Estudantes com presença >= 75% NUNCA devem aparecer como pendência de Busca Ativa / Infrequência!
@@ -1265,11 +1264,13 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                 {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
               </span>
               <span className="text-slate-300">·</span>
-              <span className="text-xs font-bold text-sky-700 bg-sky-50 px-2.5 py-0.5 rounded-md border border-sky-200">
-                Semana PEI 2026
+              <span className={`text-xs font-bold px-2.5 py-0.5 rounded-md border ${
+                anoLetivo === '2027' ? 'text-cyan-900 bg-cyan-100 border-cyan-300' : 'text-sky-700 bg-sky-50 border-sky-200'
+              }`}>
+                Semana PEI {anoLetivo}
               </span>
               {revalidando ? (
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200 animate-pulse">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200">
                   <i className="fa-solid fa-arrows-rotate animate-spin text-[10px]"></i>
                   <span>Sincronizando...</span>
                 </span>
@@ -2119,13 +2120,82 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             </form>
           </section>
 
+          {/* 1.5. MÓDULO NOVO: Presença Diária & Inteligência Comportamental 2027 */}
+          <section className="bg-gradient-to-br from-blue-950 via-slate-900 to-blue-900 text-white rounded-3xl p-5 sm:p-6 border border-cyan-400/30 shadow-md relative overflow-hidden space-y-4">
+            <div className="absolute -top-12 -right-12 w-48 h-48 bg-cyan-400/10 rounded-full blur-2xl pointer-events-none"></div>
+            
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-cyan-400 text-blue-950 flex items-center justify-center text-xl font-black shadow-md shrink-0">
+                  <i className="fa-solid fa-clipboard-user"></i>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-cyan-400 text-blue-950 shadow-xs">
+                      Novo • Em Tempo Real
+                    </span>
+                    <span className="text-[10px] font-extrabold uppercase text-cyan-300">
+                      Preparação Ano Letivo 2027
+                    </span>
+                  </div>
+                  <h2 className="text-lg font-black text-white mt-0.5">
+                    Presença Diária &amp; Inteligência Comportamental 2027
+                  </h2>
+                  <p className="text-xs text-slate-300 font-medium">
+                    Chamada rápida no dia, 3ª métrica de faltas (efetivas sem licenças/afastamentos), mensagem automática aos pais e projeções de risco com IA.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onNavigate ? onNavigate('presenca-diaria') : window.switchTab?.('presenca-diaria')}
+                  className="px-4 py-2.5 bg-cyan-400 hover:bg-cyan-300 text-blue-950 text-xs font-black rounded-xl transition shadow-md flex items-center gap-2 cursor-pointer"
+                >
+                  <i className="fa-solid fa-bolt"></i>
+                  <span>Fazer Chamada &amp; Analisar IA</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-white/10 relative z-10 text-xs">
+              <div className="p-3 bg-white/5 rounded-xl border border-white/10">
+                <span className="text-[10px] font-bold text-cyan-300 uppercase block mb-1">
+                  <i className="fa-solid fa-check-double mr-1"></i> Chamada 1-Clique
+                </span>
+                <p className="text-slate-300 text-[11px]">
+                  Marque presença, atrasos com horário ou licenças médicas em poucos segundos por turma.
+                </p>
+              </div>
+
+              <div className="p-3 bg-white/5 rounded-xl border border-white/10">
+                <span className="text-[10px] font-bold text-rose-300 uppercase block mb-1">
+                  <i className="fa-solid fa-triangle-exclamation mr-1"></i> A 3ª Métrica de Faltas
+                </span>
+                <p className="text-slate-300 text-[11px]">
+                  Desconsidera licenças e atestados médicos para focar exclusivamente na infrequência de descompromisso.
+                </p>
+              </div>
+
+              <div className="p-3 bg-white/5 rounded-xl border border-white/10">
+                <span className="text-[10px] font-bold text-purple-300 uppercase block mb-1">
+                  <i className="fa-solid fa-brain mr-1"></i> Projeção Preditiva 2027
+                </span>
+                <p className="text-slate-300 text-[11px]">
+                  Mapeia padrões recorrentes e gera mensagens oficiais LGPD de WhatsApp para os responsáveis.
+                </p>
+              </div>
+            </div>
+          </section>
+
           {/* 2. Dash dos Atrasos da Secretaria */}
           <section className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
                 <h2 className="text-lg font-black text-slate-900 flex items-center gap-2">
                   <i className="fa-solid fa-chart-line text-blue-900"></i>
-                  Dashboard de Atrasos & Assiduidade
+                  Dashboard de Atrasos &amp; Assiduidade
                 </h2>
                 <p className="text-xs text-slate-500">
                   Visão executiva das chegadas tardias hoje e no mês vigente.
