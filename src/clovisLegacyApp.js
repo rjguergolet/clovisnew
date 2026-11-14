@@ -3200,15 +3200,15 @@
 
       // Matrix de Permissão de Abas por Nível de Acesso (RBAC - Presença Diária & IA liberada para todos os perfis)
       window.PERMISSOES_ABAS = {
-        DIRETOR: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "auditoria", "comparativo-frequencia"],
-        VICE_DIRETOR: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "auditoria", "comparativo-frequencia"],
-        "VICE-DIRETOR": ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "auditoria", "comparativo-frequencia"],
-        CGPG: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "comparativo-frequencia"],
-        CGPCG: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "comparativo-frequencia"],
-        PROFESSOR_PAAC: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos"],
-        PAAC: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos"],
-        PROFESSOR: ["inicio", "mural", "alunos", "dashboard-notas", "registros", "agenda", "admin", "dash-projetos-pei", "rotina-pdca", "horarios", "dashboard", "dashboard-atrasos"],
-        SECRETARIA: ["inicio", "mural", "alunos", "dashboard-notas", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "dash-projetos-pei", "horarios", "substituicao-pei", "dashboard", "dashboard-atrasos", "comparativo-frequencia"]
+        DIRETOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "auditoria"],
+        VICE_DIRETOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "auditoria"],
+        "VICE-DIRETOR": ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "auditoria"],
+        CGPG: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei"],
+        CGPCG: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei"],
+        PROFESSOR_PAAC: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei"],
+        PAAC: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei"],
+        PROFESSOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "registros", "agenda", "admin", "rotina-pdca", "horarios"],
+        SECRETARIA: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-docente", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "horarios", "substituicao-pei"]
       };
 
       // Normaliza qualquer string de cargo/nível para um dos perfis oficiais
@@ -4142,7 +4142,7 @@
         const role = String(roleRaw || "").toUpperCase().trim();
         const abasPermitidas = (window.PERMISSOES_ABAS && (window.PERMISSOES_ABAS[role] || window.PERMISSOES_ABAS[window.normalizarUserRole(role)])) || ["mural", "alunos", "registros"];
 
-        const todasAbas = ["inicio", "mural", "alunos", "dashboard-notas", "dashboard-atrasos", "presenca-diaria", "professores", "rotina-pdca", "agenda", "registros", "busca-ativa", "horarios", "substituicao-pei", "dash-projetos-pei", "secretaria", "comparativo-frequencia", "dashboard", "admin", "auditoria"];
+        const todasAbas = ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "rotina-pdca", "agenda", "registros", "busca-ativa", "horarios", "substituicao-pei", "secretaria", "admin", "auditoria"];
 
         todasAbas.forEach(tab => {
           const ehPermitida = abasPermitidas.includes(tab);
@@ -4202,6 +4202,10 @@
               }
             }
           });
+        }
+
+        if (typeof window.syncSidebarFloatingMenus === "function") {
+          window.syncSidebarFloatingMenus(activeTab);
         }
 
         if (typeof window.atualizarPermissoesCargo === "function") {
@@ -21121,16 +21125,37 @@ Yasmin Seline`;
         "substituicao-pei",
         "professores",
         "auditoria",
-        "dashboard",
-        "dashboard-atrasos",
-        "dashboard-notas",
-        "dash-projetos-pei",
-        "comparativo-frequencia"
+        "dash-evasao",
+        "dash-academico",
+        "dash-pontualidade",
+        "dash-convivencia",
+        "dash-pei",
+        "dash-docente",
+        "dash-governanca"
       ];
-      const UNIFIED_DASHBOARD_TABS = ["dashboard", "dashboard-atrasos", "dashboard-notas", "dash-projetos-pei"];
+      const UNIFIED_DASHBOARD_TABS = [
+        "dash-evasao",
+        "dash-academico",
+        "dash-pontualidade",
+        "dash-convivencia",
+        "dash-pei",
+        "dash-docente",
+        "dash-governanca"
+      ];
+      const LEGACY_DASHBOARD_ALIASES = {
+        dashboard: "dash-evasao",
+        "dashboard-geral": "dash-evasao",
+        "comparativo-frequencia": "dash-evasao",
+        "dashboard-notas": "dash-academico",
+        "dashboard-atrasos": "dash-pontualidade",
+        "dash-projetos-pei": "dash-pei"
+      };
 
       // Função Global para Alternar Abas no Painel com RBAC Enforcement
       window.switchTab = function(tabName) {
+        if (LEGACY_DASHBOARD_ALIASES[tabName]) {
+          tabName = LEGACY_DASHBOARD_ALIASES[tabName];
+        }
         const roleRaw = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
         const role = String(roleRaw || "").toUpperCase().trim();
         const abasPermitidas = (window.PERMISSOES_ABAS && (window.PERMISSOES_ABAS[role] || window.PERMISSOES_ABAS[window.normalizarUserRole(role)])) || ["inicio", "mural", "alunos", "registros"];
@@ -21149,7 +21174,7 @@ Yasmin Seline`;
         contents.forEach(el => el.classList.add("hidden"));
 
         // Atualizar estilos dos botões e manter a ocultação visual estrita (RBAC)
-        const todasAbas = ["inicio", "mural", "alunos", "dashboard-notas", "dashboard-atrasos", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "horarios", "substituicao-pei", "admin", "dash-projetos-pei", "rotina-pdca", "dashboard", "auditoria", "comparativo-frequencia"];
+        const todasAbas = ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "horarios", "substituicao-pei", "admin", "rotina-pdca", "auditoria"];
         const isDashboardUnificadoAtivo = UNIFIED_DASHBOARD_TABS.includes(tabName);
         todasAbas.forEach(tab => {
           const ehPermitida = abasPermitidas.includes(tab);
@@ -21159,7 +21184,7 @@ Yasmin Seline`;
               navEl.classList.add("hidden");
             } else {
               navEl.classList.remove("hidden");
-              const isSelectedNav = tab === tabName || (tab === "dashboard" && isDashboardUnificadoAtivo);
+              const isSelectedNav = tab === tabName;
               if (isSelectedNav) {
                 navEl.className = "tab-btn group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-bold bg-gradient-to-r from-cyan-400 to-cyan-300 text-slate-950 shadow-md shadow-cyan-500/20 cursor-pointer transition-all duration-200";
               } else {
@@ -21177,6 +21202,13 @@ Yasmin Seline`;
           }
         });
 
+        if (typeof window.syncSidebarFloatingMenus === "function") {
+          window.syncSidebarFloatingMenus(tabName);
+        }
+        if (typeof window.closeSidebarFlyouts === "function") {
+          window.closeSidebarFlyouts();
+        }
+
         // Se for uma aba React, exibir #content-inicio (onde está <div id="root"></div>); caso contrário, exibir #content-<tabName>
         if (REACT_RENDERED_TABS.includes(tabName)) {
           const reactContainer = document.getElementById("content-inicio");
@@ -21191,7 +21223,7 @@ Yasmin Seline`;
         }
 
         // Disparar evento para que o React atualize seu estado
-        window.dispatchEvent(new CustomEvent('taborrolechange'));
+        window.dispatchEvent(new CustomEvent('taborrolechange', { detail: { tab: tabName } }));
 
         // Atualizar título do cabeçalho
         const pageTitle = document.getElementById("pageTitle");
@@ -21200,8 +21232,13 @@ Yasmin Seline`;
           "presenca-diaria": "Presença Diária & Inteligência Comportamental 2027",
           mural: "Mural de Recados & Avisos Institucionais",
           alunos: "Gestão de Alunos",
-          "dashboard-notas": "Central Unificada de Dashboards & BI Escolar",
-          "dashboard-atrasos": "Central Unificada de Dashboards & BI Escolar",
+          "dash-evasao": "Central BI · 1. Risco de Evasão, Tripla Frequência & Busca Ativa",
+          "dash-academico": "Central BI · 2. Desempenho Acadêmico & Conselho de Classe",
+          "dash-pontualidade": "Central BI · 3. Radar de Pontualidade, Atrasos & Saídas",
+          "dash-convivencia": "Central BI · 4. Clima Escolar & Conviva SP",
+          "dash-pei": "Central BI · 5. Gestão Pedagógica PEI",
+          "dash-docente": "Central BI · 6. Operacional Docente & Janelas",
+          "dash-governanca": "Central BI · 7. Governança da Gestão & Auditoria",
           registros: "Registros Acadêmicos & Ocorrências",
           secretaria: "Secretaria & Documentação",
           auditoria: "Auditoria do Sistema (Direção e Vice-Direção)",
@@ -21210,11 +21247,8 @@ Yasmin Seline`;
           horarios: "Grade Horária Escolar PEI",
           "substituicao-pei": "Gestão de Substituição PEI & Eventuais",
           admin: "Painel do Administrador",
-          "dash-projetos-pei": "Central Unificada de Dashboards & BI Escolar",
           "rotina-pdca": "Gestão de Tarefas & Rotina PDCA",
-          "comparativo-frequencia": "Auditoria SED vs Mapão de Frequência",
-          professores: "Gestão & Acompanhamento de Professores",
-          dashboard: "Central Unificada de Dashboards & BI Escolar"
+          professores: "Gestão & Acompanhamento de Professores"
         };
         if (pageTitle && titles[tabName]) {
           pageTitle.textContent = titles[tabName];
@@ -21280,8 +21314,13 @@ Yasmin Seline`;
         if ((tabName === "secretaria" || tabName === "admin" || isDashboardUnificadoAtivo) && typeof window.carregarEventosGeral === "function") {
           window.carregarEventosGeral();
         }
-        if (tabName === "secretaria" && typeof window.inicializarDropzoneFreqSed === "function") {
-          window.inicializarDropzoneFreqSed();
+        if (tabName === "secretaria") {
+          if (typeof window.inicializarDropzoneFreqSed === "function") {
+            window.inicializarDropzoneFreqSed();
+          }
+          if (typeof window.inicializarDropzoneFreqXlsx === "function") {
+            window.inicializarDropzoneFreqXlsx();
+          }
         }
         if ((tabName === "admin" || isDashboardUnificadoAtivo) && typeof window.carregarModelos === "function") {
           window.carregarModelos();
@@ -22405,15 +22444,175 @@ Yasmin Seline`;
       document.addEventListener("DOMContentLoaded", inicializarDropzoneFreqSed);
       window.inicializarDropzoneFreqSed = inicializarDropzoneFreqSed;
 
+      // =========================================================================
+      // MÓDULO SECRETARIA: ATUALIZAÇÃO DE FREQUÊNCIA SED EM LOTE (.XLSX / .XLS)
+      // =========================================================================
+      window._arquivosFreqXlsxSelecionados = [];
+
+      function renderizarFilaFreqXlsx() {
+        const files = Array.isArray(window._arquivosFreqXlsxSelecionados) ? window._arquivosFreqXlsxSelecionados : [];
+        const label = document.getElementById("nome-arquivo-freq-xlsx-label");
+        const dropzone = document.getElementById("dropzone-freq-xlsx");
+        const containerLista = document.getElementById("lista-arquivos-freq-xlsx-selecionados");
+
+        if (files.length === 0) {
+          if (label) label.textContent = "Selecionar Planilhas Excel (Múltiplos Arquivos Permitidos)";
+          if (dropzone) dropzone.classList.remove("border-emerald-600", "bg-emerald-50/70");
+          if (containerLista) {
+            containerLista.classList.add("hidden");
+            containerLista.innerHTML = "";
+          }
+          return;
+        }
+
+        if (label) {
+          if (files.length === 1) {
+            const tamanhoKb = Math.max(1, Math.round(files[0].size / 1024));
+            label.textContent = `${files[0].name} (${tamanhoKb} KB)`;
+          } else {
+            label.textContent = `${files.length} planilhas Excel selecionadas para processamento em lote`;
+          }
+        }
+
+        if (dropzone) {
+          dropzone.classList.add("border-emerald-600", "bg-emerald-50/70");
+        }
+
+        if (containerLista) {
+          containerLista.classList.remove("hidden");
+          let htmlArquivos = `
+            <div class="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+              <span class="font-black text-blue-950 uppercase text-[11px] flex items-center gap-1.5">
+                <i class="fa-solid fa-layer-group text-emerald-600"></i>
+                <span>Planilhas na Fila (${files.length})</span>
+              </span>
+              <button
+                type="button"
+                onclick="window.limparArquivosFreqXlsx()"
+                class="text-[10px] text-red-600 hover:text-red-800 font-bold cursor-pointer"
+              >
+                Limpar Todos
+              </button>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+          `;
+
+          files.forEach((f, idx) => {
+            const tamKb = Math.max(1, Math.round(f.size / 1024));
+            const safeName = String(f.name || "planilha.xlsx").replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+            htmlArquivos += `
+              <div class="p-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between gap-2 text-[11px]">
+                <div class="flex items-center gap-1.5 min-w-0">
+                  <i class="fa-solid fa-file-excel text-emerald-600 shrink-0"></i>
+                  <span class="truncate font-semibold text-slate-800" title="${safeName}">${safeName}</span>
+                </div>
+                <div class="flex items-center gap-1.5 shrink-0">
+                  <span class="text-[10px] text-slate-400 font-mono">${tamKb}KB</span>
+                  <button
+                    type="button"
+                    onclick="window.removerArquivoFreqXlsxSelecionado(${idx})"
+                    class="text-slate-400 hover:text-red-600 transition cursor-pointer p-0.5"
+                    title="Remover arquivo"
+                  >
+                    <i class="fa-solid fa-xmark text-xs"></i>
+                  </button>
+                </div>
+              </div>
+            `;
+          });
+
+          htmlArquivos += `</div>`;
+          containerLista.innerHTML = htmlArquivos;
+        }
+      }
+
+      window.handleArquivoFreqXlsxSelecionado = function(event) {
+        const incoming = Array.from(event?.target?.files || []);
+        if (incoming.length === 0) return;
+
+        const validFiles = [];
+        let ignoredCount = 0;
+        incoming.forEach(f => {
+          const lower = String(f.name || "").toLowerCase();
+          if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
+            validFiles.push(f);
+          } else {
+            ignoredCount++;
+          }
+        });
+
+        if (ignoredCount > 0 && typeof window.showToast === "function") {
+          window.showToast(`${ignoredCount} arquivo(s) ignorado(s): selecione apenas planilhas .xlsx ou .xls.`, "warning");
+        }
+        if (validFiles.length === 0) return;
+
+        const current = Array.isArray(window._arquivosFreqXlsxSelecionados) ? window._arquivosFreqXlsxSelecionados : [];
+        const existingKeys = new Set(current.map(f => `${f.name}__${f.size}__${f.lastModified}`));
+        const merged = [...current];
+        validFiles.forEach(f => {
+          const key = `${f.name}__${f.size}__${f.lastModified}`;
+          if (!existingKeys.has(key)) {
+            existingKeys.add(key);
+            merged.push(f);
+          }
+        });
+
+        window._arquivosFreqXlsxSelecionados = merged;
+        renderizarFilaFreqXlsx();
+
+        const fileInput = document.getElementById("fileFreq");
+        if (fileInput) fileInput.value = "";
+      };
+
+      window.removerArquivoFreqXlsxSelecionado = function(index) {
+        if (!Array.isArray(window._arquivosFreqXlsxSelecionados)) return;
+        window._arquivosFreqXlsxSelecionados.splice(index, 1);
+        renderizarFilaFreqXlsx();
+      };
+
+      window.limparArquivosFreqXlsx = function() {
+        window._arquivosFreqXlsxSelecionados = [];
+        const input = document.getElementById("fileFreq");
+        if (input) input.value = "";
+        renderizarFilaFreqXlsx();
+      };
+
+      function inicializarDropzoneFreqXlsx() {
+        const dropzone = document.getElementById("dropzone-freq-xlsx");
+        if (dropzone && !dropzone._dragBound) {
+          dropzone._dragBound = true;
+          dropzone.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            dropzone.classList.add("border-emerald-600", "bg-emerald-100/70");
+          });
+          dropzone.addEventListener("dragleave", () => {
+            dropzone.classList.remove("border-emerald-600", "bg-emerald-100/70");
+          });
+          dropzone.addEventListener("drop", (e) => {
+            e.preventDefault();
+            dropzone.classList.remove("border-emerald-600", "bg-emerald-100/70");
+            const files = Array.from(e.dataTransfer?.files || []);
+            if (files.length > 0) {
+              window.handleArquivoFreqXlsxSelecionado({ target: { files } });
+            }
+          });
+        }
+      }
+      document.addEventListener("DOMContentLoaded", inicializarDropzoneFreqXlsx);
+      window.inicializarDropzoneFreqXlsx = inicializarDropzoneFreqXlsx;
+
       const btnProcessarFreq = document.getElementById("btn-processar-freq");
       const fileFreqInput = document.getElementById("fileFreq");
       const resultadoFreq = document.getElementById("resultado-freq");
 
       if (btnProcessarFreq && fileFreqInput) {
         btnProcessarFreq.addEventListener("click", async () => {
-          const file = fileFreqInput.files?.[0];
-          if (!file) {
-            alert("Por favor, selecione um arquivo Excel (.xlsx) de frequência da SED.");
+          const files = (Array.isArray(window._arquivosFreqXlsxSelecionados) && window._arquivosFreqXlsxSelecionados.length > 0)
+            ? [...window._arquivosFreqXlsxSelecionados]
+            : Array.from(fileFreqInput.files || []);
+
+          if (files.length === 0) {
+            alert("Por favor, selecione uma ou mais planilhas Excel (.xlsx / .xls) de frequência da SED.");
             return;
           }
 
@@ -22427,39 +22626,18 @@ Yasmin Seline`;
           const dataNovaIso = dataRefInput;
 
           btnProcessarFreq.disabled = true;
-          btnProcessarFreq.innerHTML = `<i class="fa-solid fa-spinner animate-spin text-xs"></i><span>Processando Frequência...</span>`;
+          btnProcessarFreq.innerHTML = `<i class="fa-solid fa-spinner animate-spin text-xs"></i><span>Processando ${files.length} planilha(s)...</span>`;
           if (resultadoFreq) {
-            resultadoFreq.innerHTML = `<p class="text-xs text-slate-500 font-semibold flex items-center gap-2"><i class="fa-solid fa-spinner animate-spin"></i> Lendo arquivo .xlsx...</p>`;
+            resultadoFreq.innerHTML = `<p class="text-xs text-slate-500 font-semibold flex items-center gap-2"><i class="fa-solid fa-spinner animate-spin"></i> Iniciando leitura em lote de ${files.length} arquivo(s)...</p>`;
           }
 
           try {
-            const buffer = await file.arrayBuffer();
             if (typeof XLSX === "undefined") {
               throw new Error("Biblioteca SheetJS (XLSX) não foi encontrada.");
             }
 
-            const workbook = XLSX.read(buffer, { type: "array" });
-            const firstSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheetName];
-            const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-
-            if (!rows || rows.length <= 1) {
-              if (resultadoFreq) {
-                resultadoFreq.innerHTML = `<p class="text-xs text-red-600 font-bold">Arquivo .xlsx sem dados ou sem linhas de conteúdo.</p>`;
-              }
-              btnProcessarFreq.disabled = false;
-              btnProcessarFreq.innerHTML = `<i class="fa-solid fa-cloud-arrow-up text-xs"></i><span>Processar Frequência da Turma</span>`;
-              return;
-            }
-
-            // Pula a primeira linha, que é o cabeçalho
-            const dataRows = rows.slice(1);
-
             // Mapeamento em memória por RA limpo a partir de window.allStudentsData (ZERO LEITURAS FIRESTORE)
-            const studentsSource = Array.isArray(window.allStudentsData) && (window.allStudentsData || []).length > 0
-              ? window.allStudentsData
-              : ((window.allStudentsData || []));
-
+            const studentsSource = Array.isArray(window.allStudentsData) ? window.allStudentsData : [];
             const studentsMapByRA = new Map();
             studentsSource.forEach(s => {
               if (s && s.ra) {
@@ -22468,152 +22646,217 @@ Yasmin Seline`;
               }
             });
 
-            // Validação de Ordem Cronológica das Planilhas
             let dataInconsistenteEncontrada = false;
             let dataMaisRecenteExistente = "";
 
-            for (let i = 0; i < dataRows.length; i++) {
-              const row = dataRows[i];
-              if (!row || !Array.isArray(row)) continue;
-              let raRaw = row[0] !== undefined && row[0] !== null ? String(row[0]).trim() : "";
-              let digRaw = row[1] !== undefined && row[1] !== null ? String(row[1]).trim() : "";
-              let raLimpo = String(digRaw ? raRaw + digRaw : raRaw).replace(/\D/g, '').substring(0, 12);
-              const sMatch = studentsMapByRA.get(raLimpo);
-              if (sMatch && sMatch.frequencia_atual) {
-                const existingDateStr = typeof sMatch.frequencia_atual === 'object' ? sMatch.frequencia_atual.data : "";
-                if (existingDateStr) {
-                  const existingDateIso = window.parseDataToIso ? window.parseDataToIso(existingDateStr) : "";
-                  if (existingDateIso && dataNovaIso <= existingDateIso) {
-                    dataInconsistenteEncontrada = true;
-                    dataMaisRecenteExistente = existingDateStr;
-                    break;
+            const pendingUpdatesByRa = new Map();
+            const alunosNovosMap = new Map();
+            const rasNoExcel = new Set();
+            const turmasPresentesNoExcel = new Set();
+            const resumoArquivos = [];
+
+            // 1. Leitura e consolidação sequencial de todos os arquivos do lote em memória
+            for (let fIdx = 0; fIdx < files.length; fIdx++) {
+              const file = files[fIdx];
+              if (resultadoFreq) {
+                resultadoFreq.innerHTML = `<p class="text-xs text-slate-600 font-semibold flex items-center gap-2"><i class="fa-solid fa-spinner animate-spin text-emerald-600"></i> Lendo planilha ${fIdx + 1} de ${files.length}: <strong>${file.name}</strong>...</p>`;
+              }
+
+              try {
+                const buffer = await file.arrayBuffer();
+                const workbook = XLSX.read(buffer, { type: "array" });
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = firstSheetName ? workbook.Sheets[firstSheetName] : null;
+                const rows = worksheet ? XLSX.utils.sheet_to_json(worksheet, { header: 1 }) : [];
+
+                if (!rows || rows.length <= 1) {
+                  resumoArquivos.push({
+                    nome: file.name,
+                    status: "vazio",
+                    correspondentes: 0,
+                    novos: 0,
+                    turmas: [],
+                    mensagem: "Planilha sem linhas de conteúdo"
+                  });
+                  continue;
+                }
+
+                const dataRows = rows.slice(1);
+                let correspondentesArquivo = 0;
+                let novosArquivo = 0;
+                const turmasArquivo = new Set();
+
+                for (let i = 0; i < dataRows.length; i++) {
+                  const row = dataRows[i];
+                  if (!row || !Array.isArray(row) || row.length === 0) continue;
+
+                  // Mapeamento: Coluna 0 (RA), Coluna 1 (DIG), Coluna 2 (Nome), Coluna 4 (% Presença Anual - Coluna E)
+                  const raRaw = row[0] !== undefined && row[0] !== null ? String(row[0]).trim() : "";
+                  const digRaw = row[1] !== undefined && row[1] !== null ? String(row[1]).trim() : "";
+                  const nomeAluno = row[2] !== undefined && row[2] !== null ? String(row[2]).trim().toUpperCase() : "";
+                  const presencaRaw = row[4] !== undefined && row[4] !== null ? row[4] : "";
+
+                  // 1. Ignorar rodapé/metadados da SED
+                  if (raRaw.toLowerCase().includes("filtros aplicados") ||
+                      raRaw.toLowerCase().includes("diretoria") ||
+                      raRaw.toLowerCase().includes("escola") ||
+                      nomeAluno.toLowerCase().includes("filtros aplicados")) {
+                    continue;
+                  }
+
+                  // 2. Limpar o RA (pegando os 12 primeiros dígitos numéricos)
+                  const raJunto = digRaw ? (raRaw + digRaw) : raRaw;
+                  const raLimpo = String(raJunto).replace(/\D/g, "").substring(0, 12);
+
+                  // 3. Validações básicas de segurança
+                  if (!nomeAluno || !raLimpo || raLimpo.length < 5) continue;
+
+                  rasNoExcel.add(raLimpo);
+                  const presencaAnualFormatada = formatarPresencaVal(presencaRaw);
+                  const matchedStudentData = studentsMapByRA.get(raLimpo);
+
+                  if (matchedStudentData) {
+                    correspondentesArquivo++;
+                    if (matchedStudentData.turma) {
+                      const turmaNorm = String(matchedStudentData.turma).toUpperCase().trim();
+                      turmasPresentesNoExcel.add(turmaNorm);
+                      turmasArquivo.add(turmaNorm);
+                    }
+
+                    // Validação de ordem cronológica (detecção prévia para confirmação única no lote)
+                    if (!dataInconsistenteEncontrada && matchedStudentData.frequencia_atual) {
+                      const existingDateStr = typeof matchedStudentData.frequencia_atual === "object"
+                        ? matchedStudentData.frequencia_atual.data
+                        : "";
+                      if (existingDateStr) {
+                        const existingDateIso = window.parseDataToIso ? window.parseDataToIso(existingDateStr) : "";
+                        if (existingDateIso && dataNovaIso <= existingDateIso) {
+                          dataInconsistenteEncontrada = true;
+                          dataMaisRecenteExistente = existingDateStr;
+                        }
+                      }
+                    }
+
+                    // Deslocamento de Estados baseado no estado pré-lote em memória (evita shift duplo se RA repetir entre planilhas)
+                    let oldFreqAtualObj = null;
+                    if (matchedStudentData.frequencia_atual) {
+                      if (typeof matchedStudentData.frequencia_atual === "object") {
+                        oldFreqAtualObj = {
+                          valor: matchedStudentData.frequencia_atual.valor || "0%",
+                          data: matchedStudentData.frequencia_atual.data || "Anterior"
+                        };
+                      } else {
+                        oldFreqAtualObj = {
+                          valor: formatarPresencaVal(matchedStudentData.frequencia_atual),
+                          data: matchedStudentData.ultima_atualizacao_freq ? formatarDataBR(matchedStudentData.ultima_atualizacao_freq) : "Anterior"
+                        };
+                      }
+                    } else if (matchedStudentData.presenca_anual) {
+                      oldFreqAtualObj = {
+                        valor: formatarPresencaVal(matchedStudentData.presenca_anual),
+                        data: "Base SED"
+                      };
+                    }
+
+                    const newFreqAtualObj = {
+                      valor: presencaAnualFormatada,
+                      data: dataRefFormatted
+                    };
+
+                    const numNovo = window.parsePresencaNum ? window.parsePresencaNum(presencaAnualFormatada) : null;
+                    const numAnt = oldFreqAtualObj && window.parsePresencaNum ? window.parsePresencaNum(oldFreqAtualObj.valor) : null;
+                    const temInconsistencia = (numNovo !== null && numAnt !== null)
+                      ? (Math.abs(numNovo - numAnt) > 30 || numNovo < 0 || numNovo > 100)
+                      : false;
+
+                    const nowIso = new Date().toISOString();
+                    const targetRa = String(matchedStudentData.ra || raLimpo);
+
+                    pendingUpdatesByRa.set(targetRa, {
+                      matchedStudentData,
+                      targetRa,
+                      newFreqAtualObj,
+                      oldFreqAtualObj,
+                      presencaAnualFormatada,
+                      temInconsistencia,
+                      nowIso
+                    });
+                  } else {
+                    novosArquivo++;
+                    alunosNovosMap.set(raLimpo, {
+                      ra: raLimpo,
+                      nome: nomeAluno,
+                      presenca: presencaAnualFormatada,
+                      arquivo: file.name
+                    });
                   }
                 }
+
+                resumoArquivos.push({
+                  nome: file.name,
+                  status: "ok",
+                  correspondentes: correspondentesArquivo,
+                  novos: novosArquivo,
+                  turmas: Array.from(turmasArquivo),
+                  mensagem: ""
+                });
+              } catch (fileErr) {
+                console.error(`Erro ao ler planilha ${file.name}:`, fileErr);
+                resumoArquivos.push({
+                  nome: file.name,
+                  status: "erro",
+                  correspondentes: 0,
+                  novos: 0,
+                  turmas: [],
+                  mensagem: fileErr?.message || "Erro ao interpretar planilha"
+                });
               }
             }
 
+            const pendingUpdates = Array.from(pendingUpdatesByRa.values());
+            const alunosNovos = Array.from(alunosNovosMap.values());
+            const inconsistenciasCount = pendingUpdates.reduce((acc, item) => acc + (item.temInconsistencia ? 1 : 0), 0);
+
+            if (pendingUpdates.length === 0 && alunosNovos.length === 0) {
+              if (resultadoFreq) {
+                const detalhesErros = resumoArquivos
+                  .filter(r => r.status !== "ok")
+                  .map(r => `<li><strong>${r.nome}:</strong> ${r.mensagem}</li>`)
+                  .join("");
+                resultadoFreq.innerHTML = `
+                  <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1">
+                    <p class="font-bold"><i class="fa-solid fa-circle-exclamation mr-1"></i> Nenhum registro válido de aluno encontrado nos ${files.length} arquivo(s) selecionado(s).</p>
+                    ${detalhesErros ? `<ul class="list-disc pl-5 text-[11px]">${detalhesErros}</ul>` : ""}
+                  </div>
+                `;
+              }
+              return;
+            }
+
+            // 2. Validação cronológica única para todo o lote antes de gravar no banco
             if (dataInconsistenteEncontrada) {
               const prosseguir = confirm(
                 `⚠️ ALERTA DE INCONSISTÊNCIA DE DATA SED:\n\n` +
                 `A data de referência selecionada (${dataRefFormatted}) é IGUAL ou ANTERIOR à data da atualização mais recente no banco de dados (${dataMaisRecenteExistente}).\n\n` +
-                `Importar planilhas fora da ordem cronológica atualizará o histórico (penúltima e última frequências) com dados mais antigos.\n\nDeseja prosseguir com a importação mesmo assim?`
+                `Importar planilhas fora da ordem cronológica atualizará o histórico (penúltima e última frequências) com dados mais antigos.\n\nDeseja prosseguir com a importação do lote (${files.length} arquivo(s)) mesmo assim?`
               );
               if (!prosseguir) {
-                btnProcessarFreq.disabled = false;
-                btnProcessarFreq.innerHTML = `<i class="fa-solid fa-cloud-arrow-up text-xs"></i><span>Processar Frequência da Turma</span>`;
                 if (resultadoFreq) {
-                  resultadoFreq.innerHTML = `<p class="text-xs text-amber-800 font-bold p-3 bg-amber-50 rounded-lg border border-amber-200"><i class="fa-solid fa-circle-exclamation mr-1"></i> Importação cancelada pelo usuário devido à inconsistência de data de referência.</p>`;
+                  resultadoFreq.innerHTML = `<p class="text-xs text-amber-800 font-bold p-3 bg-amber-50 rounded-lg border border-amber-200"><i class="fa-solid fa-circle-exclamation mr-1"></i> Importação em lote cancelada pelo usuário devido à inconsistência de data de referência.</p>`;
                 }
                 return;
               }
             }
 
-            let inconsistenciasCount = 0;
-            const alunosNovos = [];
-            const rasNoExcel = new Set();
-            const turmasPresentesNoExcel = new Set();
-            const pendingUpdates = [];
-
-            for (let i = 0; i < dataRows.length; i++) {
-              const row = dataRows[i];
-              if (!row || !Array.isArray(row) || row.length === 0) continue;
-
-              // Mapeamento: Coluna 0 (RA), Coluna 1 (DIG), Coluna 2 (Nome), Coluna 4 (% Presença Anual - Coluna E)
-              let raRaw = row[0] !== undefined && row[0] !== null ? String(row[0]).trim() : "";
-              let digRaw = row[1] !== undefined && row[1] !== null ? String(row[1]).trim() : "";
-              let nomeAluno = row[2] !== undefined && row[2] !== null ? String(row[2]).trim().toUpperCase() : "";
-              let presencaRaw = row[4] !== undefined && row[4] !== null ? row[4] : "";
-
-              // 1. Ignorar exclusivamente o rodapé/metadados da SED
-              if (raRaw.toLowerCase().includes('filtros aplicados') || 
-                  raRaw.toLowerCase().includes('diretoria') || 
-                  raRaw.toLowerCase().includes('escola') ||
-                  nomeAluno.toLowerCase().includes('filtros aplicados')) {
-                continue;
-              }
-
-              // 2. Limpar o RA (pegando os 12 primeiros dígitos numéricos)
-              let raJunto = digRaw ? (raRaw + digRaw) : raRaw;
-              let raLimpo = String(raJunto).replace(/\D/g, '').substring(0, 12);
-
-              // 3. Validações básicas de segurança
-              if (!nomeAluno || !raLimpo || raLimpo.length < 5) continue;
-
-              rasNoExcel.add(raLimpo);
-
-              let presencaAnualFormatada = formatarPresencaVal(presencaRaw);
-
-              // Busca de correspondência 100% em memória
-              let matchedStudentData = studentsMapByRA.get(raLimpo);
-
-              if (matchedStudentData) {
-                if (matchedStudentData.turma) {
-                  turmasPresentesNoExcel.add(String(matchedStudentData.turma).toUpperCase().trim());
-                }
-
-                // 1. Deslocamento de Estados: a frequencia_atual existente vira frequencia_anterior (Penúltima)
-                let oldFreqAtualObj = null;
-                if (matchedStudentData.frequencia_atual) {
-                  if (typeof matchedStudentData.frequencia_atual === "object") {
-                    oldFreqAtualObj = {
-                      valor: matchedStudentData.frequencia_atual.valor || "0%",
-                      data: matchedStudentData.frequencia_atual.data || "Anterior"
-                    };
-                  } else {
-                    oldFreqAtualObj = {
-                      valor: formatarPresencaVal(matchedStudentData.frequencia_atual),
-                      data: matchedStudentData.ultima_atualizacao_freq ? formatarDataBR(matchedStudentData.ultima_atualizacao_freq) : "Anterior"
-                    };
-                  }
-                } else if (matchedStudentData.presenca_anual) {
-                  oldFreqAtualObj = {
-                    valor: formatarPresencaVal(matchedStudentData.presenca_anual),
-                    data: "Base SED"
-                  };
-                }
-
-                // 2. Definir nova frequencia_atual (Última)
-                const newFreqAtualObj = {
-                  valor: presencaAnualFormatada,
-                  data: dataRefFormatted
-                };
-
-                // 3. Checar anomalia de variação (> 30% ou fora de padrão)
-                const numNovo = window.parsePresencaNum ? window.parsePresencaNum(presencaAnualFormatada) : null;
-                const numAnt = oldFreqAtualObj && window.parsePresencaNum ? window.parsePresencaNum(oldFreqAtualObj.valor) : null;
-                if (numNovo !== null && numAnt !== null) {
-                  const diff = Math.abs(numNovo - numAnt);
-                  if (diff > 30 || numNovo < 0 || numNovo > 100) {
-                    inconsistenciasCount++;
-                  }
-                }
-
-                const nowIso = new Date().toISOString();
-                const targetRa = String(matchedStudentData.ra || raLimpo);
-
-                pendingUpdates.push({
-                  matchedStudentData,
-                  targetRa,
-                  newFreqAtualObj,
-                  oldFreqAtualObj,
-                  presencaAnualFormatada,
-                  nowIso
-                });
-              } else {
-                // Aluno novo / não encontrado no banco
-                alunosNovos.push({
-                  ra: raLimpo,
-                  nome: nomeAluno,
-                  presenca: presencaAnualFormatada
-                });
-              }
-            }
-
-            // 2. Gravação em Lotes Inteligentes (Chunks de no máximo 450 operações por batch)
+            // 3. Gravação em Lotes Inteligentes (Chunks de no máximo 450 operações por batch, sem id/_id)
             const CHUNK_SIZE = 450;
             let atualizadosCount = 0;
 
             for (let i = 0; i < pendingUpdates.length; i += CHUNK_SIZE) {
+              if (resultadoFreq) {
+                resultadoFreq.innerHTML = `<p class="text-xs text-slate-600 font-semibold flex items-center gap-2"><i class="fa-solid fa-spinner animate-spin text-emerald-600"></i> Salvando no banco de dados (${Math.min(i + CHUNK_SIZE, pendingUpdates.length)} de ${pendingUpdates.length} aluno(s))...</p>`;
+              }
+
               const chunk = pendingUpdates.slice(i, i + CHUNK_SIZE);
               const batch = writeBatch(db);
 
@@ -22634,7 +22877,7 @@ Yasmin Seline`;
               atualizadosCount += chunk.length;
             }
 
-            // 3. Atualização Otimista da Interface diretamente em window.allStudentsData
+            // 4. Atualização Otimista da Interface diretamente em window.allStudentsData e cache local
             pendingUpdates.forEach(item => {
               const st = item.matchedStudentData;
               st.frequencia_anterior = item.oldFreqAtualObj;
@@ -22646,26 +22889,32 @@ Yasmin Seline`;
               st.ultima_atualizacao_freq = item.nowIso;
             });
 
-            // Cruzamento Bidirecional em Memória (Alunos ativos na mesma turma não presentes no Excel)
-            const alunosAusentes = [];
-            studentsSource.forEach(s => {
-              const status = (s.status || "ativo").toLowerCase().trim();
-              if (status !== "ativo") return;
-
-              const sTurma = String(s.turma || "").toUpperCase().trim();
-              const turmaCorresponde = turmasPresentesNoExcel.size === 0 || turmasPresentesNoExcel.has(sTurma);
-
-              if (turmaCorresponde) {
-                const cleanS = String(s.ra || "").replace(/\D/g, "").substring(0, 12);
-                if (!rasNoExcel.has(cleanS)) {
-                  alunosAusentes.push({
-                    ra: s.ra,
-                    nome: s.nome || "Aluno Sem Nome",
-                    turma: s.turma || "-"
-                  });
-                }
+            try {
+              if (window.smartCache && Array.isArray(window.allStudentsData)) {
+                window.smartCache.set("alunos_cache", window.allStudentsData);
               }
-            });
+            } catch (_) {}
+
+            // Cruzamento Bidirecional em Memória (Alunos ativos nas turmas importadas não presentes no lote)
+            const alunosAusentes = [];
+            if (turmasPresentesNoExcel.size > 0) {
+              studentsSource.forEach(s => {
+                const status = (s.status || "ativo").toLowerCase().trim();
+                if (status !== "ativo") return;
+
+                const sTurma = String(s.turma || "").toUpperCase().trim();
+                if (turmasPresentesNoExcel.has(sTurma)) {
+                  const cleanS = String(s.ra || "").replace(/\D/g, "").substring(0, 12);
+                  if (!rasNoExcel.has(cleanS)) {
+                    alunosAusentes.push({
+                      ra: s.ra,
+                      nome: s.nome || "Aluno Sem Nome",
+                      turma: s.turma || "-"
+                    });
+                  }
+                }
+              });
+            }
 
             // Mapeamento global para modal rápido
             window.novosAlunosSEDMap = {};
@@ -22673,21 +22922,72 @@ Yasmin Seline`;
               window.novosAlunosSEDMap[item.ra] = item;
             });
 
-            // Exibir resultado
+            const arquivosOk = resumoArquivos.filter(r => r.status === "ok").length;
+            const arquivosComProblema = resumoArquivos.filter(r => r.status !== "ok").length;
+
+            // Exibir relatório consolidado do lote
             if (resultadoFreq) {
               let reportHtml = `
                 <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-                  <div class="flex items-center gap-2 text-xs font-bold text-emerald-700">
-                    <i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i>
-                    <span>Processamento Concluído: <strong>${atualizadosCount}</strong> aluno(s) atualizados com sucesso em ${dataRefFormatted}.</span>
+                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div class="flex items-center gap-2 text-xs font-bold text-emerald-700">
+                      <i class="fa-solid fa-circle-check text-emerald-600 text-sm"></i>
+                      <span>Processamento em Lote Concluído: <strong>${atualizadosCount}</strong> aluno(s) atualizados a partir de <strong>${arquivosOk}/${files.length}</strong> planilha(s) em ${dataRefFormatted}.</span>
+                    </div>
+                    ${turmasPresentesNoExcel.size > 0 ? `<span class="text-[10px] font-bold px-2.5 py-1 rounded-full bg-blue-50 text-blue-800 border border-blue-200">${turmasPresentesNoExcel.size} turma(s) identificada(s)</span>` : ""}
                   </div>
               `;
+
+              if (arquivosComProblema > 0) {
+                reportHtml += `
+                  <div class="p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 font-semibold flex items-center gap-2">
+                    <i class="fa-solid fa-circle-xmark text-red-600 shrink-0"></i>
+                    <span>${arquivosComProblema} arquivo(s) apresentaram erro ou estavam vazios durante a leitura. Veja o detalhamento abaixo.</span>
+                  </div>
+                `;
+              }
 
               if (inconsistenciasCount > 0) {
                 reportHtml += `
                   <div class="p-2.5 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-900 font-bold flex items-center gap-2">
                     <i class="fa-solid fa-triangle-exclamation text-amber-700 text-sm shrink-0"></i>
                     <span>Sinalização SED: ${inconsistenciasCount} aluno(s) apresentaram variação atípica de presença (> 30%) e foram marcados com o selo "Inconsistência SED".</span>
+                  </div>
+                `;
+              }
+
+              if (resumoArquivos.length > 0) {
+                reportHtml += `
+                  <div class="border-t border-slate-200 pt-3">
+                    <p class="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <i class="fa-solid fa-file-lines text-emerald-600"></i>
+                      <span>Resumo por Planilha (${resumoArquivos.length})</span>
+                    </p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
+                `;
+                resumoArquivos.forEach(arq => {
+                  const safeNome = String(arq.nome).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+                  const isOk = arq.status === "ok";
+                  const badgeCls = isOk
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : (arq.status === "vazio" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-red-50 text-red-700 border-red-200");
+                  const statusLabel = isOk ? "Processado" : (arq.status === "vazio" ? "Vazio" : "Erro");
+                  const turmasTexto = arq.turmas.length > 0 ? arq.turmas.join(", ") : "Sem turma vinculada";
+                  reportHtml += `
+                    <div class="p-2.5 bg-white border border-slate-200 rounded-lg text-[11px] flex flex-col gap-1 shadow-2xs">
+                      <div class="flex items-center justify-between gap-2">
+                        <span class="font-bold text-slate-800 truncate" title="${safeNome}">${safeNome}</span>
+                        <span class="px-2 py-0.5 rounded border text-[10px] font-bold shrink-0 ${badgeCls}">${statusLabel}</span>
+                      </div>
+                      ${isOk
+                        ? `<div class="text-slate-500 flex items-center justify-between gap-2"><span>Turmas: <strong class="text-slate-700">${turmasTexto}</strong></span><span><strong>${arq.correspondentes}</strong> atualiz. · <strong>${arq.novos}</strong> novos</span></div>`
+                        : `<div class="text-red-600 font-medium">${arq.mensagem}</div>`
+                      }
+                    </div>
+                  `;
+                });
+                reportHtml += `
+                    </div>
                   </div>
                 `;
               }
@@ -22708,14 +23008,15 @@ Yasmin Seline`;
                     <div id="card-novo-aluno-${item.ra}" class="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-2.5 rounded-lg border border-amber-200 text-xs gap-2 shadow-2xs">
                       <div>
                         <span class="font-bold text-slate-800 block">${item.nome}</span>
-                        <div class="flex items-center gap-2 mt-0.5">
+                        <div class="flex items-center gap-2 mt-0.5 flex-wrap">
                           <span class="font-mono text-slate-500 text-[11px]">RA: ${item.ra}</span>
                           <span class="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-bold rounded text-[10px] border border-emerald-200">
                             Freq. SED: ${item.presenca}
                           </span>
+                          <span class="text-[10px] text-slate-400 truncate max-w-[180px]" title="${item.arquivo}">${item.arquivo}</span>
                         </div>
                       </div>
-                      <button 
+                      <button
                         type="button"
                         onclick="abrirModalCadastroRapido('${item.ra}')"
                         class="px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap shadow-xs"
@@ -22755,7 +23056,7 @@ Yasmin Seline`;
                           </span>
                         </div>
                       </div>
-                      <button 
+                      <button
                         type="button"
                         onclick="abrirFichaAluno('${item.ra}')"
                         class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap shadow-xs"
@@ -22776,25 +23077,26 @@ Yasmin Seline`;
               resultadoFreq.innerHTML = reportHtml;
             }
 
-            fileFreqInput.value = "";
+            window.limparArquivosFreqXlsx();
 
             if (typeof window.showToast === "function") {
-              window.showToast(`Frequência SED atualizada com sucesso! ${atualizadosCount} aluno(s) processados.`, 'success');
+              window.showToast(`Lote concluído! ${atualizadosCount} aluno(s) atualizados em ${arquivosOk} planilha(s).`, "success");
             }
 
-            // Atualizar interface localmente sem re-executar getDocs no Banco de Dados
+            // Atualizar interface localmente e notificar dashboards React sem re-executar getDocs
+            window.dispatchEvent(new CustomEvent("studentsdataupdated"));
             if (typeof populateFilterSelects === "function") populateFilterSelects(studentsSource);
             if (typeof applyStudentFilters === "function") applyStudentFilters();
             if (typeof atualizarDashboardGraficos === "function") atualizarDashboardGraficos();
             if (typeof renderBuscaAtiva === "function") renderBuscaAtiva();
           } catch (err) {
-            console.error("Erro ao importar frequência SED:", err);
+            console.error("Erro ao importar frequência SED em lote:", err);
             if (resultadoFreq) {
-              resultadoFreq.innerHTML = `<p class="text-xs text-red-600 font-bold">Erro ao processar arquivo: ${err.message || err}</p>`;
+              resultadoFreq.innerHTML = `<p class="text-xs text-red-600 font-bold">Erro ao processar lote de planilhas: ${err.message || err}</p>`;
             }
           } finally {
             btnProcessarFreq.disabled = false;
-            btnProcessarFreq.innerHTML = `<i class="fa-solid fa-cloud-arrow-up text-xs"></i><span>Processar Frequência da Turma</span>`;
+            btnProcessarFreq.innerHTML = `<i class="fa-solid fa-cloud-arrow-up text-xs"></i><span>Processar Frequência em Lote</span>`;
           }
         });
       }

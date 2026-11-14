@@ -11,6 +11,7 @@ interface PainelDashboardsUnificadoProps {
 
 const TAB_TO_SECTION: Record<string, SecaoDashboardId> = {
   dashboard: 'todos',
+  'dashboard-geral': 'geral',
   'dashboard-atrasos': 'atrasos',
   'dashboard-notas': 'notas',
   'dash-projetos-pei': 'projetos'
@@ -20,7 +21,10 @@ export default function PainelDashboardsUnificado({
   activeTab,
   isAuthorizedPEI
 }: PainelDashboardsUnificadoProps) {
-  const [visao, setVisao] = useState<SecaoDashboardId>('todos');
+  const initialSection = TAB_TO_SECTION[activeTab] || 'todos';
+  const [visao, setVisao] = useState<SecaoDashboardId>(
+    initialSection === 'projetos' && !isAuthorizedPEI ? 'todos' : initialSection
+  );
   const [atualizando, setAtualizando] = useState(false);
 
   const geralSlotRef = useRef<HTMLDivElement | null>(null);
@@ -111,20 +115,31 @@ export default function PainelDashboardsUnificado({
     []
   );
 
-  // Quando algum atalho externo chama switchTab('dashboard-atrasos' | 'dashboard-notas' | 'dash-projetos-pei'),
-  // mantém tudo em uma página só e rola suavemente até a seção solicitada
+  // Sincroniza o painel focado sempre que o usuário escolhe uma opção específica de dashboard no menu
   useEffect(() => {
     const targetSec = TAB_TO_SECTION[activeTab];
-    if (!targetSec || targetSec === 'todos') return;
+    if (!targetSec) return;
+    if (targetSec === 'projetos' && !isAuthorizedPEI) {
+      setVisao('todos');
+      return;
+    }
+    setVisao(targetSec);
+  }, [activeTab, isAuthorizedPEI]);
 
-    if (targetSec === 'projetos' && !isAuthorizedPEI) return;
-
-    setVisao('todos');
-    const timer = setTimeout(() => {
-      rolarParaSecao(targetSec);
-    }, 120);
-    return () => clearTimeout(timer);
-  }, [activeTab, isAuthorizedPEI, rolarParaSecao]);
+  useEffect(() => {
+    const handleExplicitSwitch = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ tab?: string }>).detail;
+      const tab = detail?.tab;
+      if (!tab) return;
+      const targetSec = TAB_TO_SECTION[tab];
+      if (!targetSec) return;
+      if (targetSec === 'projetos' && !isAuthorizedPEI) return;
+      setVisao(targetSec);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    window.addEventListener('taborrolechange', handleExplicitSwitch);
+    return () => window.removeEventListener('taborrolechange', handleExplicitSwitch);
+  }, [isAuthorizedPEI]);
 
   const handleAtualizarTodos = async () => {
     setAtualizando(true);

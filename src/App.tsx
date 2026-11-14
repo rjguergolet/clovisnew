@@ -6,9 +6,8 @@ import Horarios from './components/Horarios';
 import SubstituicaoPEI from './components/SubstituicaoPEI';
 import Professores from './components/Professores';
 import Auditoria from './components/Auditoria';
-import ComparativoFrequencia from './components/ComparativoFrequencia';
 import PresencaDiariaIA from './components/PresencaDiariaIA';
-import PainelDashboardsUnificado from './components/PainelDashboardsUnificado';
+import CentralInteligenciaDashboards from './components/dashboards/CentralInteligenciaDashboards';
 import RelatorioAlteracoesModal from './components/RelatorioAlteracoesModal';
 import ModalImportarBoletimPDF from './components/ModalImportarBoletimPDF';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -97,9 +96,6 @@ export default function App() {
 
   const roleUpper = String(userRole || 'PROFESSOR').toUpperCase().trim();
   const roleNorm = normalizarCargo(roleUpper);
-  const isAuthorizedPEI = ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'PROFESSOR'].some(
-    (r) => roleNorm.includes(r) || roleNorm === r
-  );
   const isAuthorizedPDCA = ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'PAAC', 'PROFESSOR', 'PROFESSOR_PAAC'].some(
     (r) => roleNorm.includes(r) || roleNorm === r
   );
@@ -111,7 +107,6 @@ export default function App() {
   const isAuthorizedSubstituicaoPEI = !isProfessorComum;
   const isAuthorizedPresencaDiaria = !isProfessorComum;
   const isAuthorizedAuditoria = roleNorm === 'DIRETOR' || roleNorm === 'VICE_DIRETOR' || roleNorm.includes('VICE');
-  const isAuthorizedComparativo = roleNorm === 'DIRETOR' || roleNorm === 'VICE_DIRETOR' || roleNorm.includes('VICE') || roleNorm === 'CGPG' || roleNorm === 'CGPCG' || roleNorm === 'SECRETARIA';
 
   const renderizarConteudoDaAba = () => {
     switch (currentTab) {
@@ -126,15 +121,6 @@ export default function App() {
               }
             }}
           />
-        );
-      case 'comparativo-frequencia':
-        return isAuthorizedComparativo ? (
-          <ComparativoFrequencia />
-        ) : (
-          <div className="p-8 text-center text-red-600 font-bold bg-white rounded-2xl border border-red-200 m-4 shadow-sm">
-            <i className="fa-solid fa-lock text-2xl mb-2 block"></i>
-            Acesso Restrito: O módulo de Comparativo de Frequência (SED vs Mapão) é exclusivo para Gestão, Coordenação e Secretaria.
-          </div>
         );
       case 'auditoria':
         return isAuthorizedAuditoria ? (
@@ -168,14 +154,23 @@ export default function App() {
             Acesso Restrito ao Módulo Tarefas PDCA
           </div>
         );
+      case 'dash-evasao':
+      case 'dash-academico':
+      case 'dash-pontualidade':
+      case 'dash-convivencia':
+      case 'dash-pei':
+      case 'dash-docente':
+      case 'dash-governanca':
       case 'dashboard':
+      case 'dashboard-geral':
       case 'dashboard-atrasos':
       case 'dashboard-notas':
       case 'dash-projetos-pei':
+      case 'comparativo-frequencia':
         return (
-          <PainelDashboardsUnificado
+          <CentralInteligenciaDashboards
             activeTab={currentTab}
-            isAuthorizedPEI={isAuthorizedPEI}
+            userRole={userRole}
           />
         );
       case 'horarios':

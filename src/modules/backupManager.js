@@ -133,11 +133,12 @@ export function capturarConfiguracaoCompletaSistema() {
       toleranciaEntradaMinutos: 15
     },
     regras_acesso_rbac: (typeof window !== 'undefined' && window.PERMISSOES_ABAS) || {
-      DIRETOR: ['mural', 'alunos', 'dashboard', 'dashboard-atrasos', 'dashboard-notas', 'sis-panorama', 'professores', 'registros', 'secretaria', 'busca-ativa', 'agenda', 'admin', 'dash-projetos-pei', 'rotina-pdca', 'horarios', 'substituicao-pei'],
-      VICE_DIRETOR: ['mural', 'alunos', 'dashboard', 'dashboard-atrasos', 'dashboard-notas', 'sis-panorama', 'professores', 'registros', 'secretaria', 'busca-ativa', 'agenda', 'admin', 'dash-projetos-pei', 'rotina-pdca', 'horarios', 'substituicao-pei'],
-      CGPG: ['mural', 'alunos', 'dashboard', 'dashboard-atrasos', 'dashboard-notas', 'sis-panorama', 'professores', 'registros', 'secretaria', 'agenda', 'admin', 'rotina-pdca', 'horarios', 'substituicao-pei'],
-      PROFESSOR: ['mural', 'alunos', 'dashboard', 'dashboard-atrasos', 'dashboard-notas', 'sis-panorama', 'registros', 'agenda', 'admin', 'rotina-pdca', 'horarios'],
-      SECRETARIA: ['mural', 'alunos', 'dashboard', 'dashboard-atrasos', 'dashboard-notas', 'sis-panorama', 'professores', 'registros', 'secretaria', 'busca-ativa', 'agenda', 'admin', 'horarios', 'substituicao-pei']
+      DIRETOR: ['inicio', 'mural', 'alunos', 'dash-evasao', 'dash-academico', 'dash-pontualidade', 'dash-convivencia', 'dash-pei', 'dash-docente', 'dash-governanca', 'presenca-diaria', 'professores', 'registros', 'secretaria', 'busca-ativa', 'agenda', 'admin', 'rotina-pdca', 'horarios', 'substituicao-pei', 'auditoria'],
+      VICE_DIRETOR: ['inicio', 'mural', 'alunos', 'dash-evasao', 'dash-academico', 'dash-pontualidade', 'dash-convivencia', 'dash-pei', 'dash-docente', 'dash-governanca', 'presenca-diaria', 'professores', 'registros', 'secretaria', 'busca-ativa', 'agenda', 'admin', 'rotina-pdca', 'horarios', 'substituicao-pei', 'auditoria'],
+      CGPG: ['inicio', 'mural', 'alunos', 'dash-evasao', 'dash-academico', 'dash-pontualidade', 'dash-convivencia', 'dash-pei', 'dash-docente', 'dash-governanca', 'presenca-diaria', 'professores', 'registros', 'secretaria', 'busca-ativa', 'agenda', 'admin', 'rotina-pdca', 'horarios', 'substituicao-pei'],
+      PAAC: ['inicio', 'mural', 'alunos', 'dash-evasao', 'dash-academico', 'dash-pontualidade', 'dash-convivencia', 'dash-pei', 'dash-docente', 'dash-governanca', 'presenca-diaria', 'professores', 'registros', 'agenda', 'admin', 'rotina-pdca', 'horarios', 'substituicao-pei'],
+      PROFESSOR: ['inicio', 'mural', 'alunos', 'dash-evasao', 'dash-academico', 'dash-pontualidade', 'dash-convivencia', 'dash-pei', 'registros', 'agenda', 'admin', 'rotina-pdca', 'horarios'],
+      SECRETARIA: ['inicio', 'mural', 'alunos', 'dash-evasao', 'dash-academico', 'dash-pontualidade', 'dash-docente', 'presenca-diaria', 'professores', 'registros', 'secretaria', 'busca-ativa', 'agenda', 'admin', 'horarios', 'substituicao-pei']
     },
     configuracoes_locais_chaves: Object.keys(locais),
     cadastros_base: locais.clovis_cadastros_base || {},

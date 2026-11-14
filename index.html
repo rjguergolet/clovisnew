@@ -374,6 +374,7 @@
         #topbar,
         #appSidebar,
         #sidebarBackdrop,
+        #sidebar-flyout-layer,
         header,
         nav,
         aside,
@@ -734,8 +735,8 @@
             </button>
           </div>
 
-          <!-- Navegação das Abas Separadas por Função -->
-          <nav class="p-3 space-y-4 overflow-y-auto max-h-[calc(100vh-220px)] custom-scrollbar">
+          <!-- Navegação das Abas com Menus Flutuantes por Categoria -->
+          <nav id="sidebarNavRoot" class="p-3 space-y-2 overflow-y-auto max-h-[calc(100vh-220px)] custom-scrollbar">
 
             <!-- PÁGINA PRINCIPAL / COMUNICAÇÃO: PÁGINA INICIAL & MURAL -->
             <div class="space-y-1">
@@ -765,225 +766,98 @@
               </button>
             </div>
 
-            <!-- GRUPO 1: GESTÃO PEDAGÓGICA & BI -->
-            <div class="space-y-1">
-              <div class="px-2.5 py-1 flex items-center justify-between">
-                <span class="text-[10px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-                  <i class="fa-solid fa-chart-pie text-[10px]"></i>
-                  Gestão Pedagógica &amp; BI
-                </span>
-                <span class="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950/80 text-emerald-300 font-mono font-bold border border-emerald-800/60">BI</span>
-              </div>
+            <div class="my-2 border-t border-blue-900/80"></div>
 
-              <!-- CENTRAL DE DASHBOARDS (TODOS EM PÁGINA ÚNICA) -->
-              <button 
-                onclick="switchTab('dashboard')" 
-                id="nav-dashboard" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
-                title="Central Unificada: Geral, Atrasos, Notas e Projetos PEI em uma página"
+            <!-- CATEGORIA FLUTUANTE 1: GESTÃO PEDAGÓGICA & BI -->
+            <div data-menu-group-wrap="pedagogica" class="space-y-1">
+              <button
+                type="button"
+                data-menu-group="pedagogica"
+                aria-haspopup="true"
+                aria-expanded="false"
+                class="sidebar-group-btn group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm font-semibold text-blue-100 hover:bg-blue-900/80 hover:text-white border border-transparent transition-all cursor-pointer"
+                title="Passe o mouse ou clique para abrir cada dashboard de Gestão Pedagógica"
               >
                 <div class="nav-icon-tile bg-emerald-400/20 border-emerald-400/30 text-emerald-300 group-hover:scale-110 transition-transform">
                   <i class="fa-solid fa-chart-pie text-xs"></i>
                 </div>
-                <span class="truncate">Central de Dashboards</span>
+                <div class="min-w-0 flex-1">
+                  <div class="truncate font-bold leading-tight">Gestão Pedagógica</div>
+                  <div data-group-subtitle="pedagogica" class="text-[10px] text-emerald-300/85 font-medium truncate mt-0.5">BI e Dashboards</div>
+                </div>
+                <span data-group-badge="pedagogica" class="hidden px-1.5 py-0.5 text-[10px] font-black rounded-full bg-emerald-400 text-slate-950">0</span>
+                <i data-group-chevron="pedagogica" class="fa-solid fa-chevron-right text-[10px] text-blue-300/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0"></i>
               </button>
+              <div data-mobile-slot="pedagogica" class="hidden md:hidden pl-3 pt-1 pb-1.5 space-y-1 border-l border-blue-800/80 ml-4"></div>
             </div>
 
-            <!-- GRUPO 2: VIDA ESCOLAR & ESTUDANTES -->
-            <div class="space-y-1">
-              <div class="px-2.5 py-1 flex items-center justify-between">
-                <span class="text-[10px] font-black uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
-                  <i class="fa-solid fa-user-graduate text-[10px]"></i>
-                  Vida Escolar &amp; Alunos
-                </span>
-                <span class="text-[9px] px-1.5 py-0.2 rounded bg-cyan-950/80 text-cyan-300 font-mono font-bold border border-cyan-800/60">PEI</span>
-              </div>
-
-              <!-- ALUNOS -->
-              <button 
-                onclick="switchTab('alunos')" 
-                id="nav-alunos" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+            <!-- CATEGORIA FLUTUANTE 2: VIDA ESCOLAR & ALUNOS -->
+            <div data-menu-group-wrap="vida-escolar" class="space-y-1">
+              <button
+                type="button"
+                data-menu-group="vida-escolar"
+                aria-haspopup="true"
+                aria-expanded="false"
+                class="sidebar-group-btn group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm font-semibold text-blue-100 hover:bg-blue-900/80 hover:text-white border border-transparent transition-all cursor-pointer"
+                title="Passe o mouse ou clique para abrir Alunos, Registros, Busca Ativa e Presença Diária"
               >
                 <div class="nav-icon-tile bg-cyan-400/20 border-cyan-400/30 text-cyan-300 group-hover:scale-110 transition-transform">
                   <i class="fa-solid fa-user-graduate text-xs"></i>
                 </div>
-                <span class="truncate">Alunos</span>
-              </button>
-
-              <!-- REGISTROS & OCORRÊNCIAS -->
-              <button 
-                onclick="switchTab('registros')" 
-                id="nav-registros" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
-              >
-                <div class="nav-icon-tile bg-cyan-400/20 border-cyan-400/30 text-cyan-300 group-hover:scale-110 transition-transform">
-                  <i class="fa-solid fa-clipboard-list text-xs"></i>
+                <div class="min-w-0 flex-1">
+                  <div class="truncate font-bold leading-tight">Vida Escolar e Alunos</div>
+                  <div data-group-subtitle="vida-escolar" class="text-[10px] text-cyan-300/85 font-medium truncate mt-0.5">Alunos, registros e presença</div>
                 </div>
-                <span class="truncate">Registros &amp; Ocorrências</span>
+                <span data-group-badge="vida-escolar" class="hidden px-1.5 py-0.5 text-[10px] font-black rounded-full bg-rose-500 text-white">0</span>
+                <i data-group-chevron="vida-escolar" class="fa-solid fa-chevron-right text-[10px] text-blue-300/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0"></i>
               </button>
-
-              <!-- BUSCA ATIVA -->
-              <button 
-                onclick="switchTab('busca-ativa')" 
-                id="nav-busca-ativa" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
-              >
-                <div class="nav-icon-tile bg-cyan-400/20 border-cyan-400/30 text-cyan-300 group-hover:scale-110 transition-transform">
-                  <i class="fa-solid fa-magnifying-glass-location text-xs"></i>
-                </div>
-                <span class="truncate">Busca Ativa</span>
-                <span id="badge-nav-busca-ativa" class="ml-auto hidden px-2 py-0.5 text-[10px] font-black rounded-full bg-rose-500 text-white shadow-2xs">0</span>
-              </button>
-
-              <!-- PRESENÇA DIÁRIA & IA 2027 -->
-              <button 
-                onclick="switchTab('presenca-diaria')" 
-                id="nav-presenca-diaria" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer hidden"
-                title="Chamada Diária, 3ª Métrica de Faltas Efetivas, Mapeamento Preditivo 2027 e Mensagens aos Pais com IA"
-              >
-                <div class="nav-icon-tile bg-cyan-400/20 border-cyan-400/30 text-cyan-300 group-hover:scale-110 transition-transform">
-                  <i class="fa-solid fa-clipboard-user text-xs"></i>
-                </div>
-                <span class="truncate font-bold">Presença Diária &amp; IA</span>
-                <span class="ml-auto px-1.5 py-0.5 text-[9px] font-black rounded-full bg-cyan-400 text-blue-950 shadow-2xs">2027</span>
-              </button>
+              <div data-mobile-slot="vida-escolar" class="hidden md:hidden pl-3 pt-1 pb-1.5 space-y-1 border-l border-blue-800/80 ml-4"></div>
             </div>
 
-            <!-- GRUPO 3: ROTINA, TEMPO & OPERAÇÕES -->
-            <div class="space-y-1">
-              <div class="px-2.5 py-1 flex items-center justify-between">
-                <span class="text-[10px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                  <i class="fa-solid fa-clock text-[10px]"></i>
-                  Rotina &amp; Operações
-                </span>
-                <span class="text-[9px] px-1.5 py-0.2 rounded bg-amber-950/80 text-amber-300 font-mono font-bold border border-amber-800/60">PDCA</span>
-              </div>
-
-              <!-- TAREFAS (ROTINA PDCA) -->
-              <button 
-                onclick="switchTab('rotina-pdca')" 
-                id="nav-rotina-pdca" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
-              >
-                <div class="nav-icon-tile bg-amber-400/20 border-amber-400/30 text-amber-300 group-hover:scale-110 transition-transform">
-                  <i class="fa-solid fa-list-check text-xs"></i>
-                </div>
-                <span class="truncate">Tarefas PDCA</span>
-                <span id="badge-nav-tarefas" class="ml-auto hidden px-2 py-0.5 text-[10px] font-black rounded-full bg-blue-500 text-white shadow-2xs">0</span>
-              </button>
-
-              <!-- AGENDA PEI -->
-              <button 
-                onclick="switchTab('agenda')" 
-                id="nav-agenda" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
-              >
-                <div class="nav-icon-tile bg-amber-400/20 border-amber-400/30 text-amber-300 group-hover:scale-110 transition-transform">
-                  <i class="fa-solid fa-calendar-days text-xs"></i>
-                </div>
-                <span class="truncate">Agenda PEI</span>
-              </button>
-
-              <!-- HORÁRIOS -->
-              <button 
-                onclick="switchTab('horarios')" 
-                id="nav-horarios" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+            <!-- CATEGORIA FLUTUANTE 3: ROTINA & OPERAÇÕES -->
+            <div data-menu-group-wrap="rotina" class="space-y-1">
+              <button
+                type="button"
+                data-menu-group="rotina"
+                aria-haspopup="true"
+                aria-expanded="false"
+                class="sidebar-group-btn group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm font-semibold text-blue-100 hover:bg-blue-900/80 hover:text-white border border-transparent transition-all cursor-pointer"
+                title="Passe o mouse ou clique para abrir Tarefas PDCA, Agenda, Horários e Substituição"
               >
                 <div class="nav-icon-tile bg-amber-400/20 border-amber-400/30 text-amber-300 group-hover:scale-110 transition-transform">
                   <i class="fa-solid fa-clock text-xs"></i>
                 </div>
-                <span class="truncate">Horários PEI</span>
-              </button>
-
-              <!-- SUBSTITUIÇÃO PEI -->
-              <button 
-                onclick="switchTab('substituicao-pei')" 
-                id="nav-substituicao-pei" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer hidden"
-              >
-                <div class="nav-icon-tile bg-amber-400/20 border-amber-400/30 text-amber-300 group-hover:scale-110 transition-transform">
-                  <i class="fa-solid fa-user-gear text-xs"></i>
+                <div class="min-w-0 flex-1">
+                  <div class="truncate font-bold leading-tight">Rotina e Operações</div>
+                  <div data-group-subtitle="rotina" class="text-[10px] text-amber-300/85 font-medium truncate mt-0.5">PDCA, agenda e horários</div>
                 </div>
-                <span class="truncate">Substituição PEI</span>
-                <span id="badge-nav-substituicao" class="ml-auto hidden px-2 py-0.5 text-[10px] font-black rounded-full bg-amber-400 text-amber-950 shadow-2xs font-bold">0</span>
+                <span data-group-badge="rotina" class="hidden px-1.5 py-0.5 text-[10px] font-black rounded-full bg-amber-400 text-slate-950">0</span>
+                <i data-group-chevron="rotina" class="fa-solid fa-chevron-right text-[10px] text-blue-300/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0"></i>
               </button>
+              <div data-mobile-slot="rotina" class="hidden md:hidden pl-3 pt-1 pb-1.5 space-y-1 border-l border-blue-800/80 ml-4"></div>
             </div>
 
-            <!-- GRUPO 4: INSTITUCIONAL & SISTEMA -->
-            <div class="space-y-1">
-              <div class="px-2.5 py-1 flex items-center justify-between">
-                <span class="text-[10px] font-black uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
-                  <i class="fa-solid fa-landmark text-[10px]"></i>
-                  Institucional &amp; Gestão
-                </span>
-                <span class="text-[9px] px-1.5 py-0.2 rounded bg-purple-950/80 text-purple-300 font-mono font-bold border border-purple-800/60">ADM</span>
-              </div>
-
-              <!-- PROFESSORES -->
-              <button 
-                onclick="switchTab('professores')" 
-                id="nav-professores" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer hidden"
-                title="Gestão &amp; Registros de Professores"
+            <!-- CATEGORIA FLUTUANTE 4: INSTITUCIONAL & GESTÃO -->
+            <div data-menu-group-wrap="institucional" class="space-y-1">
+              <button
+                type="button"
+                data-menu-group="institucional"
+                aria-haspopup="true"
+                aria-expanded="false"
+                class="sidebar-group-btn group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm font-semibold text-blue-100 hover:bg-blue-900/80 hover:text-white border border-transparent transition-all cursor-pointer"
+                title="Passe o mouse ou clique para abrir Professores, Secretaria, Auditoria e Configurações"
               >
                 <div class="nav-icon-tile bg-purple-400/20 border-purple-400/30 text-purple-300 group-hover:scale-110 transition-transform">
-                  <i class="fa-solid fa-chalkboard-user text-xs"></i>
+                  <i class="fa-solid fa-landmark text-xs"></i>
                 </div>
-                <span class="truncate">Professores</span>
-              </button>
-
-              <!-- SECRETARIA -->
-              <button 
-                onclick="switchTab('secretaria')" 
-                id="nav-secretaria" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
-              >
-                <div class="nav-icon-tile bg-purple-400/20 border-purple-400/30 text-purple-300 group-hover:scale-110 transition-transform">
-                  <i class="fa-solid fa-building-columns text-xs"></i>
+                <div class="min-w-0 flex-1">
+                  <div class="truncate font-bold leading-tight">Institucional e Gestão</div>
+                  <div data-group-subtitle="institucional" class="text-[10px] text-purple-300/85 font-medium truncate mt-0.5">Docentes, secretaria e banco</div>
                 </div>
-                <span class="truncate">Secretaria Escolar</span>
+                <span data-group-badge="institucional" class="hidden px-1.5 py-0.5 text-[10px] font-black rounded-full bg-emerald-400 text-slate-950">0</span>
+                <i data-group-chevron="institucional" class="fa-solid fa-chevron-right text-[10px] text-blue-300/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0"></i>
               </button>
-
-              <!-- COMPARATIVO SED VS MAPÃO (CGPG, VICE E DIREÇÃO) -->
-              <button 
-                onclick="switchTab('comparativo-frequencia')" 
-                id="nav-comparativo-frequencia" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer hidden"
-                title="Comparativo de Frequência: SED vs Mapão de Fechamento"
-              >
-                <div class="nav-icon-tile bg-cyan-400/20 border-cyan-400/30 text-cyan-300 group-hover:scale-110 transition-transform">
-                  <i class="fa-solid fa-scale-balanced text-xs"></i>
-                </div>
-                <span class="truncate">SED vs Mapão</span>
-                <span id="badge-nav-comparativo" class="ml-auto hidden px-2 py-0.5 text-[10px] font-black rounded-full bg-emerald-400 text-emerald-950 shadow-2xs font-bold">0</span>
-              </button>
-
-              <!-- AUDITORIA (DIREÇÃO E VICE-DIREÇÃO) -->
-              <button 
-                onclick="switchTab('auditoria')" 
-                id="nav-auditoria" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer hidden"
-              >
-                <div class="nav-icon-tile bg-cyan-400/20 border-cyan-400/30 text-cyan-300 group-hover:scale-110 transition-transform">
-                  <i class="fa-solid fa-shield-halved text-xs"></i>
-                </div>
-                <span class="truncate">Auditoria</span>
-              </button>
-
-              <!-- CONFIGURAÇÕES -->
-              <button 
-                onclick="switchTab('admin')" 
-                id="nav-admin" 
-                class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
-              >
-                <div class="nav-icon-tile bg-purple-400/20 border-purple-400/30 text-purple-300 group-hover:scale-110 transition-transform">
-                  <i class="fa-solid fa-gear text-xs"></i>
-                </div>
-                <span class="truncate">Configurações &amp; Banco</span>
-              </button>
+              <div data-mobile-slot="institucional" class="hidden md:hidden pl-3 pt-1 pb-1.5 space-y-1 border-l border-blue-800/80 ml-4"></div>
             </div>
 
           </nav>
@@ -1022,6 +896,586 @@
           </button>
         </div>
       </aside>
+
+      <!-- CAMADA FLUTUANTE DE SUBMENUS (Renderizada fora de #appSidebar para nunca sofrer recorte de overflow/transform) -->
+      <div id="sidebar-flyout-layer" class="pointer-events-none fixed inset-0 z-[70]">
+
+        <!-- FLYOUT 1: GESTÃO PEDAGÓGICA & BI -->
+        <div data-flyout-panel="pedagogica" class="sidebar-flyout-panel pointer-events-auto hidden fixed w-80 bg-slate-950/95 backdrop-blur-md text-white rounded-2xl border border-blue-800/80 shadow-[0_20px_50px_rgba(2,6,23,0.65)] p-2.5 before:content-[''] before:absolute before:-left-4 before:inset-y-0 before:w-4">
+          <div class="px-2.5 py-2 mb-1.5 border-b border-blue-900/70 flex items-center justify-between">
+            <span class="text-[11px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+              <i class="fa-solid fa-chart-pie text-xs"></i>
+              Central de Inteligência &amp; BI
+            </span>
+            <span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-300 font-mono font-bold border border-emerald-800/60">7 PAINÉIS</span>
+          </div>
+          <div data-flyout-items="pedagogica" class="space-y-1">
+            <button 
+              onclick="switchTab('dash-evasao')" 
+              id="nav-dash-evasao" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+              title="Prioridade 1: Tripla Frequência (SED × Mapão × Diária) e Busca Ativa"
+            >
+              <div class="nav-icon-tile bg-rose-400/20 border-rose-400/30 text-rose-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-heart-pulse text-xs"></i>
+              </div>
+              <span class="truncate">1. Evasão &amp; Tripla Frequência</span>
+            </button>
+
+            <button 
+              onclick="switchTab('dash-academico')" 
+              id="nav-dash-academico" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+              title="Prioridade 2: Desempenho Acadêmico, Heatmap e Alerta de Conselho"
+            >
+              <div class="nav-icon-tile bg-cyan-400/20 border-cyan-400/30 text-cyan-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-graduation-cap text-xs"></i>
+              </div>
+              <span class="truncate">2. Desempenho Acadêmico</span>
+            </button>
+
+            <button 
+              onclick="switchTab('dash-pontualidade')" 
+              id="nav-dash-pontualidade" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+              title="Prioridade 3: Radar de Pontualidade, Atrasos e Saídas Antecipadas"
+            >
+              <div class="nav-icon-tile bg-amber-400/20 border-amber-400/30 text-amber-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-clock text-xs"></i>
+              </div>
+              <span class="truncate">3. Pontualidade &amp; Atrasos</span>
+            </button>
+
+            <button 
+              onclick="switchTab('dash-convivencia')" 
+              id="nav-dash-convivencia" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+              title="Prioridade 4: Clima Escolar, Convivência (Conviva SP) e Ocorrências"
+            >
+              <div class="nav-icon-tile bg-purple-400/20 border-purple-400/30 text-purple-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-shield-halved text-xs"></i>
+              </div>
+              <span class="truncate">4. Clima &amp; Conviva SP</span>
+            </button>
+
+            <button 
+              onclick="switchTab('dash-pei')" 
+              id="nav-dash-pei" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+              title="Prioridade 5: Tutoria, Clubes Juvenis, Eletivas e Projeto de Vida"
+            >
+              <div class="nav-icon-tile bg-indigo-400/20 border-indigo-400/30 text-indigo-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-compass text-xs"></i>
+              </div>
+              <span class="truncate">5. Gestão Pedagógica PEI</span>
+            </button>
+
+            <button 
+              onclick="switchTab('dash-docente')" 
+              id="nav-dash-docente" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+              title="Prioridade 6: Operacional Docente, Janelas e Substituições"
+            >
+              <div class="nav-icon-tile bg-emerald-400/20 border-emerald-400/30 text-emerald-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-chalkboard-user text-xs"></i>
+              </div>
+              <span class="truncate">6. Operacional Docente</span>
+            </button>
+
+            <button 
+              onclick="switchTab('dash-governanca')" 
+              id="nav-dash-governanca" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+              title="Prioridade 7: Governança da Gestão, PDCA e Integridade da Base"
+            >
+              <div class="nav-icon-tile bg-slate-400/20 border-slate-400/30 text-slate-200 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-list-check text-xs"></i>
+              </div>
+              <span class="truncate">7. Governança &amp; Auditoria</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- FLYOUT 2: VIDA ESCOLAR & ALUNOS -->
+        <div data-flyout-panel="vida-escolar" class="sidebar-flyout-panel pointer-events-auto hidden fixed w-72 bg-slate-950/95 backdrop-blur-md text-white rounded-2xl border border-blue-800/80 shadow-[0_20px_50px_rgba(2,6,23,0.65)] p-2.5 before:content-[''] before:absolute before:-left-4 before:inset-y-0 before:w-4">
+          <div class="px-2.5 py-2 mb-1.5 border-b border-blue-900/70 flex items-center justify-between">
+            <span class="text-[11px] font-black uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+              <i class="fa-solid fa-user-graduate text-xs"></i>
+              Vida Escolar &amp; Alunos
+            </span>
+            <span class="text-[9px] px-1.5 py-0.5 rounded bg-cyan-950/90 text-cyan-300 font-mono font-bold border border-cyan-800/60">PEI</span>
+          </div>
+          <div data-flyout-items="vida-escolar" class="space-y-1">
+            <button 
+              onclick="switchTab('alunos')" 
+              id="nav-alunos" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+            >
+              <div class="nav-icon-tile bg-cyan-400/20 border-cyan-400/30 text-cyan-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-user-graduate text-xs"></i>
+              </div>
+              <span class="truncate">Alunos</span>
+            </button>
+
+            <button 
+              onclick="switchTab('registros')" 
+              id="nav-registros" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+            >
+              <div class="nav-icon-tile bg-cyan-400/20 border-cyan-400/30 text-cyan-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-clipboard-list text-xs"></i>
+              </div>
+              <span class="truncate">Registros &amp; Ocorrências</span>
+            </button>
+
+            <button 
+              onclick="switchTab('busca-ativa')" 
+              id="nav-busca-ativa" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+            >
+              <div class="nav-icon-tile bg-cyan-400/20 border-cyan-400/30 text-cyan-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-magnifying-glass-location text-xs"></i>
+              </div>
+              <span class="truncate">Busca Ativa</span>
+              <span id="badge-nav-busca-ativa" class="ml-auto hidden px-2 py-0.5 text-[10px] font-black rounded-full bg-rose-500 text-white shadow-2xs">0</span>
+            </button>
+
+            <button 
+              onclick="switchTab('presenca-diaria')" 
+              id="nav-presenca-diaria" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer hidden"
+              title="Chamada Diária, 3ª Métrica de Faltas Efetivas, Mapeamento Preditivo 2027 e Mensagens aos Pais com IA"
+            >
+              <div class="nav-icon-tile bg-cyan-400/20 border-cyan-400/30 text-cyan-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-clipboard-user text-xs"></i>
+              </div>
+              <span class="truncate font-bold">Presença Diária &amp; IA</span>
+              <span class="ml-auto px-1.5 py-0.5 text-[9px] font-black rounded-full bg-cyan-400 text-blue-950 shadow-2xs">2027</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- FLYOUT 3: ROTINA & OPERAÇÕES -->
+        <div data-flyout-panel="rotina" class="sidebar-flyout-panel pointer-events-auto hidden fixed w-72 bg-slate-950/95 backdrop-blur-md text-white rounded-2xl border border-blue-800/80 shadow-[0_20px_50px_rgba(2,6,23,0.65)] p-2.5 before:content-[''] before:absolute before:-left-4 before:inset-y-0 before:w-4">
+          <div class="px-2.5 py-2 mb-1.5 border-b border-blue-900/70 flex items-center justify-between">
+            <span class="text-[11px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+              <i class="fa-solid fa-clock text-xs"></i>
+              Rotina &amp; Operações
+            </span>
+            <span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-950/90 text-amber-300 font-mono font-bold border border-amber-800/60">PDCA</span>
+          </div>
+          <div data-flyout-items="rotina" class="space-y-1">
+            <button 
+              onclick="switchTab('rotina-pdca')" 
+              id="nav-rotina-pdca" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+            >
+              <div class="nav-icon-tile bg-amber-400/20 border-amber-400/30 text-amber-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-list-check text-xs"></i>
+              </div>
+              <span class="truncate">Tarefas PDCA</span>
+              <span id="badge-nav-tarefas" class="ml-auto hidden px-2 py-0.5 text-[10px] font-black rounded-full bg-blue-500 text-white shadow-2xs">0</span>
+            </button>
+
+            <button 
+              onclick="switchTab('agenda')" 
+              id="nav-agenda" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+            >
+              <div class="nav-icon-tile bg-amber-400/20 border-amber-400/30 text-amber-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-calendar-days text-xs"></i>
+              </div>
+              <span class="truncate">Agenda PEI</span>
+            </button>
+
+            <button 
+              onclick="switchTab('horarios')" 
+              id="nav-horarios" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+            >
+              <div class="nav-icon-tile bg-amber-400/20 border-amber-400/30 text-amber-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-clock text-xs"></i>
+              </div>
+              <span class="truncate">Horários PEI</span>
+            </button>
+
+            <button 
+              onclick="switchTab('substituicao-pei')" 
+              id="nav-substituicao-pei" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer hidden"
+            >
+              <div class="nav-icon-tile bg-amber-400/20 border-amber-400/30 text-amber-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-user-gear text-xs"></i>
+              </div>
+              <span class="truncate">Substituição PEI</span>
+              <span id="badge-nav-substituicao" class="ml-auto hidden px-2 py-0.5 text-[10px] font-black rounded-full bg-amber-400 text-amber-950 shadow-2xs font-bold">0</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- FLYOUT 4: INSTITUCIONAL & GESTÃO -->
+        <div data-flyout-panel="institucional" class="sidebar-flyout-panel pointer-events-auto hidden fixed w-72 bg-slate-950/95 backdrop-blur-md text-white rounded-2xl border border-blue-800/80 shadow-[0_20px_50px_rgba(2,6,23,0.65)] p-2.5 before:content-[''] before:absolute before:-left-4 before:inset-y-0 before:w-4">
+          <div class="px-2.5 py-2 mb-1.5 border-b border-blue-900/70 flex items-center justify-between">
+            <span class="text-[11px] font-black uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
+              <i class="fa-solid fa-landmark text-xs"></i>
+              Institucional &amp; Gestão
+            </span>
+            <span class="text-[9px] px-1.5 py-0.5 rounded bg-purple-950/90 text-purple-300 font-mono font-bold border border-purple-800/60">ADM</span>
+          </div>
+          <div data-flyout-items="institucional" class="space-y-1">
+            <button 
+              onclick="switchTab('professores')" 
+              id="nav-professores" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer hidden"
+              title="Gestão &amp; Registros de Professores"
+            >
+              <div class="nav-icon-tile bg-purple-400/20 border-purple-400/30 text-purple-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-chalkboard-user text-xs"></i>
+              </div>
+              <span class="truncate">Professores</span>
+            </button>
+
+            <button 
+              onclick="switchTab('secretaria')" 
+              id="nav-secretaria" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+            >
+              <div class="nav-icon-tile bg-purple-400/20 border-purple-400/30 text-purple-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-building-columns text-xs"></i>
+              </div>
+              <span class="truncate">Secretaria Escolar</span>
+            </button>
+
+            <button 
+              onclick="switchTab('auditoria')" 
+              id="nav-auditoria" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer hidden"
+            >
+              <div class="nav-icon-tile bg-cyan-400/20 border-cyan-400/30 text-cyan-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-shield-halved text-xs"></i>
+              </div>
+              <span class="truncate">Auditoria</span>
+            </button>
+
+            <button 
+              onclick="switchTab('admin')" 
+              id="nav-admin" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
+            >
+              <div class="nav-icon-tile bg-purple-400/20 border-purple-400/30 text-purple-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-gear text-xs"></i>
+              </div>
+              <span class="truncate">Configurações &amp; Banco</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <script>
+        (function() {
+          var GROUP_TABS = {
+            pedagogica: ['dash-evasao', 'dash-academico', 'dash-pontualidade', 'dash-convivencia', 'dash-pei', 'dash-docente', 'dash-governanca'],
+            'vida-escolar': ['alunos', 'registros', 'busca-ativa', 'presenca-diaria'],
+            rotina: ['rotina-pdca', 'agenda', 'horarios', 'substituicao-pei'],
+            institucional: ['professores', 'secretaria', 'auditoria', 'admin']
+          };
+
+          var GROUP_DEFAULT_SUBTITLE = {
+            pedagogica: 'Central BI · 7 painéis',
+            'vida-escolar': 'Alunos, registros e presença',
+            rotina: 'PDCA, agenda e horários',
+            institucional: 'Docentes, secretaria e banco'
+          };
+
+          var TAB_SHORT_LABEL = {
+            'dash-evasao': '1. Evasão & Frequência',
+            'dash-academico': '2. Desempenho Acadêmico',
+            'dash-pontualidade': '3. Pontualidade & Atrasos',
+            'dash-convivencia': '4. Clima & Conviva SP',
+            'dash-pei': '5. Gestão PEI',
+            'dash-docente': '6. Operacional Docente',
+            'dash-governanca': '7. Governança & Auditoria',
+            alunos: 'Alunos',
+            registros: 'Registros & Ocorrências',
+            'busca-ativa': 'Busca Ativa',
+            'presenca-diaria': 'Presença Diária & IA',
+            'rotina-pdca': 'Tarefas PDCA',
+            agenda: 'Agenda PEI',
+            horarios: 'Horários PEI',
+            'substituicao-pei': 'Substituição PEI',
+            professores: 'Professores',
+            secretaria: 'Secretaria Escolar',
+            auditoria: 'Auditoria',
+            admin: 'Configurações & Banco'
+          };
+
+          var GROUP_BADGE_IDS = {
+            'vida-escolar': ['badge-nav-busca-ativa'],
+            rotina: ['badge-nav-tarefas', 'badge-nav-substituicao']
+          };
+
+          var closeTimer = null;
+          var activeFlyoutGroup = null;
+          var pinnedFlyoutGroup = null;
+
+          function isDesktopViewport() {
+            return window.innerWidth >= 768;
+          }
+
+          function restoreItemsToDesktopPanels() {
+            Object.keys(GROUP_TABS).forEach(function(groupId) {
+              var panel = document.querySelector('[data-flyout-panel="' + groupId + '"]');
+              var items = document.querySelector('[data-flyout-items="' + groupId + '"]');
+              var mobileSlot = document.querySelector('[data-mobile-slot="' + groupId + '"]');
+              if (panel && items && items.parentElement !== panel) {
+                panel.appendChild(items);
+              }
+              if (mobileSlot) {
+                mobileSlot.classList.add('hidden');
+              }
+            });
+          }
+
+          window.closeSidebarFlyouts = function() {
+            if (closeTimer) {
+              clearTimeout(closeTimer);
+              closeTimer = null;
+            }
+            activeFlyoutGroup = null;
+            pinnedFlyoutGroup = null;
+            document.querySelectorAll('[data-flyout-panel]').forEach(function(panel) {
+              panel.classList.add('hidden');
+            });
+            document.querySelectorAll('[data-menu-group]').forEach(function(btn) {
+              btn.setAttribute('aria-expanded', 'false');
+              var gid = btn.getAttribute('data-menu-group');
+              var chev = document.querySelector('[data-group-chevron="' + gid + '"]');
+              if (chev) chev.classList.remove('rotate-90', 'text-cyan-300');
+            });
+          };
+
+          window.openSidebarFlyout = function(groupId, pin) {
+            if (!isDesktopViewport()) return;
+            if (closeTimer) {
+              clearTimeout(closeTimer);
+              closeTimer = null;
+            }
+            restoreItemsToDesktopPanels();
+
+            var trigger = document.querySelector('[data-menu-group="' + groupId + '"]');
+            var panel = document.querySelector('[data-flyout-panel="' + groupId + '"]');
+            if (!trigger || !panel) return;
+
+            document.querySelectorAll('[data-flyout-panel]').forEach(function(p) {
+              if (p !== panel) p.classList.add('hidden');
+            });
+            document.querySelectorAll('[data-menu-group]').forEach(function(btn) {
+              var gid = btn.getAttribute('data-menu-group');
+              var isTarget = gid === groupId;
+              btn.setAttribute('aria-expanded', isTarget ? 'true' : 'false');
+              var chev = document.querySelector('[data-group-chevron="' + gid + '"]');
+              if (chev) {
+                chev.classList.toggle('rotate-90', isTarget);
+                chev.classList.toggle('text-cyan-300', isTarget);
+              }
+            });
+
+            panel.classList.remove('hidden');
+            var rect = trigger.getBoundingClientRect();
+            var panelHeight = panel.offsetHeight || 220;
+            var left = Math.min(rect.right + 10, window.innerWidth - 300);
+            var top = Math.max(12, Math.min(rect.top - 6, window.innerHeight - panelHeight - 16));
+            panel.style.left = left + 'px';
+            panel.style.top = top + 'px';
+
+            activeFlyoutGroup = groupId;
+            if (pin) {
+              pinnedFlyoutGroup = groupId;
+            } else if (pinnedFlyoutGroup && pinnedFlyoutGroup !== groupId) {
+              pinnedFlyoutGroup = null;
+            }
+          };
+
+          function scheduleFlyoutClose(groupId) {
+            if (pinnedFlyoutGroup === groupId) return;
+            if (closeTimer) clearTimeout(closeTimer);
+            closeTimer = setTimeout(function() {
+              if (!pinnedFlyoutGroup) {
+                window.closeSidebarFlyouts();
+              }
+            }, 180);
+          }
+
+          window.syncSidebarFloatingMenus = function(activeTab) {
+            var currentTab = activeTab || window.currentActiveTab || 'inicio';
+            Object.keys(GROUP_TABS).forEach(function(groupId) {
+              var wrap = document.querySelector('[data-menu-group-wrap="' + groupId + '"]');
+              var trigger = document.querySelector('[data-menu-group="' + groupId + '"]');
+              var items = document.querySelector('[data-flyout-items="' + groupId + '"]');
+              var subtitle = document.querySelector('[data-group-subtitle="' + groupId + '"]');
+              var groupBadge = document.querySelector('[data-group-badge="' + groupId + '"]');
+              if (!trigger || !items) return;
+
+              var visibleItems = items.querySelectorAll('.tab-btn:not(.hidden)');
+              if (wrap) {
+                wrap.classList.toggle('hidden', visibleItems.length === 0);
+              }
+
+              var tabsInGroup = GROUP_TABS[groupId] || [];
+              var isGroupActive = tabsInGroup.indexOf(currentTab) !== -1;
+
+              if (isGroupActive) {
+                trigger.className = 'sidebar-group-btn group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm font-bold bg-blue-900/95 text-white border border-cyan-400/60 shadow-md shadow-cyan-500/10 transition-all cursor-pointer';
+                if (subtitle) {
+                  subtitle.textContent = 'Ativo: ' + (TAB_SHORT_LABEL[currentTab] || currentTab);
+                  subtitle.className = 'text-[10px] text-cyan-300 font-bold truncate mt-0.5';
+                }
+              } else {
+                trigger.className = 'sidebar-group-btn group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm font-semibold text-blue-100 hover:bg-blue-900/80 hover:text-white border border-transparent transition-all cursor-pointer';
+                if (subtitle) {
+                  subtitle.textContent = GROUP_DEFAULT_SUBTITLE[groupId] || '';
+                  subtitle.className = 'text-[10px] text-blue-300/80 font-medium truncate mt-0.5';
+                }
+              }
+
+              if (groupBadge) {
+                var badgeIds = GROUP_BADGE_IDS[groupId] || [];
+                var totalCount = 0;
+                badgeIds.forEach(function(bid) {
+                  var el = document.getElementById(bid);
+                  if (el && !el.classList.contains('hidden')) {
+                    var n = parseInt(el.textContent || '0', 10);
+                    if (!isNaN(n) && n > 0) totalCount += n;
+                  }
+                });
+                if (totalCount > 0) {
+                  groupBadge.textContent = String(totalCount);
+                  groupBadge.classList.remove('hidden');
+                } else {
+                  groupBadge.classList.add('hidden');
+                }
+              }
+            });
+          };
+
+          function bindSidebarEvents() {
+            document.querySelectorAll('[data-menu-group]').forEach(function(btn) {
+              var groupId = btn.getAttribute('data-menu-group');
+
+              btn.addEventListener('mouseenter', function() {
+                if (isDesktopViewport()) {
+                  window.openSidebarFlyout(groupId, false);
+                }
+              });
+
+              btn.addEventListener('mouseleave', function() {
+                if (isDesktopViewport()) {
+                  scheduleFlyoutClose(groupId);
+                }
+              });
+
+              btn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (isDesktopViewport()) {
+                  var panel = document.querySelector('[data-flyout-panel="' + groupId + '"]');
+                  var isOpenAndPinned = pinnedFlyoutGroup === groupId && panel && !panel.classList.contains('hidden');
+                  if (isOpenAndPinned) {
+                    window.closeSidebarFlyouts();
+                  } else {
+                    window.openSidebarFlyout(groupId, true);
+                  }
+                } else {
+                  var slot = document.querySelector('[data-mobile-slot="' + groupId + '"]');
+                  var items = document.querySelector('[data-flyout-items="' + groupId + '"]');
+                  if (!slot || !items) return;
+                  var wasHidden = slot.classList.contains('hidden');
+                  restoreItemsToDesktopPanels();
+                  document.querySelectorAll('[data-menu-group]').forEach(function(otherBtn) {
+                    var og = otherBtn.getAttribute('data-menu-group');
+                    var chev = document.querySelector('[data-group-chevron="' + og + '"]');
+                    if (chev) chev.classList.remove('rotate-90', 'text-cyan-300');
+                    otherBtn.setAttribute('aria-expanded', 'false');
+                  });
+                  if (wasHidden) {
+                    slot.appendChild(items);
+                    slot.classList.remove('hidden');
+                    btn.setAttribute('aria-expanded', 'true');
+                    var chev = document.querySelector('[data-group-chevron="' + groupId + '"]');
+                    if (chev) chev.classList.add('rotate-90', 'text-cyan-300');
+                  }
+                }
+              });
+            });
+
+            document.querySelectorAll('[data-flyout-panel]').forEach(function(panel) {
+              var groupId = panel.getAttribute('data-flyout-panel');
+              panel.addEventListener('mouseenter', function() {
+                if (closeTimer) {
+                  clearTimeout(closeTimer);
+                  closeTimer = null;
+                }
+              });
+              panel.addEventListener('mouseleave', function() {
+                if (isDesktopViewport()) {
+                  scheduleFlyoutClose(groupId);
+                }
+              });
+            });
+
+            document.addEventListener('click', function(e) {
+              if (!isDesktopViewport()) return;
+              var target = e.target;
+              if (target && target.closest && (target.closest('[data-menu-group]') || target.closest('[data-flyout-panel]'))) {
+                return;
+              }
+              if (activeFlyoutGroup || pinnedFlyoutGroup) {
+                window.closeSidebarFlyouts();
+              }
+            });
+
+            document.addEventListener('keydown', function(e) {
+              if (e.key === 'Escape') {
+                window.closeSidebarFlyouts();
+              }
+            });
+
+            window.addEventListener('resize', function() {
+              if (isDesktopViewport()) {
+                restoreItemsToDesktopPanels();
+              }
+              window.closeSidebarFlyouts();
+            });
+
+            var navRoot = document.getElementById('sidebarNavRoot');
+            if (navRoot) {
+              navRoot.addEventListener('scroll', function() {
+                if (activeFlyoutGroup && isDesktopViewport()) {
+                  window.openSidebarFlyout(activeFlyoutGroup, pinnedFlyoutGroup === activeFlyoutGroup);
+                }
+              }, { passive: true });
+            }
+
+            // Observa alterações nos badges internos para refletir contagem no botão da categoria
+            ['badge-nav-busca-ativa', 'badge-nav-tarefas', 'badge-nav-substituicao'].forEach(function(bid) {
+              var el = document.getElementById(bid);
+              if (el && typeof MutationObserver !== 'undefined') {
+                new MutationObserver(function() {
+                  window.syncSidebarFloatingMenus();
+                }).observe(el, { attributes: true, childList: true, characterData: true });
+              }
+            });
+
+            window.syncSidebarFloatingMenus();
+          }
+
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', bindSidebarEvents);
+          } else {
+            bindSidebarEvents();
+          }
+        })();
+      </script>
 
 
       <!-- ÁREA PRINCIPAL DE CONTEÚDO (Professional Polish Clean Canvas) -->
@@ -2802,31 +3256,76 @@
 
             <!-- Painel: Atualização de Frequência SED (.xlsx) -->
             <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 mt-6">
-              <div class="flex items-center gap-3 mb-4">
-                <div class="w-10 h-10 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold">
-                  <i class="fa-solid fa-file-excel text-base"></i>
-                </div>
-                <div>
-                  <h3 class="text-sm font-bold text-blue-900 uppercase tracking-wide">Atualização de Frequência SED</h3>
-                  <p class="text-xs text-slate-400">Importe a planilha de frequência oficial (.xlsx) exportada da Secretaria Escolar Digital</p>
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <div class="flex items-center gap-3">
+                  <div class="w-10 h-10 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold shrink-0">
+                    <i class="fa-solid fa-file-excel text-base"></i>
+                  </div>
+                  <div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <h3 class="text-sm font-bold text-blue-900 uppercase tracking-wide">Atualização de Frequência SED</h3>
+                      <span class="text-[10px] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full uppercase">
+                        Upload em Lote (Multi-Turmas)
+                      </span>
+                    </div>
+                    <p class="text-xs text-slate-400">Importe uma ou várias planilhas de frequência oficial (.xlsx / .xls) exportadas da Secretaria Escolar Digital</p>
+                  </div>
                 </div>
               </div>
 
-              <div class="max-w-xl space-y-3">
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label for="fileFreq" class="block text-xs font-semibold text-slate-600 uppercase mb-1">Selecione o arquivo Excel (.xlsx)</label>
-                    <input type="file" id="fileFreq" accept=".xlsx" class="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 w-full cursor-pointer" />
+              <div class="space-y-4">
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+                  <div class="lg:col-span-8 space-y-3">
+                    <div
+                      id="dropzone-freq-xlsx"
+                      onclick="document.getElementById('fileFreq').click()"
+                      class="p-5 border-2 border-dashed border-emerald-400 bg-emerald-50/30 hover:bg-emerald-50/70 rounded-xl transition cursor-pointer text-center space-y-2 group"
+                    >
+                      <input
+                        type="file"
+                        id="fileFreq"
+                        accept=".xlsx,.xls"
+                        multiple
+                        class="hidden"
+                        onchange="window.handleArquivoFreqXlsxSelecionado(event)"
+                      />
+                      <div class="w-10 h-10 mx-auto rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center group-hover:scale-105 transition-transform">
+                        <i class="fa-solid fa-file-excel text-lg"></i>
+                      </div>
+                      <div>
+                        <p class="text-xs sm:text-sm font-bold text-blue-950">
+                          Clique ou arraste uma ou várias planilhas Excel (.xlsx / .xls) da SED
+                        </p>
+                        <p class="text-[11px] text-slate-500 mt-0.5">
+                          Selecione de uma só vez os arquivos de várias turmas ou adicione arquivos aos poucos antes de processar
+                        </p>
+                      </div>
+                      <div class="inline-flex items-center gap-1.5 text-[11px] font-extrabold text-emerald-800 bg-white px-3 py-1 rounded-full border border-emerald-300 shadow-2xs">
+                        <i class="fa-solid fa-cloud-arrow-up text-[10px]"></i>
+                        <span id="nome-arquivo-freq-xlsx-label">Selecionar Planilhas Excel (Múltiplos Arquivos Permitidos)</span>
+                      </div>
+                    </div>
+
+                    <!-- Lista de arquivos selecionados em lote -->
+                    <div id="lista-arquivos-freq-xlsx-selecionados" class="hidden p-3 bg-white rounded-xl border border-slate-200 text-xs space-y-1.5 shadow-2xs"></div>
                   </div>
-                  <div>
-                    <label for="dataRefFreq" class="block text-xs font-semibold text-slate-600 uppercase mb-1">Data de Referência da SED</label>
-                    <input type="date" id="dataRefFreq" class="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 w-full outline-none focus:ring-2 focus:ring-emerald-400" />
+
+                  <div class="lg:col-span-4 space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <div>
+                      <label for="dataRefFreq" class="block text-xs font-semibold text-slate-600 uppercase mb-1">Data de Referência da SED</label>
+                      <input type="date" id="dataRefFreq" class="p-2.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 w-full outline-none focus:ring-2 focus:ring-emerald-400" />
+                    </div>
+                    <button id="btn-processar-freq" type="button" class="w-full px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs uppercase tracking-wider shadow-sm transition flex items-center justify-center gap-2 cursor-pointer">
+                      <i class="fa-solid fa-cloud-arrow-up text-xs"></i>
+                      <span>Processar Frequência em Lote</span>
+                    </button>
+                    <p class="text-[11px] text-slate-500 leading-relaxed">
+                      <i class="fa-solid fa-circle-info text-emerald-600 mr-1"></i>
+                      Todos os arquivos da fila serão lidos e gravados em lote único no banco, preservando o histórico anterior de cada estudante.
+                    </p>
                   </div>
                 </div>
-                <button id="btn-processar-freq" type="button" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs uppercase tracking-wider shadow-sm transition flex items-center gap-2 cursor-pointer">
-                  <i class="fa-solid fa-cloud-arrow-up text-xs"></i>
-                  <span>Processar Frequência da Turma</span>
-                </button>
+
                 <div id="resultado-freq" class="mt-3 text-sm"></div>
               </div>
             </div>
@@ -4922,12 +5421,12 @@
               <span class="text-[11px] font-bold text-slate-700 truncate w-full">Agenda</span>
             </button>
 
-            <!-- Central Unificada de Dashboards -->
-            <button type="button" onclick="window.switchTab('dashboard'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-dashboard">
+            <!-- Central de Inteligência e Dashboards -->
+            <button type="button" onclick="window.switchTab('dash-evasao'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-dash-evasao">
               <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-700 to-indigo-800 text-white flex items-center justify-center text-lg shadow-sm">
                 <i class="fa-solid fa-chart-pie"></i>
               </div>
-              <span class="text-[11px] font-bold text-slate-700 truncate w-full">Dashboards</span>
+              <span class="text-[11px] font-bold text-slate-700 truncate w-full">Central BI</span>
             </button>
 
             <!-- Substituição PEI -->
@@ -4952,14 +5451,6 @@
                 <i class="fa-solid fa-building-columns"></i>
               </div>
               <span class="text-[11px] font-bold text-slate-700 truncate w-full">Secretaria</span>
-            </button>
-
-            <!-- SED vs Mapão -->
-            <button type="button" onclick="window.switchTab('comparativo-frequencia'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-comparativo-frequencia">
-              <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-700 to-blue-800 text-white flex items-center justify-center text-lg shadow-sm">
-                <i class="fa-solid fa-scale-balanced"></i>
-              </div>
-              <span class="text-[11px] font-bold text-slate-700 truncate w-full">SED vs Mapão</span>
             </button>
 
             <!-- Auditoria -->

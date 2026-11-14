@@ -900,7 +900,7 @@ if (typeof window !== "undefined") {
   window.exportarAtrasosCSV = exportarAtrasosCSV;
 
   const isDashboardUnificadoAtivo = () =>
-    ["dashboard", "dashboard-atrasos", "dashboard-notas", "dash-projetos-pei"].includes(window.currentActiveTab);
+    ["dashboard", "dashboard-geral", "dashboard-atrasos", "dashboard-notas", "dash-projetos-pei"].includes(window.currentActiveTab);
 
   window.addEventListener("studentsdataupdated", () => {
     if (isDashboardUnificadoAtivo()) {

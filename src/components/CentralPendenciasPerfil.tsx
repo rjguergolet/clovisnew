@@ -330,7 +330,7 @@ export default function CentralPendenciasPerfil({
         motivoAcao: 'Regularização necessária antes do fechamento oficial do bimestre',
         botaoAcaoTexto: 'Auditar SED vs Mapão',
         botaoAcaoIcone: 'fa-solid fa-arrow-right',
-        aoExecutarAcao: () => nav('comparativo-frequencia')
+        aoExecutarAcao: () => nav('dash-evasao')
       });
     }
 
@@ -348,7 +348,7 @@ export default function CentralPendenciasPerfil({
         motivoAcao: 'Registros do dia aguardando regularização ou justificativa da secretaria',
         botaoAcaoTexto: 'Ver Atrasos do Dia',
         botaoAcaoIcone: 'fa-solid fa-arrow-right',
-        aoExecutarAcao: () => nav('dashboard-atrasos')
+        aoExecutarAcao: () => nav('dash-pontualidade')
       });
     }
 
@@ -483,9 +483,9 @@ export default function CentralPendenciasPerfil({
                 {(isDirecao || isCoord) && alunosMapaoPendentesCount > 0 && (
                   <button
                     type="button"
-                    onClick={() => nav('comparativo-frequencia')}
+                    onClick={() => nav('dash-evasao')}
                     className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-indigo-50/90 hover:bg-indigo-100/80 text-indigo-900 border border-indigo-200/70 flex items-center gap-1.5 transition-colors cursor-pointer tabular-nums"
-                    title="Abrir Comparativo SED vs Mapão"
+                    title="Abrir Central de Evasão e Tripla Frequência"
                   >
                     <i className="fa-solid fa-scale-balanced text-[10px] text-indigo-600"></i>
                     <span>{alunosMapaoPendentesCount} Auditoria SED vs Mapão</span>
@@ -494,7 +494,7 @@ export default function CentralPendenciasPerfil({
                 {isSecretaria && atrasosHojeCount > 0 && (
                   <button
                     type="button"
-                    onClick={() => nav('dashboard-atrasos')}
+                    onClick={() => nav('dash-pontualidade')}
                     className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-50/90 hover:bg-amber-100/80 text-amber-900 border border-amber-200/70 flex items-center gap-1.5 transition-colors cursor-pointer tabular-nums"
                     title="Abrir Atrasos do Portão"
                   >
@@ -1250,7 +1250,7 @@ export default function CentralPendenciasPerfil({
               <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between">
                 <button
                   type="button"
-                  onClick={() => nav('comparativo-frequencia')}
+                  onClick={() => nav('dash-evasao')}
                   className="text-xs font-semibold text-slate-700 hover:text-slate-950 flex items-center gap-1 cursor-pointer"
                 >
                   <span>Abrir Comparativo SED</span>
@@ -1285,7 +1285,7 @@ export default function CentralPendenciasPerfil({
                     onClick={() => {
                       const el = document.getElementById('input-busca-aluno-atraso') || document.querySelector('input[placeholder*="filtrar"]');
                       if (el) (el as HTMLElement).focus();
-                      else nav('dashboard-atrasos');
+                      else nav('dash-pontualidade');
                     }}
                     className="p-2 bg-amber-50 hover:bg-amber-100 text-amber-900 font-semibold rounded-xl border border-amber-200/70 text-center transition-colors cursor-pointer"
                   >
@@ -1293,7 +1293,7 @@ export default function CentralPendenciasPerfil({
                   </button>
                   <button
                     type="button"
-                    onClick={() => nav('dashboard-atrasos')}
+                    onClick={() => nav('dash-pontualidade')}
                     className="p-2 bg-slate-100 hover:bg-slate-200/80 text-slate-800 font-semibold rounded-xl border border-slate-200/70 text-center transition-colors cursor-pointer"
                   >
                     Ver Relatório
@@ -1342,7 +1342,7 @@ export default function CentralPendenciasPerfil({
 
             {(isCoord || isPAAC) && (
               <>
-                <button type="button" onClick={() => nav('comparativo-frequencia')} className="px-3 py-1.5 bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/70 text-indigo-900 font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0">
+                <button type="button" onClick={() => nav('dash-evasao')} className="px-3 py-1.5 bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/70 text-indigo-900 font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0">
                   <i className="fa-solid fa-scale-balanced text-indigo-600"></i><span>SED vs Mapão</span>
                 </button>
                 <button type="button" onClick={() => nav('substituicao-pei')} className="px-3 py-1.5 bg-amber-50/70 hover:bg-amber-100/70 border border-amber-200/70 text-amber-900 font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0">
@@ -1365,7 +1365,7 @@ export default function CentralPendenciasPerfil({
                 <button type="button" onClick={() => nav('busca-ativa')} className="px-3 py-1.5 bg-rose-50/70 hover:bg-rose-100/70 border border-rose-200/70 text-rose-900 font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0">
                   <i className="fa-solid fa-magnifying-glass-location text-rose-600"></i><span>Busca Ativa SEDUC</span>
                 </button>
-                <button type="button" onClick={() => nav('comparativo-frequencia')} className="px-3 py-1.5 bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/70 text-indigo-900 font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0">
+                <button type="button" onClick={() => nav('dash-evasao')} className="px-3 py-1.5 bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/70 text-indigo-900 font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0">
                   <i className="fa-solid fa-scale-balanced text-indigo-600"></i><span>SED vs Mapão</span>
                 </button>
                 <button type="button" onClick={() => nav('substituicao-pei')} className="px-3 py-1.5 bg-amber-50/70 hover:bg-amber-100/70 border border-amber-200/70 text-amber-900 font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0">
@@ -1382,7 +1382,7 @@ export default function CentralPendenciasPerfil({
 
             {isSecretaria && (
               <>
-                <button type="button" onClick={() => nav('dashboard-atrasos')} className="px-3 py-1.5 bg-amber-50/70 hover:bg-amber-100/70 border border-amber-200/70 text-amber-900 font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0">
+                <button type="button" onClick={() => nav('dash-pontualidade')} className="px-3 py-1.5 bg-amber-50/70 hover:bg-amber-100/70 border border-amber-200/70 text-amber-900 font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0">
                   <i className="fa-solid fa-clock-rotate-left text-amber-600"></i><span>Atrasos no Portão</span>
                 </button>
                 <button type="button" onClick={() => nav('secretaria')} className="px-3 py-1.5 bg-purple-50/70 hover:bg-purple-100/70 border border-purple-200/70 text-purple-900 font-semibold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0">

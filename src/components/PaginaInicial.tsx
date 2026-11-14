@@ -1416,7 +1416,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         {/* Bloco 1 */}
         {activeRole === 'SECRETARIA' ? (
           <div
-            onClick={() => onNavigate ? onNavigate('dashboard-atrasos') : window.switchTab?.('dashboard-atrasos')}
+            onClick={() => onNavigate ? onNavigate('dash-pontualidade') : window.switchTab?.('dash-pontualidade')}
             className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-amber-300 transition-all cursor-pointer group"
             title="Clique para abrir o Dashboard de Atrasos"
           >
@@ -1750,7 +1750,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
           ) : isSecretaria ? (
             <button
               type="button"
-              onClick={() => onNavigate ? onNavigate('dashboard-atrasos') : window.switchTab?.('dashboard-atrasos')}
+              onClick={() => onNavigate ? onNavigate('dash-pontualidade') : window.switchTab?.('dash-pontualidade')}
               className="p-3 bg-slate-50/70 hover:bg-amber-50/70 border border-slate-200/70 hover:border-amber-200 rounded-2xl transition-all text-left group cursor-pointer flex flex-col justify-between"
             >
               <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-sm group-hover:scale-105 transition-transform">
@@ -1771,7 +1771,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
           {(isDirecao || isCoord || isSecretaria) && (
             <button
               type="button"
-              onClick={() => onNavigate ? onNavigate('comparativo-frequencia') : window.switchTab?.('comparativo-frequencia')}
+              onClick={() => onNavigate ? onNavigate('dash-evasao') : window.switchTab?.('dash-evasao')}
               className="p-3 bg-slate-50/70 hover:bg-cyan-50/70 border border-slate-200/70 hover:border-cyan-200 rounded-2xl transition-all text-left group cursor-pointer flex flex-col justify-between"
             >
               <div className="w-8 h-8 rounded-xl bg-cyan-500/10 text-cyan-700 flex items-center justify-center text-sm group-hover:scale-105 transition-transform">
@@ -2245,7 +2245,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
               </div>
               <button
                 type="button"
-                onClick={() => onNavigate ? onNavigate('dashboard-atrasos') : window.switchTab?.('dashboard-atrasos')}
+                onClick={() => onNavigate ? onNavigate('dash-pontualidade') : window.switchTab?.('dash-pontualidade')}
                 className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
               >
                 <span>Dashboard Completo de Atrasos</span>
