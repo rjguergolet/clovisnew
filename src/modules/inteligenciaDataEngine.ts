@@ -522,6 +522,13 @@ export function normalizarAlunos(
       faltasConsecutivas: 0
     };
 
+    const faltasConsecutivasFallback = Math.max(
+      0,
+      Number(aluno?.dias_seguidos_faltando ?? aluno?.faltas_consecutivas ?? 0) || 0
+    );
+    const faltasConsecutivasFinal =
+      diaria.totalDias > 0 ? diaria.faltasConsecutivas : faltasConsecutivasFallback;
+
     // Busca Ativa status
     const registrosBa = (baPorRa.get(raKey) || []).slice().sort((a, b) =>
       String(b.data || b.dataRegistro || '').localeCompare(String(a.data || a.dataRegistro || ''))
@@ -557,7 +564,7 @@ export function normalizarAlunos(
       (sedAtual !== null && sedAtual < 75) ||
       (comp.mapaoFreq !== null && comp.mapaoFreq < 75) ||
       (diaria.percentual !== null && diaria.percentual < 75) ||
-      diaria.faltasConsecutivas >= 3;
+      faltasConsecutivasFinal >= 3;
 
     // Última tutoria
     const ultTutDireta = toIsoDate(aluno?.ultima_tutoria || aluno?.ultimaTutoria);
@@ -596,7 +603,7 @@ export function normalizarAlunos(
       diariaFaltas: diaria.faltas,
       diariaJustificadas: diaria.justificadas,
       diariaTotalDias: diaria.totalDias,
-      faltasConsecutivas: diaria.faltasConsecutivas,
+      faltasConsecutivas: faltasConsecutivasFinal,
       statusBuscaAtiva,
       temCompensacaoEntregue,
       alertaPrecoceDiaria,

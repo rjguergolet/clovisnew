@@ -9357,9 +9357,10 @@ Yasmin Seline`;
         const btnModerada = document.getElementById("btn-ba-msg-moderada");
         const btnFinal = document.getElementById("btn-ba-msg-final");
         const btnAtrasos = document.getElementById("btn-ba-msg-atrasos");
+        const btnFaltasConsec = document.getElementById("btn-ba-msg-faltas-consecutivas");
 
         // Resetar estilos dos botões de modelo
-        [btnLeve, btnModerada, btnFinal, btnAtrasos].forEach(b => {
+        [btnLeve, btnModerada, btnFinal, btnAtrasos, btnFaltasConsec].forEach(b => {
           if (b) {
             b.className = "py-1.5 px-2 rounded-lg border text-[10px] font-extrabold uppercase transition cursor-pointer flex flex-col items-center justify-center gap-0.5 bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200 shadow-2xs text-center";
           }
@@ -9390,6 +9391,20 @@ Yasmin Seline`;
             msg = `COMUNICADO OFICIAL DE BUSCA ATIVA DE ATRASOS - E.E. CLÓVIS DE LUCCA\n\nPrezado(a) responsável pelo(a) estudante ${nomeUpper} (Turma: ${turmaUpper}),\n\nComunicamos que o(a) estudante atingiu ${qtdMes} atrasos registrados na entrada das aulas no período (${gatilhoInfo.mesAnoRef || 'mês vigente'}), acionando o protocolo institucional de emissão do Termo de Ciência de Frequência e Pontualidade e pauta obrigatória na sessão semanal de Tutoria PEI (Tutor: ${tutorNome}).\n\nSolicitamos sua ciência e colaboração para garantirmos a pontualidade diária no início da 1ª aula, evitando prejuízos pedagógicos. Por favor, confirme o recebimento desta mensagem.\n\nAtenciosamente,\nEquipe Gestora - E.E. Clóvis de Lucca`;
           } else {
             msg = `AVISO PREVENTIVO DE PONTUALIDADE (BUSCA ATIVA) - E.E. CLÓVIS DE LUCCA\n\nOlá, responsável pelo(a) estudante ${nomeUpper} (Turma: ${turmaUpper}).\n\nRegistramos ${qtdMes} atraso(s) recente(s) no horário de entrada escolar. Lembramos que a pontualidade na 1ª aula é fundamental para o acompanhamento pedagógico no Programa Ensino Integral (PEI) e que, ao atingir 3 atrasos no mês, é emitido automaticamente o Termo de Ciência de Frequência com pauta obrigatória na Tutoria.\n\nContamos com a parceria da família! Por favor, confirme a ciência deste comunicado.\n\nAtenciosamente,\nEquipe Gestora - E.E. Clóvis de Lucca`;
+          }
+        } else if (tipoModelo === 'faltas_consecutivas') {
+          if (btnFaltasConsec) btnFaltasConsec.className = "py-1.5 px-2 rounded-lg border text-[10px] font-extrabold uppercase transition cursor-pointer flex flex-col items-center justify-center gap-0.5 bg-rose-100 text-rose-900 border-rose-400 shadow-sm text-center ring-2 ring-rose-400";
+          const infoConsec = typeof window.obterInfoFaltasConsecutivasAluno === "function"
+            ? window.obterInfoFaltasConsecutivasAluno(alunoBuscaAtivaSelecionado)
+            : { faltasConsecutivas: parseInt(alunoBuscaAtivaSelecionado.dias_seguidos_faltando || "0", 10) || 0, datasConsecutivas: [] };
+          const qtdFaltas = infoConsec.faltasConsecutivas || 3;
+          const tutorNome = (alunoBuscaAtivaSelecionado.tutor_2026 || alunoBuscaAtivaSelecionado.tutor || "Professor(a) Tutor(a)").toUpperCase();
+          const datasFmt = (infoConsec.datasConsecutivas || []).map(d => d.split("-").reverse().slice(0, 2).join("/")).join(", ");
+          const trechoDatas = datasFmt ? ` (${datasFmt})` : "";
+          if (qtdFaltas >= 3) {
+            msg = `COMUNICADO OFICIAL DE BUSCA ATIVA (FALTAS CONSECUTIVAS) - E.E. CLÓVIS DE LUCCA\n\nPrezado(a) responsável pelo(a) estudante ${nomeUpper} (Turma: ${turmaUpper}),\n\nComunicamos que o(a) estudante completou ${qtdFaltas} faltas consecutivas${trechoDatas} registradas na chamada escolar, acionando o protocolo oficial de Busca Ativa, emissão do Termo de Ciência de Frequência e pauta obrigatória na sessão semanal de Tutoria PEI (Tutor: ${tutorNome}).\n\nCaso haja atestado médico ou justificativa legal, solicitamos o envio imediato à secretaria escolar e o retorno presencial do(a) estudante. Por favor, confirme o recebimento desta mensagem.\n\nAtenciosamente,\nEquipe Gestora - E.E. Clóvis de Lucca`;
+          } else {
+            msg = `AVISO PREVENTIVO DE FREQUÊNCIA (BUSCA ATIVA) - E.E. CLÓVIS DE LUCCA\n\nOlá, responsável pelo(a) estudante ${nomeUpper} (Turma: ${turmaUpper}).\n\nRegistramos ${qtdFaltas} faltas consecutivas${trechoDatas} do(a) estudante nas aulas recentes. Lembramos que a presença diária é fundamental no Programa Ensino Integral (PEI) e que, ao completar 3 faltas consecutivas, é acionado automaticamente o protocolo oficial de Busca Ativa e Termo de Ciência.\n\nEstá tudo bem? Caso precise de apoio ou queira enviar justificativa, responda esta mensagem.\n\nAtenciosamente,\nEquipe Gestora - E.E. Clóvis de Lucca`;
           }
         }
 
@@ -9862,8 +9877,10 @@ Yasmin Seline`;
 
       window.registrarContatoRapidoBa = function(ra, modoAtraso = false) {
         window.selecionarAlunoParaBuscaAtiva(ra);
-        if (modoAtraso) {
+        if (modoAtraso === true) {
           window.selecionarModeloMsgBa('atrasos');
+        } else if (typeof modoAtraso === 'string' && modoAtraso) {
+          window.selecionarModeloMsgBa(modoAtraso);
         }
         const formEl = document.getElementById("form-novo-contato-ba") || document.getElementById("card-ba-aluno-selecionado");
         if (formEl) {
@@ -9876,7 +9893,11 @@ Yasmin Seline`;
       };
 
       window.registrarContatoRapidoBaAtraso = function(ra) {
-        window.registrarContatoRapidoBa(ra, true);
+        window.registrarContatoRapidoBa(ra, 'atrasos');
+      };
+
+      window.registrarContatoRapidoBaFaltasConsecutivas = function(ra) {
+        window.registrarContatoRapidoBa(ra, 'faltas_consecutivas');
       };
 
       // Copiar Mensagem WhatsApp
@@ -19231,11 +19252,182 @@ Yasmin Seline`;
       };
 
       window.filtroFaixaFreqBa = 'TODOS';
+      window.mapaFaltasConsecutivasDiaria = new Map();
+      window.alunosAlerta2FaltasCache = [];
+
+      function normalizarRaChaveBa(raRaw) {
+        const str = String(raRaw || "").trim();
+        const digits = str.replace(/\D/g, "");
+        return digits.replace(/^0+/, "") || digits || str;
+      }
+
+      function normalizarStatusChamadaBa(statusRaw) {
+        if (!statusRaw) return null;
+        const s = String(statusRaw).trim().toUpperCase();
+        if (s === "P" || s === "PRESENTE" || s === "ATRASADO" || s === "A") return "P";
+        if (s === "F" || s === "FALTA" || s === "AUSENTE") return "F";
+        if (s === "J" || s === "JUSTIFICADA" || s === "LICENCA" || s === "LICENÇA" || s === "DISPENSA" || s === "ATESTADO") return "J";
+        return null;
+      }
+
+      function extrairDataIsoChamadaBa(raw) {
+        if (!raw) return "";
+        const s = String(raw).trim();
+        const mIso = s.match(/(\d{4}-\d{2}-\d{2})/);
+        if (mIso) return mIso[1];
+        const mBr = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+        if (mBr) return `${mBr[3]}-${mBr[2]}-${mBr[1]}`;
+        return "";
+      }
+
+      window.computarMapaFaltasConsecutivasDiaria = function(docsLista) {
+        const docs = Array.isArray(docsLista) ? docsLista : (Array.isArray(window.frequenciaDiariaCache) ? window.frequenciaDiariaCache : []);
+        const porAlunoData = new Map();
+
+        const registrar = (raRaw, dataIso, statusNorm) => {
+          if (!dataIso || !statusNorm) return;
+          const rk = normalizarRaChaveBa(raRaw);
+          if (!rk) return;
+          let mapDatas = porAlunoData.get(rk);
+          if (!mapDatas) {
+            mapDatas = new Map();
+            porAlunoData.set(rk, mapDatas);
+          }
+          mapDatas.set(dataIso, statusNorm);
+        };
+
+        docs.forEach(docItem => {
+          if (!docItem || typeof docItem !== "object") return;
+          const docDataIso = extrairDataIsoChamadaBa(docItem.data || docItem.dataChamada || docItem.id);
+
+          if (docItem.registros && typeof docItem.registros === "object" && !Array.isArray(docItem.registros)) {
+            Object.entries(docItem.registros).forEach(([raKey, reg]) => {
+              const stVal = typeof reg === "string" ? reg : reg?.status;
+              registrar(raKey, docDataIso, normalizarStatusChamadaBa(stVal));
+            });
+          }
+
+          if (docItem.datas && typeof docItem.datas === "object") {
+            Object.entries(docItem.datas).forEach(([dtKey, mapa]) => {
+              const iso = extrairDataIsoChamadaBa(dtKey);
+              if (iso && mapa && typeof mapa === "object") {
+                Object.entries(mapa).forEach(([raKey, val]) => {
+                  const stVal = typeof val === "string" ? val : val?.status;
+                  registrar(raKey, iso, normalizarStatusChamadaBa(stVal));
+                });
+              }
+            });
+          }
+
+          if (docItem.ra && docDataIso && docItem.status) {
+            registrar(docItem.ra, docDataIso, normalizarStatusChamadaBa(docItem.status));
+          }
+        });
+
+        const resultado = new Map();
+        porAlunoData.forEach((datasMap, rk) => {
+          const ordenadas = Array.from(datasMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+          let faltasConsecutivas = 0;
+          const datasConsecutivas = [];
+          for (let i = ordenadas.length - 1; i >= 0; i--) {
+            if (ordenadas[i][1] === "F") {
+              faltasConsecutivas++;
+              datasConsecutivas.unshift(ordenadas[i][0]);
+            } else {
+              break;
+            }
+          }
+          const ultima = ordenadas.length > 0 ? ordenadas[ordenadas.length - 1] : null;
+          resultado.set(rk, {
+            faltasConsecutivas,
+            datasConsecutivas,
+            ultimaData: ultima ? ultima[0] : "",
+            ultimoStatus: ultima ? ultima[1] : null,
+            totalDias: ordenadas.length
+          });
+        });
+
+        window.mapaFaltasConsecutivasDiaria = resultado;
+        return resultado;
+      };
+
+      window.obterInfoFaltasConsecutivasAluno = function(aluno) {
+        if (!aluno) {
+          return { faltasConsecutivas: 0, datasConsecutivas: [], isGatilho3: false, isAlerta2: false, fonte: "Nenhuma" };
+        }
+        const rk = normalizarRaChaveBa(aluno.ra || aluno.id);
+        const diariaInfo = (window.mapaFaltasConsecutivasDiaria instanceof Map)
+          ? window.mapaFaltasConsecutivasDiaria.get(rk)
+          : null;
+
+        const fallbackDias = Math.max(0, parseInt(aluno.dias_seguidos_faltando ?? aluno.faltas_consecutivas ?? "0", 10) || 0);
+        let faltasConsecutivas = 0;
+        let datasConsecutivas = [];
+        let fonte = "Chamada Diária";
+
+        if (diariaInfo && diariaInfo.totalDias > 0) {
+          faltasConsecutivas = diariaInfo.faltasConsecutivas;
+          datasConsecutivas = diariaInfo.datasConsecutivas || [];
+        } else {
+          faltasConsecutivas = fallbackDias;
+          fonte = fallbackDias > 0 ? "Auditoria SED" : "Nenhuma";
+        }
+
+        return {
+          faltasConsecutivas,
+          datasConsecutivas,
+          isGatilho3: faltasConsecutivas >= 3,
+          isAlerta2: faltasConsecutivas === 2,
+          fonte
+        };
+      };
+
+      let _carregandoFreqDiariaBaPromise = null;
+      window.carregarFrequenciaDiariaParaBuscaAtiva = async function(force = false) {
+        if (!force && Array.isArray(window.frequenciaDiariaCache)) {
+          window.computarMapaFaltasConsecutivasDiaria(window.frequenciaDiariaCache);
+          return window.frequenciaDiariaCache;
+        }
+        if (_carregandoFreqDiariaBaPromise) return _carregandoFreqDiariaBaPromise;
+
+        _carregandoFreqDiariaBaPromise = (async () => {
+          try {
+            const snap = await getDocs(collection(db, "frequencia_diaria"));
+            const lista = [];
+            snap.forEach(d => lista.push({ id: d.id, ...d.data() }));
+            window.frequenciaDiariaCache = lista;
+            window.computarMapaFaltasConsecutivasDiaria(lista);
+            if (typeof window.renderBuscaAtiva === "function") {
+              window.renderBuscaAtiva();
+            }
+            return lista;
+          } catch (err) {
+            console.warn("Aviso ao carregar frequencia_diaria para Busca Ativa:", err);
+            return [];
+          } finally {
+            _carregandoFreqDiariaBaPromise = null;
+          }
+        })();
+
+        return _carregandoFreqDiariaBaPromise;
+      };
+
+      window.addEventListener("frequenciadiariaupdated", () => {
+        if (Array.isArray(window.frequenciaDiariaCache)) {
+          window.computarMapaFaltasConsecutivasDiaria(window.frequenciaDiariaCache);
+          if (typeof window.renderBuscaAtiva === "function") {
+            window.renderBuscaAtiva();
+          }
+        }
+      });
 
       window.setFiltroFaixaFreqBa = function(faixa) {
         window.filtroFaixaFreqBa = faixa;
 
         const btnTodos = document.getElementById("btn-filtro-freq-todos");
+        const btnGatilho3 = document.getElementById("btn-filtro-freq-gatilho3");
+        const btnAlerta2 = document.getElementById("btn-filtro-freq-alerta2");
+        const btnPendenteCiencia = document.getElementById("btn-filtro-freq-pendente-ciencia");
         const btnCritico = document.getElementById("btn-filtro-freq-critico");
         const btnAtencao = document.getElementById("btn-filtro-freq-atencao");
         const btnAcompanhamento = document.getElementById("btn-filtro-freq-acompanhamento");
@@ -19247,10 +19439,16 @@ Yasmin Seline`;
           btn.className = "px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-white text-slate-700 border border-slate-200 hover:bg-slate-100";
         };
 
-        [btnTodos, btnCritico, btnAtencao, btnAcompanhamento, btnParou, btnContinua].forEach(resetBtn);
+        [btnTodos, btnGatilho3, btnAlerta2, btnPendenteCiencia, btnCritico, btnAtencao, btnAcompanhamento, btnParou, btnContinua].forEach(resetBtn);
 
         if (faixa === 'TODOS' && btnTodos) {
           btnTodos.className = "px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-blue-900 text-white shadow-xs";
+        } else if (faixa === 'GATILHO_FALTAS_3' && btnGatilho3) {
+          btnGatilho3.className = "px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-red-600 text-white shadow-xs";
+        } else if (faixa === 'ALERTA_FALTAS_2' && btnAlerta2) {
+          btnAlerta2.className = "px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-amber-500 text-white shadow-xs";
+        } else if (faixa === 'PENDENTE_CIENCIA_FALTAS' && btnPendenteCiencia) {
+          btnPendenteCiencia.className = "px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-rose-600 text-white shadow-xs";
         } else if (faixa === 'CRITICO' && btnCritico) {
           btnCritico.className = "px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-red-600 text-white shadow-xs";
         } else if (faixa === 'ATENCAO' && btnAtencao) {
@@ -19335,7 +19533,7 @@ Yasmin Seline`;
         }
       };
 
-      // Renderizador da Busca Ativa (Otimizado O(N) para Infrequência e Atrasos)
+      // Renderizador da Busca Ativa (Otimizado O(N) para Infrequência, 3+ Faltas Consecutivas e Atrasos)
       function renderBuscaAtiva() {
         const bodyRisco = document.getElementById("tabela-busca-ativa-risco-body");
         const bodyEvadidos = document.getElementById("tabela-busca-ativa-evadidos-body");
@@ -19345,7 +19543,16 @@ Yasmin Seline`;
 
         if (!bodyRisco) return;
 
+        // Sincroniza índice da chamada diária em memória ou dispara leitura assíncrona única se ainda não carregou
+        if (Array.isArray(window.frequenciaDiariaCache)) {
+          window.computarMapaFaltasConsecutivasDiaria(window.frequenciaDiariaCache);
+        } else {
+          window.carregarFrequenciaDiariaParaBuscaAtiva();
+        }
+
+        const mapContatos = window.contatosBaPorRaMap || new Map();
         const todosAtivos = [];
+        const alerta2Faltas = [];
         const alunosEvadidos = [];
 
         ((window.allStudentsData || [])).forEach((aluno) => {
@@ -19356,61 +19563,210 @@ Yasmin Seline`;
 
           if (!ativo) {
             alunosEvadidos.push({ ...aluno, numPresenca, _searchKey });
-          } else if (numPresenca <= 75) {
-            todosAtivos.push({ ...aluno, numPresenca, _searchKey });
+            return;
+          }
+
+          const infoFaltas = window.obterInfoFaltasConsecutivasAluno(aluno);
+          const raStr = String(aluno.ra || "").trim();
+          const raClean = raStr.replace(/\D/g, "") || raStr;
+          const contatosBa = mapContatos.get(raStr) || mapContatos.get(raClean) || [];
+          const ultimoContatoBa = contatosBa.length > 0 ? contatosBa[0] : null;
+          const sla = String(aluno.sla_busca_ativa || "SEM_ACOES").toUpperCase();
+          const isFamiliaCienteFaltas =
+            Boolean(aluno.ciencia_faltas_consecutivas_data) ||
+            Boolean(aluno.termo_ciencia_faltas_emitido) ||
+            sla === "MONITORANDO" ||
+            (ultimoContatoBa && String(ultimoContatoBa.houveResposta || "").toUpperCase().includes("SIM"));
+
+          const enriched = {
+            ...aluno,
+            numPresenca,
+            faltasConsecutivas: infoFaltas.faltasConsecutivas,
+            datasFaltasConsecutivas: infoFaltas.datasConsecutivas,
+            isGatilhoFaltas3: infoFaltas.isGatilho3,
+            isAlertaFaltas2: infoFaltas.isAlerta2,
+            isFamiliaCienteFaltas,
+            ultimoContatoBa,
+            _searchKey
+          };
+
+          // REGRA DE NEGÓCIO: <= 75% de presença OU 3+ faltas consecutivas vira gatilho de Busca Ativa!
+          if (numPresenca <= 75 || infoFaltas.isGatilho3) {
+            todosAtivos.push(enriched);
+          }
+          if (infoFaltas.isAlerta2) {
+            alerta2Faltas.push(enriched);
           }
         });
 
-        // GESTÃO POR EXCEÇÃO: Ordenar alunos em risco obrigatoriamente do maior risco para o menor (menor % primeiro)
-        todosAtivos.sort((a, b) => a.numPresenca - b.numPresenca);
+        // GESTÃO POR EXCEÇÃO: Ordenar do maior risco para o menor (priorizando também quem atingiu 3+ faltas consecutivas)
+        todosAtivos.sort((a, b) => {
+          const scoreA = (a.isGatilhoFaltas3 ? -25 : 0) + a.numPresenca - (a.faltasConsecutivas * 2);
+          const scoreB = (b.isGatilhoFaltas3 ? -25 : 0) + b.numPresenca - (b.faltasConsecutivas * 2);
+          return scoreA - scoreB || a.numPresenca - b.numPresenca;
+        });
+        alerta2Faltas.sort((a, b) => a.numPresenca - b.numPresenca);
         alunosEvadidos.sort((a, b) => a.numPresenca - b.numPresenca);
 
-        // Separação por faixas dentro dos estudantes em risco (<= 75%)
+        window.alunosAlerta2FaltasCache = alerta2Faltas;
+
+        // Contagens das faixas e do gatilho de 3+ faltas consecutivas
         let countCriticos = 0;
         let countAtencao = 0;
         let countParouFaltar = 0;
         let countContinuaFaltando = 0;
+        let countGatilhoFaltas3 = 0;
+        let countCientesFaltas3 = 0;
+        let countPendentesFaltas3 = 0;
+
         for (let i = 0; i < todosAtivos.length; i++) {
           const al = todosAtivos[i];
           if (al.numPresenca < 50) countCriticos++;
-          else countAtencao++;
+          else if (al.numPresenca <= 75) countAtencao++;
+
+          if (al.isGatilhoFaltas3) {
+            countGatilhoFaltas3++;
+            if (al.isFamiliaCienteFaltas) countCientesFaltas3++;
+            else countPendentesFaltas3++;
+          }
 
           if (al.parou_de_faltar || al.tendencia_frequencia_status === 'PAROU_DE_FALTAR') {
             countParouFaltar++;
-          } else if (al.continua_faltando || al.tendencia_frequencia_status === 'CONTINUA_FALTANDO') {
+          } else if (al.continua_faltando || al.tendencia_frequencia_status === 'CONTINUA_FALTANDO' || al.isGatilhoFaltas3) {
             countContinuaFaltando++;
           }
         }
 
-        // Atualizar contadores das pílulas de filtro rápido
-        const countTodos = document.getElementById("count-filtro-todos");
-        const countCritico = document.getElementById("count-filtro-critico");
-        const countAtencaoEl = document.getElementById("count-filtro-atencao");
-        const countAcomp = document.getElementById("count-filtro-acompanhamento");
-        const countParouEl = document.getElementById("count-filtro-parou-faltar");
-        const countContinuaEl = document.getElementById("count-filtro-continua-faltando");
+        const setTxt = (id, val) => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = val;
+        };
 
-        if (countTodos) countTodos.textContent = todosAtivos.length;
-        if (countCritico) countCritico.textContent = countCriticos;
-        if (countAtencaoEl) countAtencaoEl.textContent = countAtencao;
-        if (countAcomp) countAcomp.textContent = "0";
-        if (countParouEl) countParouEl.textContent = countParouFaltar;
-        if (countContinuaEl) countContinuaEl.textContent = countContinuaFaltando;
-        if (badgeSubFaltas) badgeSubFaltas.textContent = `${todosAtivos.length}`;
+        // KPIs do módulo Faltas & Gatilho Consecutivo (espelho de Atrasos)
+        setTxt("kpi-ba-faltas-total", todosAtivos.length);
+        setTxt("kpi-ba-faltas-gatilho3", countGatilhoFaltas3);
+        setTxt("kpi-ba-faltas-alerta2", alerta2Faltas.length);
+        setTxt("kpi-ba-faltas-cientes", countCientesFaltas3);
+        setTxt("kpi-ba-faltas-pendentes", `${countPendentesFaltas3} pendente(s)`);
+
+        // Contadores das pílulas de filtro rápido
+        setTxt("count-filtro-todos", todosAtivos.length);
+        setTxt("count-filtro-gatilho3", countGatilhoFaltas3);
+        setTxt("count-filtro-alerta2", alerta2Faltas.length);
+        setTxt("count-filtro-pendente-ciencia", countPendentesFaltas3);
+        setTxt("count-filtro-critico", countCriticos);
+        setTxt("count-filtro-atencao", countAtencao);
+        setTxt("count-filtro-acompanhamento", "0");
+        setTxt("count-filtro-parou-faltar", countParouFaltar);
+        setTxt("count-filtro-continua-faltando", countContinuaFaltando);
+
+        if (badgeSubFaltas) {
+          badgeSubFaltas.textContent = countGatilhoFaltas3 > 0
+            ? `${todosAtivos.length} (${countGatilhoFaltas3} 🚨)`
+            : `${todosAtivos.length}`;
+        }
+        setTxt("ba-faltas-gatilho-badge", `${countGatilhoFaltas3} No Gatilho (3+)`);
 
         if (badgeRisco) badgeRisco.textContent = `${todosAtivos.length} Aluno(s)`;
         if (badgeEvadidos) badgeEvadidos.textContent = `${alunosEvadidos.length} Aluno(s)`;
 
-        // Render Widget de Casos Críticos (< 75%) no topo da Busca Ativa com Ações Rápidas (1 clique)
+        // Render Painel de Gatilho Automático (≥ 3 Faltas Consecutivas — espelho idêntico ao de Atrasos)
+        const elGatilhoFaltas = document.getElementById("lista-casos-gatilho-faltas-ba");
+        if (elGatilhoFaltas) {
+          const listaGatilho3 = todosAtivos
+            .filter(x => x.isGatilhoFaltas3)
+            .sort((a, b) => (b.faltasConsecutivas - a.faltasConsecutivas) || (a.numPresenca - b.numPresenca));
+
+          if (listaGatilho3.length === 0) {
+            elGatilhoFaltas.innerHTML = `
+              <div class="col-span-full p-3.5 text-center text-xs text-emerald-800 font-bold bg-emerald-50 rounded-xl border border-emerald-200">
+                <i class="fa-solid fa-circle-check mr-1.5 text-emerald-600"></i>
+                Nenhum estudante com 3 ou mais faltas consecutivas apuradas no momento!
+              </div>
+            `;
+          } else {
+            elGatilhoFaltas.innerHTML = listaGatilho3.slice(0, 9).map(item => {
+              const nomeUpper = (item.nome || "ESTUDANTE").toUpperCase();
+              const raVal = item.ra || "-";
+              const turmaUpper = (item.turma || "-").toUpperCase();
+              const tutorUpper = (item.tutor_2026 || item.tutor || "Não atribuído").toUpperCase();
+              const datasBadges = (item.datasFaltasConsecutivas || []).slice(-4).map(dt => {
+                const dtCurta = dt.split("-").reverse().slice(0, 2).join("/");
+                return `<span class="px-1.5 py-0.5 bg-slate-100 text-slate-700 border border-slate-200 rounded text-[9px] font-mono">${dtCurta} (F)</span>`;
+              }).join(" ");
+
+              return `
+                <div class="p-3 bg-rose-50/60 border border-rose-200 rounded-xl shadow-2xs hover:border-rose-400 transition flex flex-col justify-between gap-2.5">
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0 flex-1">
+                      <button
+                        type="button"
+                        onclick="window.abrirModalFichaAluno('${raVal}')"
+                        class="cursor-pointer text-blue-950 hover:text-blue-700 font-extrabold text-xs uppercase block truncate text-left"
+                        title="Abrir Dossiê do Estudante"
+                      >
+                        ${nomeUpper}
+                      </button>
+                      <p class="text-[10px] text-slate-500 font-mono mt-0.5">RA: ${raVal} • Turma: <strong>${turmaUpper}</strong> • Freq: <strong>${item.numPresenca.toFixed(1)}%</strong></p>
+                      <p class="text-[10px] text-slate-600 truncate mt-0.5">Tutor PEI: <strong class="text-purple-900">${tutorUpper}</strong></p>
+                    </div>
+                    <div class="flex flex-col items-end gap-1 shrink-0">
+                      <span class="px-2 py-0.5 bg-red-600 text-white font-black text-[10px] rounded-md shadow-2xs">
+                        ${item.faltasConsecutivas} Faltas Seguidas
+                      </span>
+                      <span class="px-1.5 py-0.5 rounded text-[9px] font-bold border ${item.isFamiliaCienteFaltas ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-amber-100 text-amber-900 border-amber-300'}">
+                        ${item.isFamiliaCienteFaltas ? '✅ Família Ciente' : '⏳ Pendente Ciência'}
+                      </span>
+                    </div>
+                  </div>
+
+                  ${datasBadges ? `<div class="flex items-center gap-1 flex-wrap">${datasBadges}</div>` : ''}
+
+                  <div class="grid grid-cols-3 gap-1.5 border-t border-rose-100 pt-2">
+                    <button
+                      type="button"
+                      onclick="window.enviarWhatsAppBuscaAtivaFaltasConsecutivas('${raVal}')"
+                      class="py-1 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-[10px] uppercase tracking-wider transition cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
+                      title="Enviar comunicado de 3+ faltas consecutivas via WhatsApp"
+                    >
+                      <i class="fa-brands fa-whatsapp text-[10px]"></i>
+                      <span>WhatsApp</span>
+                    </button>
+                    <button
+                      type="button"
+                      onclick="window.emitirTermoCienciaFaltasConsecutivasGatilho('${raVal}')"
+                      class="py-1 px-2 bg-red-700 hover:bg-red-800 text-white font-extrabold rounded-lg text-[10px] uppercase tracking-wider transition cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
+                      title="Emitir Termo de Ciência de Frequência e Pauta Obrigatória na Tutoria"
+                    >
+                      <i class="fa-solid fa-file-signature text-[9px]"></i>
+                      <span>Termo + Tutoria</span>
+                    </button>
+                    <button
+                      type="button"
+                      onclick="window.registrarContatoRapidoBaFaltasConsecutivas('${raVal}')"
+                      class="py-1 px-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-lg text-[10px] uppercase tracking-wider transition cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
+                      title="Abrir ficha de contato de Busca Ativa com mensagem de faltas seguidas"
+                    >
+                      <i class="fa-solid fa-phone-volume text-[9px]"></i>
+                      <span>Contato BA</span>
+                    </button>
+                  </div>
+                </div>
+              `;
+            }).join("");
+          }
+        }
+
+        // Render Widget de Casos Críticos (< 75% ou 3+ Faltas Consecutivas) no topo da Busca Ativa com Ações Rápidas
         const elCasosCriticos = document.getElementById("lista-casos-criticos-busca-ativa");
         const elCriticosCount = document.getElementById("ba-criticos-count");
-        if (elCriticosCount) elCriticosCount.textContent = `${todosAtivos.length} Em Busca Ativa (≤ 75%)`;
+        if (elCriticosCount) elCriticosCount.textContent = `${todosAtivos.length} Em Busca Ativa`;
 
         if (elCasosCriticos) {
           if (todosAtivos.length === 0) {
             elCasosCriticos.innerHTML = `
               <div class="col-span-full p-3 text-center text-xs text-emerald-700 font-bold bg-white rounded-lg border border-emerald-200">
-                <i class="fa-solid fa-circle-check mr-1.5 text-emerald-600"></i> Nenhum estudante com frequência até 75%! Frequência escolar regularizada.
+                <i class="fa-solid fa-circle-check mr-1.5 text-emerald-600"></i> Nenhum estudante com frequência até 75% ou 3+ faltas consecutivas! Frequência escolar regularizada.
               </div>
             `;
           } else {
@@ -19439,14 +19795,19 @@ Yasmin Seline`;
                       <p class="text-[10px] text-slate-500 truncate mt-0.5">Tutor: <strong class="text-slate-700">${tutorVal}</strong></p>
                     </div>
                     <div class="flex flex-col items-end gap-1 shrink-0">
-                      <span class="px-2 py-0.5 bg-red-600 text-white font-black text-[10px] rounded-md shadow-2xs">
+                      <span class="px-2 py-0.5 ${aluno.numPresenca <= 75 ? 'bg-red-600' : 'bg-blue-800'} text-white font-black text-[10px] rounded-md shadow-2xs">
                         ${aluno.numPresenca.toFixed(1)}%
                       </span>
+                      ${aluno.isGatilhoFaltas3 ? `
+                        <span class="px-1.5 py-0.5 rounded text-[9px] bg-rose-600 text-white font-black shadow-2xs">
+                          🚨 ${aluno.faltasConsecutivas} Faltas Seguidas
+                        </span>
+                      ` : ''}
                       ${isParou ? `
                         <span class="px-1.5 py-0.5 rounded text-[9px] bg-emerald-100 text-emerald-800 border border-emerald-300 font-black shadow-2xs" title="${aluno.dias_seguidos_presente ? aluno.dias_seguidos_presente + ' dias seguidos presente' : 'Retomou presença'}">
                           <i class="fa-solid fa-circle-check text-emerald-600 text-[8px]"></i> ✓ Parou de Faltar
                         </span>
-                      ` : (isContinua ? `
+                      ` : (isContinua && !aluno.isGatilhoFaltas3 ? `
                         <span class="px-1.5 py-0.5 rounded text-[9px] bg-rose-100 text-rose-800 border border-rose-300 font-black shadow-2xs" title="${aluno.dias_seguidos_faltando ? aluno.dias_seguidos_faltando + ' dias seguidos ausente' : 'Ausente nas últimas aulas'}">
                           <i class="fa-solid fa-triangle-exclamation text-rose-600 text-[8px]"></i> ⚠️ Continua Faltando
                         </span>
@@ -19471,7 +19832,7 @@ Yasmin Seline`;
                   <div class="flex items-center gap-1.5 border-t border-slate-100 pt-2">
                     <button 
                       type="button" 
-                      onclick="window.registrarContatoRapidoBa('${raVal}')"
+                      onclick="${aluno.isGatilhoFaltas3 ? `window.registrarContatoRapidoBaFaltasConsecutivas('${raVal}')` : `window.registrarContatoRapidoBa('${raVal}')`}"
                       class="flex-1 py-1 px-2 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-lg text-[10px] uppercase tracking-wider transition cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
                       title="Registrar ligação/contato com data de hoje preenchida"
                     >
@@ -19777,16 +20138,26 @@ Yasmin Seline`;
         if (!window.todosAlunosBuscaAtivaCache || window.todosAlunosBuscaAtivaCache.length === 0) {
           const basePool = (window.allStudentsData || []);
           window.todosAlunosBuscaAtivaCache = basePool.filter(aluno => {
-            const status = String(aluno.status || "ATIVO").trim().toUpperCase();
-            if (status !== "ATIVO") return false;
+            if (!isAlunoAtivo(aluno)) return false;
             const presencaRaw = aluno.presenca ?? aluno.presenca_anual ?? aluno.presenca_26_06 ?? aluno.presenca_15_06 ?? aluno.frequencia ?? "0";
             const numPresenca = parseFloat(String(presencaRaw).replace("%", "").replace(",", ".").trim()) || 0;
-            return numPresenca <= 75;
+            const infoFaltas = window.obterInfoFaltasConsecutivasAluno(aluno);
+            return numPresenca <= 75 || infoFaltas.isGatilho3;
           }).map(aluno => {
             const presencaRaw = aluno.presenca ?? aluno.presenca_anual ?? aluno.presenca_26_06 ?? aluno.presenca_15_06 ?? aluno.frequencia ?? "0";
             const numPresenca = parseFloat(String(presencaRaw).replace("%", "").replace(",", ".").trim()) || 0;
+            const infoFaltas = window.obterInfoFaltasConsecutivasAluno(aluno);
             const _searchKey = `${aluno.nome || ""} ${aluno.ra || ""} ${aluno.turma || ""} ${aluno.tutor_2026 || aluno.tutor || ""}`.toLowerCase();
-            return { ...aluno, numPresenca, _searchKey };
+            return {
+              ...aluno,
+              numPresenca,
+              faltasConsecutivas: infoFaltas.faltasConsecutivas,
+              datasFaltasConsecutivas: infoFaltas.datasConsecutivas,
+              isGatilhoFaltas3: infoFaltas.isGatilho3,
+              isAlertaFaltas2: infoFaltas.isAlerta2,
+              isFamiliaCienteFaltas: Boolean(aluno.ciencia_faltas_consecutivas_data) || String(aluno.sla_busca_ativa || "").toUpperCase() === "MONITORANDO",
+              _searchKey
+            };
           });
           window.todosAlunosBuscaAtivaCache.sort((a, b) => a.numPresenca - b.numPresenca);
         }
@@ -19796,10 +20167,16 @@ Yasmin Seline`;
           window.indexarContatosBuscaAtiva(window.todosContatosBaCache);
         }
 
-        let lista = window.todosAlunosBuscaAtivaCache;
+        let lista = faixaFreq === "ALERTA_FALTAS_2"
+          ? (window.alunosAlerta2FaltasCache || [])
+          : (window.todosAlunosBuscaAtivaCache || []);
 
-        // 1. Filtro rápido por Pílula de Faixa de Frequência
-        if (faixaFreq === "CRITICO") {
+        // 1. Filtro rápido por Pílula de Faixa de Frequência e Gatilhos
+        if (faixaFreq === "GATILHO_FALTAS_3") {
+          lista = lista.filter(a => a.isGatilhoFaltas3);
+        } else if (faixaFreq === "PENDENTE_CIENCIA_FALTAS") {
+          lista = lista.filter(a => a.isGatilhoFaltas3 && !a.isFamiliaCienteFaltas);
+        } else if (faixaFreq === "CRITICO") {
           lista = lista.filter(a => a.numPresenca < 50);
         } else if (faixaFreq === "ATENCAO") {
           lista = lista.filter(a => a.numPresenca >= 50 && a.numPresenca <= 75);
@@ -19808,7 +20185,7 @@ Yasmin Seline`;
         } else if (faixaFreq === "PAROU_FALTAR") {
           lista = lista.filter(a => a.parou_de_faltar || a.tendencia_frequencia_status === 'PAROU_DE_FALTAR');
         } else if (faixaFreq === "CONTINUA_FALTANDO") {
-          lista = lista.filter(a => a.continua_faltando || a.tendencia_frequencia_status === 'CONTINUA_FALTANDO');
+          lista = lista.filter(a => a.continua_faltando || a.tendencia_frequencia_status === 'CONTINUA_FALTANDO' || a.isGatilhoFaltas3);
         }
 
         // 2. Filtro dinâmico por texto em O(N) usando _searchKey pré-computada
@@ -19919,7 +20296,9 @@ Yasmin Seline`;
         }
 
         if (badgeRisco) {
-          const totalBase = (window.todosAlunosBuscaAtivaCache || []).length;
+          const totalBase = faixaFreq === "ALERTA_FALTAS_2"
+            ? (window.alunosAlerta2FaltasCache || []).length
+            : (window.todosAlunosBuscaAtivaCache || []).length;
           if (lista.length !== totalBase) {
             badgeRisco.textContent = `${lista.length} de ${totalBase} Alunos`;
           } else {
@@ -19978,8 +20357,23 @@ Yasmin Seline`;
             freqBadgeStyle = "bg-amber-100 text-amber-800 border-amber-200";
           }
 
+          const datasConsecHtml = (aluno.datasFaltasConsecutivas && aluno.datasFaltasConsecutivas.length > 0)
+            ? `<span class="text-[9.5px] font-mono text-rose-700 block mt-0.5">${aluno.datasFaltasConsecutivas.slice(-4).map(d => d.split("-").reverse().slice(0, 2).join("/")).join(", ")}</span>`
+            : "";
+
+          const gatilhoBadgeHtml = aluno.isGatilhoFaltas3
+            ? `<div class="flex flex-wrap items-center gap-1 mt-1">
+                 <span class="px-2 py-0.5 bg-red-100 text-red-900 border border-red-300 rounded-full text-[9px] font-black uppercase">🚨 Gatilho ${aluno.faltasConsecutivas} Faltas Seguidas (Termo + Tutoria)</span>
+                 <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold border ${aluno.isFamiliaCienteFaltas ? 'bg-emerald-100 text-emerald-900 border-emerald-300' : 'bg-amber-100 text-amber-900 border-amber-300'}">${aluno.isFamiliaCienteFaltas ? '✅ Família Ciente' : '⏳ Pendente Ciência'}</span>
+               </div>${datasConsecHtml}`
+            : (aluno.isAlertaFaltas2
+                ? `<div class="flex flex-wrap items-center gap-1 mt-1">
+                     <span class="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-[9px] font-extrabold uppercase">⚠️ Alerta Preventivo (2 Faltas Seguidas)</span>
+                   </div>${datasConsecHtml}`
+                : "");
+
           htmlRisco += `
-            <tr class="hover:bg-slate-50 transition-colors">
+            <tr class="hover:bg-slate-50 transition-colors ${aluno.isGatilhoFaltas3 ? 'bg-rose-50/30' : ''}">
               <td class="p-3">
                 <button 
                   type="button" 
@@ -19989,6 +20383,7 @@ Yasmin Seline`;
                 >
                   ${nomeUpper}
                 </button>
+                ${gatilhoBadgeHtml}
               </td>
               <td class="p-3 font-mono text-slate-500">${raVal}</td>
               <td class="p-3 font-semibold text-slate-700">${turmaVal}</td>
@@ -20077,10 +20472,43 @@ Yasmin Seline`;
                 </div>
               </td>
               <td class="p-3 text-right whitespace-nowrap">
-                <div class="flex items-center justify-end gap-1.5">
+                <div class="flex items-center justify-end gap-1.5 flex-wrap">
+                  ${(aluno.isGatilhoFaltas3 || aluno.isAlertaFaltas2) ? `
+                    <button
+                      type="button"
+                      onclick="window.enviarWhatsAppBuscaAtivaFaltasConsecutivas('${raVal}')"
+                      class="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-lg text-[10px] uppercase tracking-wider transition shadow-2xs cursor-pointer inline-flex items-center gap-1"
+                      title="Enviar Notificação de Faltas Consecutivas por WhatsApp aos Pais"
+                    >
+                      <i class="fa-brands fa-whatsapp text-xs"></i>
+                      <span>WhatsApp</span>
+                    </button>
+                  ` : ''}
+                  ${aluno.isGatilhoFaltas3 ? `
+                    <button
+                      type="button"
+                      onclick="window.emitirTermoCienciaFaltasConsecutivasGatilho('${raVal}')"
+                      class="px-2 py-1 bg-red-700 hover:bg-red-800 text-white font-extrabold rounded-lg text-[10px] uppercase tracking-wider transition shadow-2xs cursor-pointer inline-flex items-center gap-1"
+                      title="Emitir Termo de Ciência de Frequência e Pauta Obrigatória na Tutoria"
+                    >
+                      <i class="fa-solid fa-file-signature text-[10px]"></i>
+                      <span>Termo &amp; Tutoria</span>
+                    </button>
+                    ${!aluno.isFamiliaCienteFaltas ? `
+                      <button
+                        type="button"
+                        onclick="window.marcarCienciaFaltasConsecutivasAluno('${raVal}')"
+                        class="px-2 py-1 bg-blue-700 hover:bg-blue-800 text-white font-extrabold rounded-lg text-[10px] uppercase tracking-wider transition shadow-2xs cursor-pointer inline-flex items-center gap-1"
+                        title="Confirmar que a família tomou ciência das faltas consecutivas"
+                      >
+                        <i class="fa-solid fa-check-double text-[10px]"></i>
+                        <span>+ Ciência</span>
+                      </button>
+                    ` : ''}
+                  ` : ''}
                   <button 
                     type="button"
-                    onclick="window.registrarContatoRapidoBa('${raVal}')"
+                    onclick="${(aluno.isGatilhoFaltas3 || aluno.isAlertaFaltas2) ? `window.registrarContatoRapidoBaFaltasConsecutivas('${raVal}')` : `window.registrarContatoRapidoBa('${raVal}')`}"
                     class="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-lg text-[11px] uppercase tracking-wider transition shadow-2xs cursor-pointer flex items-center gap-1"
                     title="Registrar Contato / Tentativa"
                   >
@@ -20120,6 +20548,173 @@ Yasmin Seline`;
           } else {
             footerPaginacao.classList.add("hidden");
           }
+        }
+      };
+
+      // Ações Rápidas do Gatilho de 3+ Faltas Consecutivas (Espelho das Ações de Atrasos)
+      window.enviarWhatsAppBuscaAtivaFaltasConsecutivas = function(ra) {
+        const aluno = (window.allStudentsData || []).find(s => String(s.ra).trim() === String(ra).trim());
+        if (!aluno) {
+          window.showToast("Estudante não localizado.", "warning");
+          return;
+        }
+        const info = window.obterInfoFaltasConsecutivasAluno(aluno);
+        const qtd = info.faltasConsecutivas || 3;
+        const nomeUpper = (aluno.nome || "ESTUDANTE").toUpperCase();
+        const turmaUpper = (aluno.turma || "—").toUpperCase();
+        const tutorUpper = (aluno.tutor_2026 || aluno.tutor || "Professor(a) Tutor(a)").toUpperCase();
+        const datasFmt = (info.datasConsecutivas || []).map(d => d.split("-").reverse().slice(0, 2).join("/")).join(", ");
+        const trechoDatas = datasFmt ? ` (${datasFmt})` : "";
+
+        const msg = qtd >= 3
+          ? `COMUNICADO OFICIAL DE BUSCA ATIVA (FALTAS CONSECUTIVAS) - E.E. CLÓVIS DE LUCCA\n\nPrezado(a) responsável pelo(a) estudante ${nomeUpper} (Turma: ${turmaUpper}),\n\nInformamos que o(a) estudante completou ${qtd} faltas consecutivas${trechoDatas} na chamada escolar, ativando o protocolo oficial de Busca Ativa com emissão do Termo de Ciência de Frequência e pauta obrigatória na sessão semanal de Tutoria PEI (Tutor: ${tutorUpper}).\n\nCaso haja atestado médico ou justificativa legal, solicitamos envio imediato à secretaria escolar e o retorno presencial do(a) estudante. Por favor, confirme o recebimento desta mensagem.\n\nAtenciosamente,\nEquipe Gestora - E.E. Clóvis de Lucca`
+          : `AVISO PREVENTIVO DE FREQUÊNCIA (BUSCA ATIVA) - E.E. CLÓVIS DE LUCCA\n\nOlá, responsável pelo(a) estudante ${nomeUpper} (Turma: ${turmaUpper}).\n\nRegistramos ${qtd} faltas consecutivas${trechoDatas} do(a) estudante nas aulas recentes. Lembramos que a presença diária é fundamental no Programa Ensino Integral (PEI) e que, ao completar 3 faltas consecutivas, é acionado automaticamente o protocolo oficial de Busca Ativa e Termo de Ciência.\n\nPor favor, confirme a ciência deste comunicado.\n\nAtenciosamente,\nEquipe Gestora - E.E. Clóvis de Lucca`;
+
+        const foneRaw = aluno.telefone || aluno.celular || aluno.telefones_adicionais || aluno.contato || "";
+        const foneLimpo = String(foneRaw).replace(/\D/g, "");
+
+        if (foneLimpo.length >= 10) {
+          const numFinal = foneLimpo.startsWith("55") ? foneLimpo : ("55" + foneLimpo);
+          const link = `https://wa.me/${numFinal}?text=${encodeURIComponent(msg)}`;
+          const a = document.createElement("a");
+          a.href = link;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          window.showToast(`Abrindo WhatsApp para o responsável de ${nomeUpper}...`, "info");
+        } else {
+          window.registrarContatoRapidoBaFaltasConsecutivas(ra);
+          navigator.clipboard?.writeText(msg).catch(() => {});
+          window.showToast("Estudante sem telefone celular cadastrado. Ficha de contato aberta com a mensagem copiada!", "info", 4000);
+        }
+      };
+
+      window.emitirTermoCienciaFaltasConsecutivasGatilho = function(ra) {
+        if (!ra) return;
+        const cleanRa = String(ra).replace(/\D/g, "");
+        const aluno = (window.allStudentsData || []).find(s => String(s.ra || s.id || "").replace(/\D/g, "") === cleanRa || String(s.ra || s.id || "").trim() === String(ra).trim());
+        if (!aluno) {
+          if (typeof window.showToast === "function") window.showToast("Estudante não localizado para emissão do Termo.", "warning");
+          return;
+        }
+
+        const info = window.obterInfoFaltasConsecutivasAluno(aluno);
+        const totalConsecutivas = info.faltasConsecutivas || 3;
+        const agora = new Date();
+        const dataHojeExtenso = agora.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+        const tutorNome = (aluno.tutor || aluno.tutor_2026 || "A DEFINIR PELA COORDENAÇÃO").toUpperCase();
+        const responsavelNome = (aluno.responsavel || aluno.filiacao_1 || "RESPONSÁVEL LEGAL").toUpperCase();
+        const presencaRaw = aluno.presenca ?? aluno.presenca_anual ?? aluno.presenca_26_06 ?? aluno.presenca_15_06 ?? aluno.frequencia ?? "0";
+        const numPresenca = parseFloat(String(presencaRaw).replace("%", "").replace(",", ".").trim()) || 0;
+
+        const listaDatasHtml = (info.datasConsecutivas && info.datasConsecutivas.length > 0)
+          ? info.datasConsecutivas.map((dtIso, idx) => {
+              const dtBr = dtIso.split("-").reverse().join("/");
+              return `<li style="margin-bottom: 4px;"><strong>${idx + 1}ª Falta Consecutiva:</strong> Data ${dtBr} — Ausência registrada na chamada diária</li>`;
+            }).join("")
+          : `<li><strong>Total de faltas consecutivas apuradas:</strong> ${totalConsecutivas} dia(s) letivo(s) seguido(s) sem registro de presença.</li>`;
+
+        const htmlDoc = `
+          <div style="font-family: 'Times New Roman', Times, serif; color: #000; line-height: 1.5; max-width: 720px; margin: 0 auto; padding: 16px;">
+            <div style="text-align: center; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 20px;">
+              <p style="margin: 0; font-size: 12px; font-weight: bold; text-transform: uppercase;">GOVERNO DO ESTADO DE SÃO PAULO — SECRETARIA DA EDUCAÇÃO</p>
+              <p style="margin: 2px 0; font-size: 13px; font-weight: bold; text-transform: uppercase;">DIRETORIA DE ENSINO — PROGRAMA ENSINO INTEGRAL (PEI)</p>
+              <h1 style="margin: 4px 0 0 0; font-size: 16px; font-weight: 900; text-transform: uppercase;">EE PROF. CLÓVIS DE LUCCA</h1>
+            </div>
+
+            <div style="text-align: center; margin-bottom: 20px;">
+              <h2 style="margin: 0; font-size: 15px; font-weight: bold; text-transform: uppercase; text-decoration: underline;">
+                TERMO DE CIÊNCIA DE FREQUÊNCIA ESCOLAR — BUSCA ATIVA
+              </h2>
+              <p style="margin: 4px 0 0 0; font-size: 11px; font-weight: bold; color: #333;">
+                GATILHO AUTOMÁTICO (${totalConsecutivas} FALTAS CONSECUTIVAS) + PAUTA OBRIGATÓRIA DE TUTORIA
+              </p>
+            </div>
+
+            <div style="border: 1px solid #000; padding: 12px; margin-bottom: 16px; font-size: 12px; background: #f8fafc;">
+              <p style="margin: 2px 0;"><strong>ESTUDANTE:</strong> ${(aluno.nome || "").toUpperCase()} &nbsp;|&nbsp; <strong>RA:</strong> ${aluno.ra || "-"} &nbsp;|&nbsp; <strong>TURMA:</strong> ${(aluno.turma || "-").toUpperCase()}</p>
+              <p style="margin: 2px 0;"><strong>RESPONSÁVEL LEGAL:</strong> ${responsavelNome} &nbsp;|&nbsp; <strong>CONTATO:</strong> ${aluno.telefone || "-"}</p>
+              <p style="margin: 2px 0;"><strong>PROFESSOR(A) TUTOR(A) PEI:</strong> ${tutorNome} &nbsp;|&nbsp; <strong>FREQ. ANUAL SED:</strong> ${numPresenca.toFixed(1)}%</p>
+            </div>
+
+            <p style="text-align: justify; font-size: 13px; margin-bottom: 12px;">
+              Pelo presente instrumento oficial, a Equipe Gestora da <strong>EE Prof. Clóvis de Lucca</strong> notifica formalmente o(a) estudante acima identificado(a) e seu respectivo Responsável Legal de que foi atingido o gatilho institucional de Busca Ativa por <strong>${totalConsecutivas} faltas consecutivas</strong> sem justificativa apresentada à unidade escolar.
+            </p>
+
+            <div style="border: 1px solid #000; padding: 10px 14px; margin-bottom: 16px; font-size: 12px;">
+              <p style="margin: 0 0 6px 0; font-weight: bold; text-transform: uppercase;">Registro das Faltas Consecutivas Apuradas:</p>
+              <ul style="margin: 0; padding-left: 18px;">
+                ${listaDatasHtml}
+              </ul>
+            </div>
+
+            <div style="border: 2px solid #000; padding: 12px; margin-bottom: 18px; font-size: 12px;">
+              <p style="margin: 0 0 6px 0; font-weight: bold; text-transform: uppercase;">ENCAMINHAMENTO PEDAGÓGICO E LEGAL OBRIGATÓRIO:</p>
+              <p style="margin: 0; text-align: justify;">
+                1. <strong>Pauta Obrigatória na Sessão Semanal de Tutoria:</strong> O(A) Professor(a) Tutor(a) <strong>${tutorNome}</strong> realizará acolhimento, verificação de motivos das ausências e plano de recomposição/compensação de ausências.<br/>
+                2. <strong>Compromisso Legal (LDB — Lei nº 9.394/96 e ECA — Art. 56):</strong> A frequência mínima exigida por lei é de 75% do total de horas letivas. A persistência de faltas consecutivas sem justificativa ensejará comunicação formal aos órgãos de proteção e Conselho Tutelar.
+              </p>
+            </div>
+
+            <p style="text-align: right; font-size: 12px; margin-top: 24px; margin-bottom: 36px;">
+              São Paulo, ${dataHojeExtenso}.
+            </p>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 28px; text-align: center; font-size: 11px; margin-top: 32px;">
+              <div>
+                <div style="border-top: 1px solid #000; padding-top: 4px; font-weight: bold;">ASSINATURA DO(A) RESPONSÁVEL LEGAL</div>
+                <div>${responsavelNome}</div>
+              </div>
+              <div>
+                <div style="border-top: 1px solid #000; padding-top: 4px; font-weight: bold;">CIÊNCIA DO(A) ESTUDANTE</div>
+                <div>${(aluno.nome || "").toUpperCase()}</div>
+              </div>
+              <div>
+                <div style="border-top: 1px solid #000; padding-top: 4px; font-weight: bold;">PROFESSOR(A) TUTOR(A) — PAUTA SEMANAL</div>
+                <div>${tutorNome}</div>
+              </div>
+              <div>
+                <div style="border-top: 1px solid #000; padding-top: 4px; font-weight: bold;">DIREÇÃO / COORDENAÇÃO DE GESTÃO PEDAGÓGICA</div>
+                <div>EE PROF. CLÓVIS DE LUCCA</div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        const modalDoc = document.getElementById("modal-documento-impressao");
+        const areaDoc = document.getElementById("documento-impressao-area");
+        if (modalDoc && areaDoc) {
+          areaDoc.innerHTML = htmlDoc;
+          modalDoc.classList.remove("hidden");
+        }
+      };
+
+      window.marcarCienciaFaltasConsecutivasAluno = async function(ra) {
+        if (!ra) return;
+        const raStr = String(ra).trim();
+        const dataHoraStr = new Date().toLocaleDateString("pt-BR");
+
+        try {
+          const aluno = (window.allStudentsData || []).find(s => String(s.ra).trim() === raStr);
+          if (aluno) {
+            aluno.sla_busca_ativa = "MONITORANDO";
+            aluno.ciencia_faltas_consecutivas_data = dataHoraStr;
+          }
+
+          renderBuscaAtiva();
+
+          const docRef = doc(db, "alunos", raStr);
+          await updateDoc(docRef, {
+            sla_busca_ativa: "MONITORANDO",
+            ciencia_faltas_consecutivas_data: dataHoraStr
+          }).catch(() => {});
+
+          window.showToast(`Ciência familiar confirmada para as faltas consecutivas do estudante (RA: ${raStr})!`, "success", 3000);
+        } catch (err) {
+          console.warn("Aviso ao registrar ciência de faltas consecutivas:", err);
+          window.showToast("Ciência registrada localmente com sucesso!", "info");
         }
       };
 
@@ -21333,8 +21928,13 @@ Yasmin Seline`;
             window.inicializarLogoEscola();
           }
         }
-        if (tabName === "busca-ativa" && typeof window.renderBuscaAtiva === "function") {
-          window.renderBuscaAtiva();
+        if (tabName === "busca-ativa") {
+          if (typeof window.carregarFrequenciaDiariaParaBuscaAtiva === "function") {
+            window.carregarFrequenciaDiariaParaBuscaAtiva();
+          }
+          if (typeof window.renderBuscaAtiva === "function") {
+            window.renderBuscaAtiva();
+          }
         }
 
         // Fechar Sidebar e Action Sheet automaticamente no mobile ao alternar de aba

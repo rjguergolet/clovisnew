@@ -246,6 +246,8 @@ export default function CentralInteligenciaDashboards({
       setAlunosRaw(alunosDb);
       setOcorrenciasTop(ocDb);
       setBuscaAtivaDocs(baDb);
+      (window as any).frequenciaDiariaCache = freqDiariaDb;
+      window.dispatchEvent(new CustomEvent('frequenciadiariaupdated'));
       setFrequenciaDiariaDocs(freqDiariaDb);
       setHorarios(horariosDb);
       setProfessores(profsDb);

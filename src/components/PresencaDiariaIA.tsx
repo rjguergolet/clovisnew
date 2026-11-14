@@ -440,6 +440,8 @@ export default function PresencaDiariaIA() {
       (snap) => {
         const lista: any[] = [];
         snap.forEach((d: any) => lista.push({ id: d.id, ...d.data() }));
+        (window as any).frequenciaDiariaCache = lista;
+        window.dispatchEvent(new CustomEvent('frequenciadiariaupdated'));
         setHistoricoChamadas(lista);
       },
       (err) => {
@@ -1312,6 +1314,8 @@ export default function PresencaDiariaIA() {
       setUltimoSalvamentoTexto(
         `Salvo em ${dt.toLocaleDateString('pt-BR')} às ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · ${activeUser.nome}`
       );
+
+      window.dispatchEvent(new CustomEvent('frequenciadiariaupdated'));
 
       if (typeof (window as any).showToast === 'function') {
         (window as any).showToast(
