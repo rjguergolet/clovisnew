@@ -653,8 +653,11 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
     });
   }, [recados, effectiveUser, activeRole]);
 
+  const canAccessRotinaPDCA = ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC'].includes(activeRole);
+
   // Tarefas Atribuídas ao Usuário/Perfil (NÃO mostrar as concluídas!)
   const tarefasFiltradas = useMemo(() => {
+    if (!canAccessRotinaPDCA) return [];
     const roleClean = activeRole.toUpperCase();
     const nomeClean = (effectiveUser?.nome || '').toUpperCase();
     return tarefas.filter(t => {
@@ -667,7 +670,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       if (nomeClean && (atrib.includes(nomeClean) || nomeClean.includes(atrib))) return true;
       return false;
     });
-  }, [tarefas, activeRole, effectiveUser]);
+  }, [tarefas, activeRole, effectiveUser, canAccessRotinaPDCA]);
 
   // Agenda Escolar PEI: NÃO mostrar o que já passou em data
   const eventosFuturos = useMemo(() => {
@@ -1569,24 +1572,44 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
           </span>
         </div>
 
-        {/* Bloco 4: Tarefas */}
-        <div
-          onClick={() => onNavigate ? onNavigate('rotina-pdca') : window.switchTab?.('rotina-pdca')}
-          className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-amber-300 transition-all cursor-pointer group"
-          title="Clique para abrir o módulo de Tarefas (PDCA)"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-sm shrink-0">
-              <i className="fa-solid fa-list-check"></i>
+        {/* Bloco 4: Tarefas (exclusivo para perfis com acesso à Rotina PDCA) ou Próximos Eventos */}
+        {canAccessRotinaPDCA ? (
+          <div
+            onClick={() => onNavigate ? onNavigate('rotina-pdca') : window.switchTab?.('rotina-pdca')}
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-amber-300 transition-all cursor-pointer group"
+            title="Clique para abrir o módulo de Tarefas (PDCA)"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-sm shrink-0">
+                <i className="fa-solid fa-list-check"></i>
+              </div>
+              <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-amber-600 transition-colors"></i>
             </div>
-            <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-amber-600 transition-colors"></i>
+            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums mt-3">
+              {tarefasFiltradas.length}
+            </div>
+            <span className="text-xs font-semibold text-slate-700 block mt-0.5">Tarefas Pendentes</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block">Rotinas e prazos a realizar</span>
           </div>
-          <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums mt-3">
-            {tarefasFiltradas.length}
+        ) : (
+          <div
+            onClick={() => onNavigate ? onNavigate('agenda') : window.switchTab?.('agenda')}
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-indigo-300 transition-all cursor-pointer group"
+            title="Clique para abrir a Agenda Escolar PEI"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm shrink-0">
+                <i className="fa-solid fa-calendar-days"></i>
+              </div>
+              <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-indigo-600 transition-colors"></i>
+            </div>
+            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums mt-3">
+              {eventosFuturos.length}
+            </div>
+            <span className="text-xs font-semibold text-slate-700 block mt-0.5">Agenda Escolar</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block">Próximos eventos PEI</span>
           </div>
-          <span className="text-xs font-semibold text-slate-700 block mt-0.5">Tarefas Pendentes</span>
-          <span className="text-[11px] text-slate-500 mt-0.5 block">Rotinas e prazos a realizar</span>
-        </div>
+        )}
       </section>
 
       {/* CENTRAL DE LINKS E AÇÕES RÁPIDAS DE RESOLUÇÃO */}
@@ -1631,24 +1654,26 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             </div>
           </button>
 
-          {/* 2. Tarefas PDCA */}
-          <button
-            type="button"
-            onClick={() => onNavigate ? onNavigate('rotina-pdca') : window.switchTab?.('rotina-pdca')}
-            className="p-3 bg-slate-50/70 hover:bg-amber-50/70 border border-slate-200/70 hover:border-amber-200 rounded-2xl transition-all text-left group cursor-pointer flex flex-col justify-between"
-          >
-            <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-sm group-hover:scale-105 transition-transform">
-              <i className="fa-solid fa-list-check"></i>
-            </div>
-            <div className="mt-2.5">
-              <span className="text-xs font-semibold text-slate-900 group-hover:text-amber-900 block leading-tight">
-                Rotina PDCA
-              </span>
-              <span className="text-[11px] text-slate-500 mt-0.5 block truncate tabular-nums">
-                {tarefasFiltradas.length} tarefa{tarefasFiltradas.length === 1 ? '' : 's'} ativa{tarefasFiltradas.length === 1 ? '' : 's'}
-              </span>
-            </div>
-          </button>
+          {/* 2. Tarefas PDCA (apenas perfis autorizados da gestão) */}
+          {canAccessRotinaPDCA && (
+            <button
+              type="button"
+              onClick={() => onNavigate ? onNavigate('rotina-pdca') : window.switchTab?.('rotina-pdca')}
+              className="p-3 bg-slate-50/70 hover:bg-amber-50/70 border border-slate-200/70 hover:border-amber-200 rounded-2xl transition-all text-left group cursor-pointer flex flex-col justify-between"
+            >
+              <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-sm group-hover:scale-105 transition-transform">
+                <i className="fa-solid fa-list-check"></i>
+              </div>
+              <div className="mt-2.5">
+                <span className="text-xs font-semibold text-slate-900 group-hover:text-amber-900 block leading-tight">
+                  Rotina PDCA
+                </span>
+                <span className="text-[11px] text-slate-500 mt-0.5 block truncate tabular-nums">
+                  {tarefasFiltradas.length} tarefa{tarefasFiltradas.length === 1 ? '' : 's'} ativa{tarefasFiltradas.length === 1 ? '' : 's'}
+                </span>
+              </div>
+            </button>
+          )}
 
           {/* 3. Mural */}
           <button
@@ -2927,76 +2952,78 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         {/* COLUNA 3: Tarefas & Agenda Integradas */}
         <div className="space-y-5 sm:space-y-6">
 
-          {/* Painel de Tarefas da Rotina */}
-          <section className="bg-white rounded-2xl sm:rounded-3xl p-5 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-3.5">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-xs shrink-0">
-                  <i className="fa-solid fa-list-check"></i>
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                    Minhas Tarefas
-                  </h2>
-                  <span className="text-[11px] text-slate-500">Prazos e rotinas atribuídas</span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalNovaTarefa(true)}
-                className="w-8 h-8 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/70 flex items-center justify-center font-semibold text-xs cursor-pointer transition"
-                title="Adicionar Tarefa Rápida"
-              >
-                <i className="fa-solid fa-plus"></i>
-              </button>
-            </div>
-
-            {tarefasFiltradas.length === 0 ? (
-              <p className="text-xs text-slate-400 py-4 text-center">
-                Nenhuma tarefa pendente no momento.
-              </p>
-            ) : (
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                {tarefasFiltradas.slice(0, 5).map(tarefa => (
-                  <div
-                    key={tarefa.id}
-                    className={`p-2.5 rounded-xl border border-l-4 text-xs flex items-start gap-2.5 transition-all ${
-                      tarefa.concluido
-                        ? 'bg-slate-50 border-slate-200 border-l-slate-300 text-slate-400 line-through'
-                        : 'bg-white border-slate-200/80 border-l-amber-500 text-slate-800 hover:border-amber-300'
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={Boolean(tarefa.concluido)}
-                      onChange={() => handleToggleTarefa(tarefa.id, Boolean(tarefa.concluido))}
-                      className="mt-0.5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-slate-800 leading-tight">
-                        {tarefa.descricao}
-                      </p>
-                      {tarefa.dataLimite && (
-                        <span className="text-[11px] text-amber-700 tabular-nums mt-0.5 block">
-                          Prazo: {tarefa.dataLimite}
-                        </span>
-                      )}
-                    </div>
+          {/* Painel de Tarefas da Rotina (restrito a perfis com acesso à Rotina PDCA) */}
+          {canAccessRotinaPDCA && (
+            <section className="bg-white rounded-2xl sm:rounded-3xl p-5 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-3.5">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-xs shrink-0">
+                    <i className="fa-solid fa-list-check"></i>
                   </div>
-                ))}
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                      Minhas Tarefas
+                    </h2>
+                    <span className="text-[11px] text-slate-500">Prazos e rotinas atribuídas</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModalNovaTarefa(true)}
+                  className="w-8 h-8 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200/70 flex items-center justify-center font-semibold text-xs cursor-pointer transition"
+                  title="Adicionar Tarefa Rápida"
+                >
+                  <i className="fa-solid fa-plus"></i>
+                </button>
               </div>
-            )}
 
-            <div className="pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => onNavigate ? onNavigate('rotina-pdca') : window.switchTab?.('rotina-pdca')}
-                className="w-full text-center text-xs font-semibold text-amber-700 hover:text-amber-900 cursor-pointer"
-              >
-                Abrir Módulo de Tarefas (PDCA) →
-              </button>
-            </div>
-          </section>
+              {tarefasFiltradas.length === 0 ? (
+                <p className="text-xs text-slate-400 py-4 text-center">
+                  Nenhuma tarefa pendente no momento.
+                </p>
+              ) : (
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {tarefasFiltradas.slice(0, 5).map(tarefa => (
+                    <div
+                      key={tarefa.id}
+                      className={`p-2.5 rounded-xl border border-l-4 text-xs flex items-start gap-2.5 transition-all ${
+                        tarefa.concluido
+                          ? 'bg-slate-50 border-slate-200 border-l-slate-300 text-slate-400 line-through'
+                          : 'bg-white border-slate-200/80 border-l-amber-500 text-slate-800 hover:border-amber-300'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={Boolean(tarefa.concluido)}
+                        onChange={() => handleToggleTarefa(tarefa.id, Boolean(tarefa.concluido))}
+                        className="mt-0.5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-slate-800 leading-tight">
+                          {tarefa.titulo || tarefa.descricao}
+                        </p>
+                        {tarefa.dataLimite && (
+                          <span className="text-[11px] text-amber-700 tabular-nums mt-0.5 block">
+                            Prazo: {tarefa.dataLimite}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => onNavigate ? onNavigate('rotina-pdca') : window.switchTab?.('rotina-pdca')}
+                  className="w-full text-center text-xs font-semibold text-amber-700 hover:text-amber-900 cursor-pointer"
+                >
+                  Abrir Módulo de Tarefas (PDCA) →
+                </button>
+              </div>
+            </section>
+          )}
 
           {/* Painel da Agenda Escolar */}
           <section className="bg-white rounded-2xl sm:rounded-3xl p-5 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-3.5">

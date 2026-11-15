@@ -96,10 +96,10 @@ export default function App() {
 
   const roleUpper = String(userRole || 'PROFESSOR').toUpperCase().trim();
   const roleNorm = normalizarCargo(roleUpper);
-  const isAuthorizedPDCA = ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'PAAC', 'PROFESSOR', 'PROFESSOR_PAAC'].some(
-    (r) => roleNorm.includes(r) || roleNorm === r
-  );
   const isProfessorComum = roleNorm === 'PROFESSOR';
+  const isAuthorizedPDCA = !isProfessorComum && roleNorm !== 'SECRETARIA' && [
+    'DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC'
+  ].some((r) => roleNorm === r || roleNorm.includes('VICE') || roleNorm.includes('DIRETOR') || roleNorm.includes('CGPG') || roleNorm.includes('PAAC'));
   const isAuthorizedProfessores = !isProfessorComum && (
     ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'SECRETARIA'].includes(roleNorm) ||
     roleNorm.includes('VICE')

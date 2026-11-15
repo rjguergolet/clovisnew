@@ -3207,7 +3207,7 @@
         CGPCG: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei"],
         PROFESSOR_PAAC: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei"],
         PAAC: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei"],
-        PROFESSOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "registros", "agenda", "admin", "rotina-pdca", "horarios"],
+        PROFESSOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "registros", "agenda", "admin", "horarios"],
         SECRETARIA: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-docente", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "horarios", "substituicao-pei"]
       };
 

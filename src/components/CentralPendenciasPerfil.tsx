@@ -63,6 +63,7 @@ export default function CentralPendenciasPerfil({
   const isCoord = roleNorm === 'CGPG' || roleNorm === 'CGPCG';
   const isDirecao = roleNorm === 'DIRETOR' || roleNorm === 'VICE_DIRETOR' || roleNorm.includes('VICE');
   const isSecretaria = roleNorm === 'SECRETARIA';
+  const canAccessPDCA = !isProfessor && !isSecretaria && (isDirecao || isCoord || isPAAC);
 
   const nav = (tab: string) => {
     if (onNavigate) {
@@ -83,7 +84,7 @@ export default function CentralPendenciasPerfil({
 
   // Total de itens pendentes calculados
   const totalPendencias = useMemo(() => {
-    let count = recadosSemCiencia.length + tarefasUrgentes.length;
+    let count = recadosSemCiencia.length + (canAccessPDCA ? tarefasUrgentes.length : 0);
     if (isProfessor || isPAAC) count += tutoradosReaisEmRisco.length;
     if (isDirecao || isCoord || isPAAC) count += notificacoesPedagogicas.length;
     if (isDirecao || isCoord) {
@@ -98,6 +99,7 @@ export default function CentralPendenciasPerfil({
     return count;
   }, [
     recadosSemCiencia.length,
+    canAccessPDCA,
     tarefasUrgentes.length,
     tutoradosReaisEmRisco.length,
     notificacoesPedagogicas.length,
@@ -200,28 +202,30 @@ export default function CentralPendenciasPerfil({
       });
     });
 
-    // 2. Tarefas PDCA com prazo crítico ou vencido
-    tarefasUrgentes.forEach((t: any) => {
-      const dataPrazo = t.dataLimite ? String(t.dataLimite).slice(0, 10).split('-').reverse().join('/') : 'Hoje';
-      itens.push({
-        id: `tarefa-${t.id}`,
-        categoria: 'tarefa',
-        categoriaLabel: 'Plano PDCA · Tarefa Crítica',
-        corBadge: 'bg-amber-50/90 text-amber-900 border-amber-200/60 border-l-4 border-l-amber-500',
-        corBorda: 'border-slate-200/80 border-l-4 border-l-amber-500 bg-white',
-        icone: 'fa-solid fa-list-check text-amber-600',
-        titulo: t.descricao || 'Tarefa da Rotina Escolar',
-        subtitulo: `Atribuída a: ${t.atribuirA || t.responsavel || 'Equipe PEI'}`,
-        motivoAcao: `Prazo crítico: ${dataPrazo} (Aguardando conclusão)`,
-        botaoAcaoTexto: 'Concluir Tarefa',
-        botaoAcaoIcone: 'fa-solid fa-check-double',
-        aoExecutarAcao: () => {
-          if (onToggleTarefa) onToggleTarefa(t.id, false);
-        },
-        botaoSecundarioTexto: 'Ver no PDCA',
-        aoExecutarSecundario: () => nav('rotina-pdca')
+    // 2. Tarefas PDCA com prazo crítico ou vencido (apenas para perfis autorizados)
+    if (canAccessPDCA) {
+      tarefasUrgentes.forEach((t: any) => {
+        const dataPrazo = t.dataLimite ? String(t.dataLimite).slice(0, 10).split('-').reverse().join('/') : 'Hoje';
+        itens.push({
+          id: `tarefa-${t.id}`,
+          categoria: 'tarefa',
+          categoriaLabel: 'Plano PDCA · Tarefa Crítica',
+          corBadge: 'bg-amber-50/90 text-amber-900 border-amber-200/60 border-l-4 border-l-amber-500',
+          corBorda: 'border-slate-200/80 border-l-4 border-l-amber-500 bg-white',
+          icone: 'fa-solid fa-list-check text-amber-600',
+          titulo: t.titulo || t.descricao || 'Tarefa da Rotina Escolar',
+          subtitulo: `Atribuída a: ${t.atribuirA || t.responsavel || 'Equipe PEI'}`,
+          motivoAcao: `Prazo crítico: ${dataPrazo} (Aguardando conclusão)`,
+          botaoAcaoTexto: 'Concluir Tarefa',
+          botaoAcaoIcone: 'fa-solid fa-check-double',
+          aoExecutarAcao: () => {
+            if (onToggleTarefa) onToggleTarefa(t.id, false);
+          },
+          botaoSecundarioTexto: 'Ver no PDCA',
+          aoExecutarSecundario: () => nav('rotina-pdca')
+        });
       });
-    });
+    }
 
     // 3. Tutorados em risco de frequência (Professor / PAAC) - estritamente < 75%
     if (isProfessor || isPAAC) {
@@ -586,21 +590,23 @@ export default function CentralPendenciasPerfil({
           )}
         </button>
 
-        <button
-          type="button"
-          onClick={() => setFiltroAtivo('tarefas')}
-          className={`px-3 py-1.5 rounded-xl transition-colors cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5 border ${
-            filtroAtivo === 'tarefas'
-              ? 'bg-amber-50 text-amber-900 border-amber-300'
-              : 'bg-white text-slate-600 hover:text-slate-900 border-slate-200/80'
-          }`}
-        >
-          <i className="fa-solid fa-list-check text-amber-600 text-[11px]"></i>
-          <span>Tarefas PDCA</span>
-          {tarefasUrgentes.length > 0 && (
-            <span className="font-mono text-[11px] text-amber-700 tabular-nums">{tarefasUrgentes.length}</span>
-          )}
-        </button>
+        {canAccessPDCA && (
+          <button
+            type="button"
+            onClick={() => setFiltroAtivo('tarefas')}
+            className={`px-3 py-1.5 rounded-xl transition-colors cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5 border ${
+              filtroAtivo === 'tarefas'
+                ? 'bg-amber-50 text-amber-900 border-amber-300'
+                : 'bg-white text-slate-600 hover:text-slate-900 border-slate-200/80'
+            }`}
+          >
+            <i className="fa-solid fa-list-check text-amber-600 text-[11px]"></i>
+            <span>Tarefas PDCA</span>
+            {tarefasUrgentes.length > 0 && (
+              <span className="font-mono text-[11px] text-amber-700 tabular-nums">{tarefasUrgentes.length}</span>
+            )}
+          </button>
+        )}
 
         {(isProfessor || isPAAC || isDirecao || isCoord) && (
           <button
@@ -890,8 +896,8 @@ export default function CentralPendenciasPerfil({
 
         {/* C. GRID DE CARDS OPERACIONAIS DE RESOLUÇÃO POR CARGO */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* 1. TAREFAS CRÍTICAS / PDCA (UNIVERSAL) */}
-          {(filtroAtivo === 'todas' || filtroAtivo === 'urgentes' || filtroAtivo === 'tarefas') && (
+          {/* 1. TAREFAS CRÍTICAS / PDCA (RESTRITO À EQUIPE GESTORA AUTORIZADA) */}
+          {canAccessPDCA && (filtroAtivo === 'todas' || filtroAtivo === 'urgentes' || filtroAtivo === 'tarefas') && (
             <div className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between space-y-3">
               <div>
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-900 gap-2">
