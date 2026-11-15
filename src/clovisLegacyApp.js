@@ -5328,6 +5328,12 @@
             window.atualizarDashboardAtrasos();
           }
         }
+        if (typeof window.renderBuscaAtivaAtrasos === "function" && !window._renderizandoBuscaAtivaAtrasos) {
+          const baAtrasosEl = document.getElementById("ba-aba-atrasos-container");
+          if (baAtrasosEl && !baAtrasosEl.classList.contains("hidden")) {
+            window.renderBuscaAtivaAtrasos(false);
+          }
+        }
 
         window.dispatchEvent(new CustomEvent("clovis_ocorrencias_updated"));
         return (window.ocorrenciasCache || []);
@@ -5356,6 +5362,7 @@
               ocIniciais.push({ id: docSnap.id, ...docSnap.data() });
             });
             window.ocorrenciasTopLevel = ocIniciais;
+            window._lastOcorrenciasLoadTs = Date.now();
           } catch (_errOc) {
             console.warn("Não foi possível carregar ocorrências em carregarHistoricoOcorrenciasGeral:", _errOc);
           }
@@ -9814,7 +9821,12 @@ Yasmin Seline`;
       };
 
       window.selecionarAlunoParaBuscaAtiva = function(ra) {
-        const aluno = (window.allStudentsData || []).find(s => String(s.ra).trim() === String(ra).trim());
+        const raStr = String(ra || "").trim();
+        const raClean = raStr.replace(/\D/g, "");
+        const aluno = (window.allStudentsData || []).find(s => {
+          const sRa = String(s.ra || s.id || "").trim();
+          return sRa === raStr || (raClean && sRa.replace(/\D/g, "") === raClean);
+        });
         if (!aluno) return;
 
         alunoBuscaAtivaSelecionado = aluno;
@@ -10173,111 +10185,66 @@ Yasmin Seline`;
         });
       }
 
-      // Carregar e Renderizar Histórico Unificado de Busca Ativa & Dossiê do Aluno (com atrasos consolidados numericamente)
+      // Carregar e Renderizar Histórico Unificado de Busca Ativa & Dossiê do Aluno (RAM-first 0ms + sync não-destrutivo)
       window.carregarHistoricoBuscaAtiva = async function(ra) {
         if (!containerHistoricoBaLista) return;
 
-        try {
-          containerHistoricoBaLista.innerHTML = `
-            <div class="p-6 text-center text-slate-500 font-medium">
-              <i class="fa-solid fa-spinner animate-spin text-emerald-600 text-lg mb-2 block"></i>
-              Carregando linha do tempo de tentativas e anotações do dossiê...
-            </div>
-          `;
+        const raStr = String(ra || "").trim();
+        const cleanTargetRa = raStr.replace(/\D/g, "");
 
-          const raStr = String(ra || "").trim();
-          const cleanTargetRa = raStr.replace(/\D/g, "");
-
-          // 1. Busca tentativas de contato na coleção 'busca_ativa'
-          const qBa = query(collection(db, "busca_ativa"), where("ra", "==", raStr));
-          let qSnap;
-          try {
-            qSnap = await getDocs(qBa);
-          } catch (errQ) {
-            console.warn("Aviso ao buscar contatos da busca ativa:", errQ);
-            qSnap = { forEach: () => {} };
-          }
-
+        const montarERenderizarHistoricoBa = (extraBaDocs = [], extraOcDocs = []) => {
           buscaAtivaHistoricoCache = [];
           const idsBaVistos = new Set();
-          if (qSnap && typeof qSnap.forEach === "function") {
-            qSnap.forEach(docSnap => {
-              const dataBa = docSnap.data();
-              buscaAtivaHistoricoCache.push({ id: docSnap.id, origem: "BUSCA_ATIVA", ...dataBa });
-              idsBaVistos.add(docSnap.id);
+
+          const pushBaItem = (id, dataBa) => {
+            if (!id || idsBaVistos.has(id)) return;
+            idsBaVistos.add(id);
+            buscaAtivaHistoricoCache.push({ id, origem: "BUSCA_ATIVA", ...dataBa });
+          };
+
+          // 1a. Cache global de contatos BA em memória (0ms)
+          const mapContatos = window.contatosBaPorRaMap;
+          if (mapContatos instanceof Map) {
+            (mapContatos.get(raStr) || []).forEach(c => pushBaItem(c.id, c));
+            if (cleanTargetRa && cleanTargetRa !== raStr) {
+              (mapContatos.get(cleanTargetRa) || []).forEach(c => pushBaItem(c.id, c));
+            }
+          } else if (Array.isArray(window.todosContatosBaCache)) {
+            window.todosContatosBaCache.forEach(c => {
+              const cRa = String(c.ra || "").trim();
+              if (cRa === raStr || (cleanTargetRa && cRa.replace(/\D/g, "") === cleanTargetRa)) {
+                pushBaItem(c.id, c);
+              }
             });
           }
 
-          // Fallback para RA limpo em busca_ativa se diferente
-          if (cleanTargetRa && cleanTargetRa !== raStr) {
-            try {
-              const qBaClean = query(collection(db, "busca_ativa"), where("ra", "==", cleanTargetRa));
-              const qBaCleanSnap = await getDocs(qBaClean);
-              qBaCleanSnap.forEach(docSnap => {
-                if (!idsBaVistos.has(docSnap.id)) {
-                  buscaAtivaHistoricoCache.push({ id: docSnap.id, origem: "BUSCA_ATIVA", ...docSnap.data() });
-                  idsBaVistos.add(docSnap.id);
-                }
-              });
-            } catch (errClean) {
-              console.warn("Aviso ao buscar contatos BA com clean RA:", errClean);
-            }
-          }
+          // 1b. Docs extras vindos de consulta ao servidor
+          (extraBaDocs || []).forEach(docItem => pushBaItem(docItem.id, docItem));
 
-          // 2. Busca todas as anotações / ocorrências do dossiê do estudante na coleção 'ocorrencias'
+          // 2. Ocorrências do dossiê (memória consolidada + docs extras + embutidas no aluno)
           const ocorrenciasDossie = [];
           const idsOcVistos = new Set();
-          try {
-            const qOc = query(collection(db, "ocorrencias"), where("ra", "==", raStr), limit(100));
-            const qOcSnap = await getDocs(qOc);
-            qOcSnap.forEach(docSnap => {
-              const d = docSnap.data();
-              ocorrenciasDossie.push({
-                id: docSnap.id,
-                origem: d.origem || (d.tipo && d.tipo.toUpperCase().includes("BUSCA ATIVA") ? "BUSCA_ATIVA" : "OCORRENCIA"),
-                tipo: d.tipo || "Atendimento Pedagógico",
-                data: d.data || d.dataRegistro || "",
-                descricao: d.descricao || d.observacao || "Sem descrição",
-                usuario: d.usuario || d.autor || "Usuário Registrado",
-                isAtraso: d.isAtraso,
-                registradoConviva: Boolean(d.registradoConviva || d.registrado_conviva || d.isConviva || (d.tipo && String(d.tipo).toUpperCase().includes("CONVIVA"))),
-                codigoConviva: d.codigoConviva || d.codigo_conviva || "",
-                rawDoc: d
-              });
-              idsOcVistos.add(docSnap.id);
+
+          const pushOcItem = (id, d) => {
+            if (!d) return;
+            if (id && idsOcVistos.has(id)) return;
+            if (id) idsOcVistos.add(id);
+            ocorrenciasDossie.push({
+              id: id || `oc_${raStr}_${ocorrenciasDossie.length}`,
+              origem: d.origem || (d.tipo && String(d.tipo).toUpperCase().includes("BUSCA ATIVA") ? "BUSCA_ATIVA" : "OCORRENCIA"),
+              tipo: d.tipo || "Atendimento Pedagógico",
+              data: d.data || d.dataRegistro || "",
+              descricao: d.descricao || d.observacao || "Sem descrição",
+              usuario: d.usuario || d.autor || "Usuário Registrado",
+              isAtraso: d.isAtraso,
+              registradoConviva: Boolean(d.registradoConviva || d.registrado_conviva || d.isConviva || (d.tipo && String(d.tipo).toUpperCase().includes("CONVIVA"))),
+              codigoConviva: d.codigoConviva || d.codigo_conviva || "",
+              rawDoc: d
             });
-          } catch (errOc) {
-            console.warn("Aviso ao buscar ocorrências do dossiê para BA:", errOc);
-          }
+          };
 
-          if (cleanTargetRa && cleanTargetRa !== raStr) {
-            try {
-              const qOcClean = query(collection(db, "ocorrencias"), where("ra", "==", cleanTargetRa), limit(100));
-              const qOcCleanSnap = await getDocs(qOcClean);
-              qOcCleanSnap.forEach(docSnap => {
-                if (!idsOcVistos.has(docSnap.id)) {
-                  const d = docSnap.data();
-                  ocorrenciasDossie.push({
-                    id: docSnap.id,
-                    origem: d.origem || (d.tipo && d.tipo.toUpperCase().includes("BUSCA ATIVA") ? "BUSCA_ATIVA" : "OCORRENCIA"),
-                    tipo: d.tipo || "Atendimento Pedagógico",
-                    data: d.data || d.dataRegistro || "",
-                    descricao: d.descricao || d.observacao || "Sem descrição",
-                    usuario: d.usuario || d.autor || "GESTAO",
-                    isAtraso: d.isAtraso,
-                    registradoConviva: Boolean(d.registradoConviva || d.registrado_conviva || d.isConviva || (d.tipo && String(d.tipo).toUpperCase().includes("CONVIVA"))),
-                    codigoConviva: d.codigoConviva || d.codigo_conviva || "",
-                    rawDoc: d
-                  });
-                  idsOcVistos.add(docSnap.id);
-                }
-              });
-            } catch (errOcClean) {
-              console.warn("Aviso ao buscar ocorrências clean RA para BA:", errOcClean);
-            }
-          }
+          (extraOcDocs || []).forEach(oc => pushOcItem(oc.id, oc));
 
-          // 3. Mesclar registros/ocorrências embutidos no objeto do estudante em allStudentsData
           const stObj = ((window.allStudentsData || [])).find(s => {
             const sRa = String(s.ra || s.id || "").trim();
             return sRa === raStr || (cleanTargetRa && sRa.replace(/\D/g, "") === cleanTargetRa);
@@ -10288,47 +10255,24 @@ Yasmin Seline`;
             arrEmb.forEach((oc, idx) => {
               const ocId = oc.id || `emb_${raStr}_${idx}`;
               if (!idsOcVistos.has(ocId) && !ocorrenciasDossie.some(x => x.data === oc.data && x.descricao === oc.descricao)) {
-                ocorrenciasDossie.push({
-                  id: ocId,
-                  origem: oc.origem || (oc.tipo && oc.tipo.toUpperCase().includes("BUSCA ATIVA") ? "BUSCA_ATIVA" : "OCORRENCIA"),
-                  tipo: oc.tipo || "Atendimento Pedagógico",
-                  data: oc.data || oc.dataRegistro || "",
-                  descricao: oc.descricao || oc.observacao || "Sem descrição",
-                  usuario: oc.usuario || oc.autor || "GESTAO",
-                  isAtraso: oc.isAtraso,
-                  registradoConviva: Boolean(oc.registradoConviva || oc.registrado_conviva || oc.isConviva || (oc.tipo && String(oc.tipo).toUpperCase().includes("CONVIVA"))),
-                  codigoConviva: oc.codigoConviva || oc.codigo_conviva || "",
-                  rawDoc: oc
-                });
-                idsOcVistos.add(ocId);
+                pushOcItem(ocId, oc);
               }
             });
           }
 
-          // 4. Também mesclar do cache em memória consolidado caso haja ocorrências adicionais
-          const ocMemoria = (window.ocorrenciasTopLevel || window.ocorrenciasCache || []).filter(oc => {
-            const ocRa = String(oc.ra || "").trim();
-            return ocRa === raStr || (cleanTargetRa && ocRa.replace(/\D/g, "") === cleanTargetRa);
-          });
-          ocMemoria.forEach(oc => {
-            if (oc.id && !idsOcVistos.has(oc.id) && !ocorrenciasDossie.some(x => x.id === oc.id || (x.data === oc.data && x.descricao === oc.descricao))) {
-              ocorrenciasDossie.push({
-                id: oc.id,
-                origem: oc.origem || (oc.tipo && String(oc.tipo).toUpperCase().includes("BUSCA ATIVA") ? "BUSCA_ATIVA" : "OCORRENCIA"),
-                tipo: oc.tipo || "Atendimento Pedagógico",
-                data: oc.data || oc.dataRegistro || "",
-                descricao: oc.descricao || oc.observacao || "Sem descrição",
-                usuario: oc.usuario || oc.autor || "GESTAO",
-                isAtraso: oc.isAtraso,
-                registradoConviva: Boolean(oc.registradoConviva || oc.registrado_conviva || oc.isConviva || (oc.tipo && String(oc.tipo).toUpperCase().includes("CONVIVA"))),
-                codigoConviva: oc.codigoConviva || oc.codigo_conviva || "",
-                rawDoc: oc
-              });
-              idsOcVistos.add(oc.id);
+          const ocMemoriaPool = Array.isArray(window.ocorrenciasCache) && window.ocorrenciasCache.length >= (window.ocorrenciasTopLevel?.length || 0)
+            ? window.ocorrenciasCache
+            : (window.ocorrenciasTopLevel || window.ocorrenciasCache || []);
+
+          ocMemoriaPool.forEach(oc => {
+            const ocRa = String(oc.ra || oc.alunoRa || "").trim();
+            const matchRa = ocRa === raStr || (cleanTargetRa && ocRa.replace(/\D/g, "") === cleanTargetRa);
+            if (!matchRa) return;
+            if (!idsOcVistos.has(oc.id) && !ocorrenciasDossie.some(x => x.id === oc.id || (x.data === oc.data && x.descricao === oc.descricao))) {
+              pushOcItem(oc.id, oc);
             }
           });
 
-          // Helper de identificação de Atraso
           const isAtrasoItem = (item) => {
             if (!item) return false;
             if (item.isAtraso === true) return true;
@@ -10337,36 +10281,26 @@ Yasmin Seline`;
             return item.isAtraso === true || tipoStr.includes("ATRASO") || descStr.includes("ATRASO");
           };
 
-          // 5. Contabilização precisa do Total de Atrasos (sem exibir os registros de atraso na listagem)
           const atrasosOcorrenciasCount = ocorrenciasDossie.filter(isAtrasoItem).length;
           const atrasosCampoAluno = parseInt(String(stObj?.atrasos || stObj?.total_atrasos || 0).replace(/\D/g, ""), 10) || 0;
           const totalAtrasos = Math.max(atrasosOcorrenciasCount, atrasosCampoAluno);
 
-          // Disponibilizar no escopo global para o gerador de mensagens com IA (Resolução SEDUC nº 39/2023)
           window.currentAlunoOcorrenciasDossie = ocorrenciasDossie;
           window.currentAlunoTotalAtrasos = totalAtrasos;
           window.buscaAtivaHistoricoCache = buscaAtivaHistoricoCache;
 
-          // 6. Mesclar contatos de Busca Ativa + anotações do Dossiê, OMITINDO qualquer atraso da timeline
           const listaUnificada = [];
           const assinaturasVistas = new Set();
 
-          // a) Primeiro as tentativas legítimas de Busca Ativa
           buscaAtivaHistoricoCache.forEach(baItem => {
-            if (isAtrasoItem(baItem)) return; // omite se for atraso
+            if (isAtrasoItem(baItem)) return;
             const sig = `${baItem.data || ''}|${String(baItem.descricao || '').trim().toLowerCase()}`;
             assinaturasVistas.add(sig);
-            listaUnificada.push({
-              ...baItem,
-              origem: "BUSCA_ATIVA"
-            });
+            listaUnificada.push({ ...baItem, origem: "BUSCA_ATIVA" });
           });
 
-          // b) Adiciona as anotações do Dossiê que NÃO são atraso e NÃO duplicam contatos de busca ativa
           ocorrenciasDossie.forEach(ocItem => {
-            if (isAtrasoItem(ocItem)) return; // REGRA: ao invés de mostrar os atrasos mostra só o número de atrasos
-            
-            // Ignora se for clone/espelho de um contato de busca ativa já registrado
+            if (isAtrasoItem(ocItem)) return;
             const raw = ocItem.rawDoc || ocItem;
             const baIdVinculado = raw.buscaAtivaId || raw.baId || (ocItem.id && ocItem.id.startsWith("ba_") ? ocItem.id.replace("ba_", "") : null);
             if (baIdVinculado && idsBaVistos.has(baIdVinculado)) return;
@@ -10381,19 +10315,94 @@ Yasmin Seline`;
             });
           });
 
-          // Auto-expiração automática por tempo de espera (24h / 1 dia)
           window.verificarEAtualizarAutoExpiracaoBa(buscaAtivaHistoricoCache);
-
-          // Ordenação cronológica estrita (mais recente no topo)
           listaUnificada.sort((a, b) => new Date(b.data || b.dataRegistro || 0) - new Date(a.data || a.dataRegistro || 0));
 
-          // Verificar Alerta de Reincidência
           if (alunoBuscaAtivaSelecionado) {
             window.verificarReincidenciaBa(alunoBuscaAtivaSelecionado, buscaAtivaHistoricoCache);
           }
 
-          // Renderizar a linha do tempo unificada com anotações do dossiê e atrasos apenas no contador
           renderHistoricoBuscaAtivaList(listaUnificada, totalAtrasos, raStr);
+          return { baCount: buscaAtivaHistoricoCache.length, ocCount: ocorrenciasDossie.length, idsBa: idsBaVistos, idsOc: idsOcVistos };
+        };
+
+        try {
+          const temCacheBa = Array.isArray(window.todosContatosBaCache) && window.todosContatosBaCache.length > 0;
+          const temCacheOc = (Array.isArray(window.ocorrenciasTopLevel) && window.ocorrenciasTopLevel.length > 0) ||
+            (Array.isArray(window.ocorrenciasCache) && window.ocorrenciasCache.length > 0);
+
+          let estadoInicial = { baCount: 0, ocCount: 0, idsBa: new Set(), idsOc: new Set() };
+          if (temCacheBa || temCacheOc) {
+            // Renderização imediata (0ms) com os dados em RAM sem apagar os caches globais
+            estadoInicial = montarERenderizarHistoricoBa();
+          } else {
+            containerHistoricoBaLista.innerHTML = `
+              <div class="p-6 text-center text-slate-500 font-medium">
+                <i class="fa-solid fa-spinner animate-spin text-emerald-600 text-lg mb-2 block"></i>
+                Carregando linha do tempo de tentativas e anotações do dossiê...
+              </div>
+            `;
+          }
+
+          // Sincronização paralela leve apenas se necessário (não bloqueia troca rápida se já recente)
+          const baFresh = temCacheBa && (Date.now() - (window._lastContatosBaLoadTs || 0) < 60000);
+          const ocFresh = temCacheOc && (Date.now() - (window._lastOcorrenciasLoadTs || 0) < 60000);
+          if (baFresh && ocFresh) return;
+
+          const extraBaDocs = [];
+          const extraOcDocs = [];
+          const tasks = [];
+
+          if (!baFresh) {
+            tasks.push(
+              getDocs(query(collection(db, "busca_ativa"), where("ra", "==", raStr)))
+                .then(snap => snap.forEach(d => extraBaDocs.push({ id: d.id, ...d.data() })))
+                .catch(errQ => console.warn("Aviso ao buscar contatos da busca ativa:", errQ))
+            );
+            if (cleanTargetRa && cleanTargetRa !== raStr) {
+              tasks.push(
+                getDocs(query(collection(db, "busca_ativa"), where("ra", "==", cleanTargetRa)))
+                  .then(snap => snap.forEach(d => extraBaDocs.push({ id: d.id, ...d.data() })))
+                  .catch(() => {})
+              );
+            }
+          }
+
+          if (!ocFresh) {
+            tasks.push(
+              getDocs(query(collection(db, "ocorrencias"), where("ra", "==", raStr), limit(100)))
+                .then(snap => snap.forEach(d => extraOcDocs.push({ id: d.id, ...d.data() })))
+                .catch(errOc => console.warn("Aviso ao buscar ocorrências do dossiê para BA:", errOc))
+            );
+            if (cleanTargetRa && cleanTargetRa !== raStr) {
+              tasks.push(
+                getDocs(query(collection(db, "ocorrencias"), where("ra", "==", cleanTargetRa), limit(100)))
+                  .then(snap => snap.forEach(d => extraOcDocs.push({ id: d.id, ...d.data() })))
+                  .catch(() => {})
+              );
+            }
+          }
+
+          if (tasks.length > 0) {
+            await Promise.all(tasks);
+            // Mescla contatos BA extras no cache em RAM sem apagar os demais estudantes
+            if (extraBaDocs.length > 0 && Array.isArray(window.todosContatosBaCache) && window.todosContatosBaCache.length > 0) {
+              const mapaBa = new Map(window.todosContatosBaCache.map(c => [String(c.id), c]));
+              extraBaDocs.forEach(c => { if (c.id) mapaBa.set(String(c.id), c); });
+              window.todosContatosBaCache = Array.from(mapaBa.values());
+              if (typeof window.indexarContatosBuscaAtiva === "function") {
+                window.indexarContatosBuscaAtiva(window.todosContatosBaCache);
+              }
+            }
+            // Só re-renderiza se ainda estiver no mesmo estudante selecionado e houver novidade
+            if (String(window.alunoBuscaAtivaSelecionado?.ra || "").trim() === raStr || !temCacheOc) {
+              const temNovoBa = extraBaDocs.some(d => d.id && !estadoInicial.idsBa.has(d.id));
+              const temNovoOc = extraOcDocs.some(d => d.id && !estadoInicial.idsOc.has(d.id));
+              if (!temCacheBa || !temCacheOc || temNovoBa || temNovoOc) {
+                montarERenderizarHistoricoBa(extraBaDocs, extraOcDocs);
+              }
+            }
+          }
         } catch (err) {
           console.error("Erro ao carregar histórico da busca ativa e dossiê:", err);
           containerHistoricoBaLista.innerHTML = `
@@ -16509,27 +16518,27 @@ Yasmin Seline`;
         }
       };
 
-      // Função para carregar Histórico Unificado de Ações (Ocorrências e Busca Ativa) do Aluno no Modal
+      // Função para carregar Histórico Unificado de Ações (Ocorrências e Busca Ativa) do Aluno no Modal (RAM-first 0ms)
       window.carregarHistoricoAcoesModal = async function(ra) {
         window.currentDossieRa = ra;
         const timelineEl = document.getElementById("modal-lista-acoes-timeline");
         const countBadge = document.getElementById("modal-badge-count-acoes");
         if (!timelineEl) return;
 
-        timelineEl.innerHTML = `<p class="text-xs text-slate-400 italic">Buscando histórico unificado (Ocorrências e Busca Ativa) no Banco de Dados...</p>`;
+        const raStr = String(ra || "").trim();
+        const cleanTargetRa = raStr.replace(/\D/g, "");
 
-        try {
-          const cleanTargetRa = String(ra || "").replace(/\D/g, "");
+        const renderizarModalAcoes = (extraOcDocs = []) => {
           const acoesAluno = [];
+          const idsVistos = new Set();
 
-          // 1. Busca na coleção 'ocorrencias'
-          const qOc = query(collection(db, "ocorrencias"), where("ra", "==", String(ra)), limit(50));
-          const qOcSnap = await getDocs(qOc);
-          qOcSnap.forEach(docSnap => {
-            const d = docSnap.data();
+          const pushAcao = (id, d) => {
+            if (!d) return;
+            if (id && idsVistos.has(id)) return;
+            if (id) idsVistos.add(id);
             acoesAluno.push({
-              id: docSnap.id,
-              origem: d.origem || (d.tipo && d.tipo.toUpperCase().includes("BUSCA ATIVA") ? "BUSCA_ATIVA" : "OCORRENCIA"),
+              id: id || `oc_${raStr}_${acoesAluno.length}`,
+              origem: d.origem || (d.tipo && String(d.tipo).toUpperCase().includes("BUSCA ATIVA") ? "BUSCA_ATIVA" : "OCORRENCIA"),
               tipo: d.tipo || "Atendimento Pedagógico",
               data: d.data || d.dataRegistro || "",
               descricao: d.descricao || d.observacao || "Sem descrição",
@@ -16543,63 +16552,39 @@ Yasmin Seline`;
               codigoConviva: d.codigoConviva || d.codigo_conviva || "",
               rawDoc: d
             });
+          };
+
+          // 1a. Docs recebidos diretamente do servidor
+          (extraOcDocs || []).forEach(d => pushAcao(d.id, d));
+
+          // 1b. Ocorrências em RAM global (window.ocorrenciasCache / window.ocorrenciasTopLevel)
+          const poolMemoria = Array.isArray(window.ocorrenciasCache) && window.ocorrenciasCache.length >= (window.ocorrenciasTopLevel?.length || 0)
+            ? window.ocorrenciasCache
+            : (window.ocorrenciasTopLevel || window.ocorrenciasCache || []);
+
+          poolMemoria.forEach(oc => {
+            const ocRa = String(oc.ra || oc.alunoRa || "").trim();
+            const matchRa = ocRa === raStr || (cleanTargetRa && ocRa.replace(/\D/g, "") === cleanTargetRa);
+            if (!matchRa) return;
+            if (!acoesAluno.some(item => item.id === oc.id || (item.data === oc.data && item.descricao === oc.descricao))) {
+              pushAcao(oc.id, oc);
+            }
           });
 
-          if (cleanTargetRa && cleanTargetRa !== String(ra)) {
-            const qOcClean = query(collection(db, "ocorrencias"), where("ra", "==", cleanTargetRa), limit(50));
-            const qOcSnapClean = await getDocs(qOcClean);
-            qOcSnapClean.forEach(docSnap => {
-              const d = docSnap.data();
-              if (!acoesAluno.some(item => item.id === docSnap.id)) {
-                acoesAluno.push({
-                  id: docSnap.id,
-                  origem: d.origem || (d.tipo && d.tipo.toUpperCase().includes("BUSCA ATIVA") ? "BUSCA_ATIVA" : "OCORRENCIA"),
-                  tipo: d.tipo || "Atendimento Pedagógico",
-                  data: d.data || d.dataRegistro || "",
-                  descricao: d.descricao || d.observacao || "Sem descrição",
-                  usuario: d.usuario || d.autor || "GESTAO",
-                  isAtraso: d.isAtraso,
-                  isDispensa: Boolean(d.isDispensa || (d.tipo && String(d.tipo).toUpperCase().includes("DISPENSA"))),
-                  dataInicio: d.dataInicio || "",
-                  dataFim: d.dataFim || "",
-                  motivoDispensa: d.motivoDispensa || "",
-                  registradoConviva: Boolean(d.registradoConviva || d.registrado_conviva || d.isConviva || (d.tipo && String(d.tipo).toUpperCase().includes("CONVIVA"))),
-                  codigoConviva: d.codigoConviva || d.codigo_conviva || ""
-                });
-              }
-            });
-          }
-
-          // 1b. Busca ocorrências/registros embutidos no objeto do aluno (allStudentsData), ignorando clones não-formatados
-          const stObj = ((window.allStudentsData || [])).find(s => String(s.ra || "").trim() === String(ra).trim() || (cleanTargetRa && String(s.ra || "").replace(/\D/g, "") === cleanTargetRa));
+          // 1c. Ocorrências/registros embutidos no objeto do aluno (allStudentsData), ignorando clones não-formatados
+          const stObj = ((window.allStudentsData || [])).find(s => String(s.ra || "").trim() === raStr || (cleanTargetRa && String(s.ra || "").replace(/\D/g, "") === cleanTargetRa));
           if (stObj) {
             const arrEmb = Array.isArray(stObj.ocorrencias) ? stObj.ocorrencias : (Array.isArray(stObj.registros) ? stObj.registros : []);
             arrEmb.forEach((oc, idx) => {
-              if (oc.tipoContato || oc.houveResposta) return; // ignora clones não-formatados de busca ativa
-              const ocId = oc.id || `emb_${ra}_${idx}`;
+              if (oc.tipoContato || oc.houveResposta) return;
+              const ocId = oc.id || `emb_${raStr}_${idx}`;
               if (!acoesAluno.some(existing => existing.id === ocId || (existing.data === oc.data && existing.descricao === oc.descricao))) {
-                acoesAluno.push({
-                  id: ocId,
-                  origem: oc.origem || (oc.tipo && oc.tipo.toUpperCase().includes("BUSCA ATIVA") ? "BUSCA_ATIVA" : "OCORRENCIA"),
-                  tipo: oc.tipo || "Atendimento Pedagógico",
-                  data: oc.data || oc.dataRegistro || "",
-                  descricao: oc.descricao || oc.observacao || "Sem descrição",
-                  usuario: oc.usuario || oc.autor || "GESTAO",
-                  isAtraso: oc.isAtraso,
-                  isDispensa: Boolean(oc.isDispensa || (oc.tipo && String(oc.tipo).toUpperCase().includes("DISPENSA"))),
-                  dataInicio: oc.dataInicio || "",
-                  dataFim: oc.dataFim || "",
-                  motivoDispensa: oc.motivoDispensa || "",
-                  registradoConviva: Boolean(oc.registradoConviva || oc.registrado_conviva || oc.isConviva || (oc.tipo && String(oc.tipo).toUpperCase().includes("CONVIVA"))),
-                  codigoConviva: oc.codigoConviva || oc.codigo_conviva || ""
-                });
+                pushAcao(ocId, oc);
               }
             });
           }
 
-          // 3. Ordena por data mais recente primeiro
           acoesAluno.sort((a, b) => new Date(b.data || 0) - new Date(a.data || 0));
-
           window.currentModalStudentAcoes = acoesAluno;
 
           // Renderizar lista resumida de Dispensas com datas no Dossiê
@@ -16648,7 +16633,6 @@ Yasmin Seline`;
             }
           }
 
-          // Contabilização de Atrasos (desconsidera Dispensas)
           const totalAtrasos = acoesAluno.filter(oc => {
             if (oc.isDispensa) return false;
             const descLower = (oc.descricao || "").toLowerCase();
@@ -16658,7 +16642,6 @@ Yasmin Seline`;
 
           const elAtrasosVal = document.getElementById("modal-display-atrasos-val");
           if (elAtrasosVal) elAtrasosVal.textContent = totalAtrasos;
-
           if (countBadge) countBadge.textContent = acoesAluno.length;
 
           if (acoesAluno.length === 0) {
@@ -16669,7 +16652,7 @@ Yasmin Seline`;
                 <p class="text-[10px] text-slate-400 mt-1">Utilize os formulários do sistema para registrar atendimentos pedagógicos ou contatos de busca ativa.</p>
               </div>
             `;
-            return;
+            return 0;
           }
 
           let html = "";
@@ -16711,7 +16694,7 @@ Yasmin Seline`;
               tipoClass = "bg-purple-100 text-purple-800 border-purple-300";
             }
 
-            const origemTag = isBuscaAtiva 
+            const origemTag = isBuscaAtiva
               ? `<span class="px-1.5 py-0.5 bg-emerald-200 text-emerald-900 border border-emerald-400 rounded text-[9px] font-black uppercase tracking-wider flex items-center gap-1"><i class="fa-solid fa-magnifying-glass-location"></i> Busca Ativa</span>`
               : `<span class="px-1.5 py-0.5 bg-blue-200 text-blue-900 border border-blue-300 rounded text-[9px] font-bold uppercase tracking-wider flex items-center gap-1"><i class="fa-solid fa-clipboard-list"></i> Ocorrência</span>`;
 
@@ -16776,7 +16759,46 @@ Yasmin Seline`;
           });
 
           timelineEl.innerHTML = html;
+          return { count: acoesAluno.length, ids: idsVistos };
+        };
 
+        try {
+          const temCacheOc = (Array.isArray(window.ocorrenciasTopLevel) && window.ocorrenciasTopLevel.length > 0) ||
+            (Array.isArray(window.ocorrenciasCache) && window.ocorrenciasCache.length > 0);
+
+          let estadoModalInicial = { count: 0, ids: new Set() };
+          if (temCacheOc) {
+            // Renderização instantânea (0ms) da linha do tempo usando a memória consolidada
+            estadoModalInicial = renderizarModalAcoes() || { count: 0, ids: new Set() };
+          } else {
+            timelineEl.innerHTML = `<p class="text-xs text-slate-400 italic">Buscando histórico unificado (Ocorrências e Busca Ativa) no Banco de Dados...</p>`;
+          }
+
+          // Só busca no banco se o cache global ainda não foi carregado nesta sessão ou estiver desatualizado
+          const ocFresh = temCacheOc && (Date.now() - (window._lastOcorrenciasLoadTs || 0) < 60000);
+          if (ocFresh) return;
+
+          const extraOcDocs = [];
+          const reqs = [
+            getDocs(query(collection(db, "ocorrencias"), where("ra", "==", raStr), limit(50)))
+              .then(snap => snap.forEach(d => extraOcDocs.push({ id: d.id, ...d.data() })))
+              .catch(() => {})
+          ];
+          if (cleanTargetRa && cleanTargetRa !== raStr) {
+            reqs.push(
+              getDocs(query(collection(db, "ocorrencias"), where("ra", "==", cleanTargetRa), limit(50)))
+                .then(snap => snap.forEach(d => extraOcDocs.push({ id: d.id, ...d.data() })))
+                .catch(() => {})
+            );
+          }
+
+          await Promise.all(reqs);
+
+          // Só atualiza DOM se o modal ainda estiver mostrando o mesmo aluno e houve novidade ou não havia cache
+          const temNovoOc = extraOcDocs.some(d => d.id && !estadoModalInicial.ids?.has(d.id));
+          if (String(window.currentDossieRa || "").trim() === raStr && (!temCacheOc || temNovoOc)) {
+            renderizarModalAcoes(extraOcDocs);
+          }
         } catch (err) {
           window.showErrorToast("Erro de conexão ao buscar histórico unificado do aluno no banco!", err);
           timelineEl.innerHTML = `<p class="text-xs text-red-500 font-semibold">Erro ao carregar histórico: ${err.message || err}</p>`;
@@ -18348,13 +18370,15 @@ Yasmin Seline`;
               });
               
               window.ocorrenciasTopLevel = novaoCorrencias;
+              window._lastOcorrenciasLoadTs = Date.now();
 
               if (typeof window.consolidarHistoricoOcorrenciasGlobais === "function") {
                 window.consolidarHistoricoOcorrenciasGlobais();
               }
 
+              const modalFichaEl = document.getElementById("modal-ficha-aluno");
               const raHiddenModal = document.getElementById("modal-aluno-ra-hidden")?.value;
-              if (raHiddenModal && typeof carregarHistoricoAcoesModal === "function") {
+              if (raHiddenModal && modalFichaEl && !modalFichaEl.classList.contains("hidden") && typeof carregarHistoricoAcoesModal === "function") {
                 carregarHistoricoAcoesModal(raHiddenModal);
               }
             }, (err) => {
@@ -18882,6 +18906,7 @@ Yasmin Seline`;
             list.push({ id: docSnap.id, ...docSnap.data() });
           });
           window.ocorrenciasTopLevel = list;
+          window._lastOcorrenciasLoadTs = Date.now();
           if (typeof window.consolidarHistoricoOcorrenciasGlobais === "function") {
             window.consolidarHistoricoOcorrenciasGlobais();
           }
@@ -18940,6 +18965,7 @@ Yasmin Seline`;
             const ocEmCache = window.smartCache.get("ocorrencias_cache", 60);
             if (ocEmCache && Array.isArray(ocEmCache) && ocEmCache.length > 0) {
               window.ocorrenciasTopLevel = ocEmCache;
+              window._lastOcorrenciasLoadTs = Date.now();
             }
           }
 
@@ -18990,6 +19016,7 @@ Yasmin Seline`;
                 ocIniciais.push({ id: docSnap.id, ...docSnap.data() });
               });
               window.ocorrenciasTopLevel = ocIniciais;
+              window._lastOcorrenciasLoadTs = Date.now();
               if (window.smartCache && ocIniciais.length > 0) {
                 window.smartCache.set("ocorrencias_cache", ocIniciais);
               }
@@ -20745,11 +20772,43 @@ Yasmin Seline`;
       };
 
       window.renderBuscaAtivaAtrasos = function(mostrarFeedback = false) {
-        const alunos = window.allStudentsData || [];
-        if ((!window.ocorrenciasCache || window.ocorrenciasCache.length === 0) && typeof window.consolidarHistoricoOcorrenciasGlobais === "function") {
-          window.consolidarHistoricoOcorrenciasGlobais();
-        }
-        const todasOc = window.ocorrenciasCache || window.ocorrenciasTopLevel || [];
+        window._renderizandoBuscaAtivaAtrasos = true;
+        try {
+          const alunos = window.allStudentsData || [];
+          const precisaRecargaCompleta = mostrarFeedback || !Array.isArray(window.ocorrenciasTopLevel) || window.ocorrenciasTopLevel.length === 0;
+
+          if (precisaRecargaCompleta && !window._baAtrasosSyncInFlight) {
+            window._baAtrasosSyncInFlight = true;
+            getDocs(collection(db, "ocorrencias"))
+              .then((snapOc) => {
+                const list = [];
+                snapOc.forEach((docSnap) => list.push({ id: docSnap.id, ...docSnap.data() }));
+                window.ocorrenciasTopLevel = list;
+                window._lastOcorrenciasLoadTs = Date.now();
+                if (typeof window.consolidarHistoricoOcorrenciasGlobais === "function") {
+                  window.consolidarHistoricoOcorrenciasGlobais();
+                } else {
+                  window.ocorrenciasCache = list;
+                }
+                if (mostrarFeedback && typeof window.showToast === "function") {
+                  window.showToast(`Busca Ativa de Atrasos sincronizada com todos os ${alunos.length} alunos.`, "success", 2500);
+                }
+              })
+              .catch(() => {})
+              .finally(() => {
+                window._baAtrasosSyncInFlight = false;
+              });
+          }
+
+          if (
+            (!window.ocorrenciasCache || window.ocorrenciasCache.length === 0 || (Array.isArray(window.ocorrenciasTopLevel) && window.ocorrenciasTopLevel.length > window.ocorrenciasCache.length)) &&
+            typeof window.consolidarHistoricoOcorrenciasGlobais === "function"
+          ) {
+            window.consolidarHistoricoOcorrenciasGlobais();
+          }
+          const todasOc = (Array.isArray(window.ocorrenciasCache) && window.ocorrenciasCache.length >= (window.ocorrenciasTopLevel?.length || 0))
+            ? window.ocorrenciasCache
+            : (window.ocorrenciasTopLevel || window.ocorrenciasCache || []);
 
         const extrairMesIso = (raw) => {
           if (!raw) return "";
@@ -21035,9 +21094,12 @@ Yasmin Seline`;
           }
         }
 
-        window.filtrarBuscaAtivaAtrasos(true);
-        if (mostrarFeedback && typeof window.showToast === "function") {
-          window.showToast(`Busca Ativa de Atrasos atualizada: ${totalAlunosAtraso} estudante(s) monitorado(s).`, "success", 2500);
+          window.filtrarBuscaAtivaAtrasos(true);
+          if (mostrarFeedback && !precisaRecargaCompleta && typeof window.showToast === "function") {
+            window.showToast(`Busca Ativa de Atrasos atualizada: ${totalAlunosAtraso} estudante(s) monitorado(s).`, "success", 2500);
+          }
+        } finally {
+          window._renderizandoBuscaAtivaAtrasos = false;
         }
       };
 

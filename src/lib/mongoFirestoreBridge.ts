@@ -178,14 +178,14 @@ export async function getDocs<T = any>(queryOrCol: MongoCollectionRef | MongoQue
     try {
       if (typeof window !== 'undefined' && array.length > 0) {
         if (colName === 'alunos') {
-          if (!queryString && array.length >= 500) {
+          const atuais = (window as any).allStudentsData || [];
+          if (!queryString && (array.length >= 500 || array.length >= atuais.length)) {
             (window as any).allStudentsData = array;
             if ((window as any).smartCache) {
               (window as any).smartCache.set('alunos_cache', array);
             }
           } else {
-            // Se for consulta filtrada ou parcial, funde com a base sem sobrescrever os 751 alunos
-            const atuais = (window as any).allStudentsData || [];
+            // Se for consulta filtrada ou parcial, funde com a base sem sobrescrever os alunos já carregados
             const mapa = new Map(atuais.map((s: any) => [String(s.ra || s.id), s]));
             array.forEach((s: any) => mapa.set(String(s.ra || s.id), s));
             (window as any).allStudentsData = Array.from(mapa.values());
@@ -194,9 +194,42 @@ export async function getDocs<T = any>(queryOrCol: MongoCollectionRef | MongoQue
             }
           }
         } else if (colName === 'ocorrencias') {
-          (window as any).ocorrenciasCache = array;
-          if ((window as any).smartCache) {
-            (window as any).smartCache.set('ocorrencias_cache', array);
+          if (!queryString) {
+            // Carga completa da coleção: atualiza a base global sem perder registros consolidados
+            (window as any).ocorrenciasTopLevel = array;
+            const cacheAtual = (window as any).ocorrenciasCache;
+            if (!Array.isArray(cacheAtual) || cacheAtual.length <= array.length) {
+              (window as any).ocorrenciasCache = array;
+            }
+            if ((window as any).smartCache) {
+              (window as any).smartCache.set('ocorrencias_cache', array);
+            }
+          } else {
+            // Consulta filtrada (ex: where("ra", "==", ...)): NUNCA sobrescrever o cache global de ocorrências!
+            // Mescla os registros retornados por id nos caches existentes sem remover os demais estudantes.
+            const mergePorId = (existente: any[]) => {
+              if (!Array.isArray(existente) || existente.length === 0) return null;
+              const mapa = new Map<string, any>();
+              existente.forEach((item: any, idx: number) => {
+                const k = String(item?.id || item?._id || `idx_${idx}`);
+                mapa.set(k, item);
+              });
+              array.forEach((item: any) => {
+                const k = String(item?.id || item?._id || '');
+                if (k) mapa.set(k, item);
+              });
+              return Array.from(mapa.values());
+            };
+            const topMerged = mergePorId((window as any).ocorrenciasTopLevel);
+            if (topMerged) (window as any).ocorrenciasTopLevel = topMerged;
+
+            const cacheMerged = mergePorId((window as any).ocorrenciasCache);
+            if (cacheMerged) {
+              (window as any).ocorrenciasCache = cacheMerged;
+              if ((window as any).smartCache) {
+                (window as any).smartCache.set('ocorrencias_cache', cacheMerged);
+              }
+            }
           }
         }
       }
@@ -245,6 +278,8 @@ export async function getDocs<T = any>(queryOrCol: MongoCollectionRef | MongoQue
         } else if (colName === 'ocorrencias') {
           if (Array.isArray(win.ocorrenciasCache) && win.ocorrenciasCache.length > 0) {
             cachedArray = win.ocorrenciasCache;
+          } else if (Array.isArray(win.ocorrenciasTopLevel) && win.ocorrenciasTopLevel.length > 0) {
+            cachedArray = win.ocorrenciasTopLevel;
           } else if (win.smartCache) {
             const sc = win.smartCache.get('ocorrencias_cache', 120);
             if (Array.isArray(sc)) cachedArray = sc;
@@ -262,6 +297,24 @@ export async function getDocs<T = any>(queryOrCol: MongoCollectionRef | MongoQue
         }
       }
     } catch (e) {}
+
+    // Aplica filtros where/limit localmente no fallback em cache
+    if (queryOrCol.type === 'query' && Array.isArray(cachedArray) && cachedArray.length > 0) {
+      let filtered = cachedArray;
+      let limitVal: number | null = null;
+      for (const c of queryOrCol.constraints) {
+        if (c.type === 'where' && c.field && c.op === '==' && c.value !== undefined) {
+          const target = String(c.value).toLowerCase();
+          filtered = filtered.filter((item: any) => String(item?.[c.field!] ?? '').toLowerCase() === target);
+        } else if (c.type === 'limit' && c.value) {
+          limitVal = Number(c.value) || null;
+        }
+      }
+      if (limitVal && limitVal > 0) {
+        filtered = filtered.slice(0, limitVal);
+      }
+      cachedArray = filtered;
+    }
 
     const docs: MongoDocumentSnapshot<T>[] = cachedArray.map((item: any) => {
       const docId = String(item.id || item.ra || item._id || '');
