@@ -143,6 +143,9 @@ function extrairFaltasTotal(aluno) {
  */
 export function atualizarDashboardAtrasos() {
   try {
+    const containerDash = document.getElementById("content-dashboard-atrasos");
+    if (!containerDash) return;
+
     const listaAlunos = Array.isArray(window.allStudentsData) && window.allStudentsData.length > 0 
       ? window.allStudentsData 
       : [];

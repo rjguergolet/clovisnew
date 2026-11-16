@@ -6,3 +6,7 @@ coverage/
 *.log
 .env*
 !.env.example
+public/**/*.pdf
+public/**/*.xlsx
+public/*.pdf
+public/*.xlsx

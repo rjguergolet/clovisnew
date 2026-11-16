@@ -51,6 +51,13 @@ export interface FrequenciaTurmaParsedResult {
   aulasDadasPorDia: Record<number, number>; // dia 1..31 -> max aulas dadas na turma
   taxaPresencaMediaTurma: number;
   alunos: AlunoFrequenciaDiaria[];
+  alunosTransferidosRemanejados?: Array<{
+    numChamada?: number;
+    nome: string;
+    ra: string;
+    raClean: string;
+    situacaoSed: string;
+  }>;
   totais: {
     totalAlunos: number;
     alunosAtivosEncontrados: number;
@@ -325,6 +332,13 @@ export function parseRelatorioFrequenciaSED(textoBruto: string, baseAlunosEscola
     diasPresenca: Record<number, number>;
     totalDeclarado: number;
   }[] = [];
+  const alunosTransferidosRemanejados: Array<{
+    numChamada?: number;
+    nome: string;
+    ra: string;
+    raClean: string;
+    situacaoSed: string;
+  }> = [];
 
   for (const rawLine of lines) {
     const l = rawLine.trim();
@@ -343,6 +357,19 @@ export function parseRelatorioFrequenciaSED(textoBruto: string, baseAlunosEscola
       l.startsWith('Turma:') ||
       l.startsWith('Disciplina:')
     ) {
+      continue;
+    }
+
+    const matchStatusInativo = l.match(/^(\d+)\s+(.+?)\s+(\d{8,15}[-0-9Xx]*(?:\s*\/\s*[A-Z]{2})?)\b.*\b(TRANSFERID[OA]|REMANEJAD[OA]|ABANDONO|INATIV[OA]|BAIXA|DESLIGAD[OA])\b/i);
+    if (matchStatusInativo) {
+      const raOrig = matchStatusInativo[3].trim().toUpperCase();
+      alunosTransferidosRemanejados.push({
+        numChamada: parseInt(matchStatusInativo[1], 10) || undefined,
+        nome: matchStatusInativo[2].trim().toUpperCase(),
+        ra: raOrig,
+        raClean: normalizarRaSED(raOrig).raLimpo,
+        situacaoSed: matchStatusInativo[4].trim().toUpperCase()
+      });
       continue;
     }
 
@@ -512,6 +539,7 @@ export function parseRelatorioFrequenciaSED(textoBruto: string, baseAlunosEscola
     aulasDadasPorDia,
     taxaPresencaMediaTurma,
     alunos: alunosFinais.sort((x, y) => x.pctPresenca - y.pctPresenca),
+    alunosTransferidosRemanejados,
     totais: {
       totalAlunos: alunosFinais.length,
       alunosAtivosEncontrados: countAtivosEncontrados,

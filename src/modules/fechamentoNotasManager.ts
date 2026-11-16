@@ -25,6 +25,7 @@ export interface DisciplinaFechamento {
 }
 
 export interface AlunoFechamentoParsed {
+  ra?: string;
   nome: string;
   situacao: string;
   disciplinas: Record<string, DisciplinaFechamento>;
@@ -53,19 +54,43 @@ export interface ParsedFechamentoResult {
   alunos: AlunoFechamentoParsed[];
 }
 
+export interface CandidatoAmbiguoAluno {
+  ra: string;
+  nome: string;
+  turma: string;
+  status: string;
+}
+
 export interface VinculoAlunoResult {
   alunoParsed: AlunoFechamentoParsed;
   alunoBase: any | null;
-  tipoVinculo: 'turma_e_nome' | 'apenas_nome' | 'aproximado' | 'nao_encontrado';
+  tipoVinculo: 'ra_estrito' | 'turma_e_nome' | 'apenas_nome' | 'aproximado' | 'nao_encontrado';
   confianca: number;
   raSugerido: string | null;
   turmaBase: string | null;
   manualOverrideRa?: string;
+  ambiguo?: boolean;
+  motivoAmbiguidade?: string;
+  candidatosAmbiguos?: CandidatoAmbiguoAluno[];
 }
 
 // ----------------------------------------------------
-// Normalizadores de Texto
+// Normalizadores de Texto e RA
 // ----------------------------------------------------
+
+export function normalizarRaEstudante(raRaw: any): string {
+  if (raRaw === undefined || raRaw === null) return '';
+  const str = String(raRaw).trim().toUpperCase().replace(/\s*\/\s*[A-Z]{2}$/, '');
+  if (!str) return '';
+  const semDigito = str.replace(/\s*-\s*[0-9Xx]$/, '');
+  const digitos = semDigito.replace(/\D/g, '').replace(/^0+/, '');
+  return digitos;
+}
+
+function normalizarRaDigitosCompletos(raRaw: any): string {
+  if (raRaw === undefined || raRaw === null) return '';
+  return String(raRaw).trim().toUpperCase().replace(/\s*\/\s*[A-Z]{2}$/, '').replace(/\D/g, '').replace(/^0+/, '');
+}
 
 export function normalizarNome(nome: string): string {
   if (!nome) return '';
@@ -295,15 +320,40 @@ export async function parseFechamentoExcel(
   const bimestreKey = bimInfo.bimestreKey;
   if (!tipoFechamento) tipoFechamento = bimInfo.tipo;
 
+  // Detectar colunas dinâmicas de RA, Dígito, Nome e Situação no subheader
+  let colNome = 0;
+  let colSit = 1;
+  let colRa = -1;
+  let colDig = -1;
+
+  if (subheaderRowIndex !== -1 && rawRows[subheaderRowIndex]) {
+    const subRow = rawRows[subheaderRowIndex];
+    subRow.forEach((cell: any, idx: number) => {
+      const h = String(cell || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase();
+      if (!h) return;
+      if (h === 'RA' || h === 'R.A.' || h === 'R.A' || h === 'REGISTRO DO ALUNO' || h === 'REGISTRO') {
+        colRa = idx;
+      } else if (h === 'DIG' || h === 'DIGITO') {
+        colDig = idx;
+      } else if (h === 'ALUNO' || h === 'ESTUDANTE' || h === 'NOME' || h === 'NOME DO ALUNO' || h === 'NOME COMPLETO') {
+        colNome = idx;
+      } else if (h === 'SIT' || h === 'SITUACAO') {
+        colSit = idx;
+      }
+    });
+  }
+
+  const firstDiscColMin = Math.max(2, colNome + 1, colSit + 1, colRa + 1, colDig + 1);
+
   // Extrair disciplinas
   const disciplinasDetectadas: { nome: string; colStart: number }[] = [];
   if (headerRowIndex !== -1) {
     const discRow = rawRows[headerRowIndex];
-    for (let c = 2; c < discRow.length; c++) {
+    for (let c = firstDiscColMin; c < discRow.length; c++) {
       const val = discRow[c];
       if (val && typeof val === 'string' && val.trim()) {
         const limpo = limparNomeDisciplina(val);
-        if (limpo && limpo !== 'TOTAL' && limpo !== 'SIT' && limpo !== 'ALUNO') {
+        if (limpo && limpo !== 'TOTAL' && limpo !== 'SIT' && limpo !== 'ALUNO' && limpo !== 'RA' && limpo !== 'DIG') {
           disciplinasDetectadas.push({ nome: limpo, colStart: c });
         }
       }
@@ -312,7 +362,7 @@ export async function parseFechamentoExcel(
 
   // Se não detectou disciplinas por cabeçalho, usa o padrão SED Fundamental
   if (disciplinasDetectadas.length === 0) {
-    let col = 2;
+    let col = firstDiscColMin;
     for (const disc of DISCIPLINAS_PADRAO_FUNDAMENTAL) {
       disciplinasDetectadas.push({ nome: disc, colStart: col });
       col += 4; // Nº, M, F, AC
@@ -327,13 +377,31 @@ export async function parseFechamentoExcel(
     const row = rawRows[r];
     if (!row || row.length === 0) continue;
 
-    const nomeCandidate = String(row[0] || '').trim();
-    if (!nomeCandidate || nomeCandidate.toUpperCase().includes('TOTAL') || nomeCandidate.toUpperCase() === 'ALUNO') {
+    const nomeCandidate = String(row[colNome] || '').trim();
+    if (!nomeCandidate || nomeCandidate.toUpperCase().includes('TOTAL') || nomeCandidate.toUpperCase() === 'ALUNO' || nomeCandidate.toUpperCase() === 'ESTUDANTE') {
       continue;
     }
 
-    // Situação na col 1
-    const situacao = String(row[1] || 'Ativo').trim();
+    // Extrair RA caso a planilha contenha coluna de RA
+    let raExtracted: string | undefined = undefined;
+    if (colRa !== -1 && row[colRa] !== undefined && row[colRa] !== null) {
+      const raCell = String(row[colRa]).trim();
+      const digCell = (colDig !== -1 && row[colDig] !== undefined && row[colDig] !== null) ? String(row[colDig]).trim() : '';
+      const combinedRa = digCell && !raCell.includes('-') ? `${raCell}-${digCell}` : raCell;
+      if (normalizarRaEstudante(combinedRa).length >= 6) {
+        raExtracted = combinedRa;
+      }
+    } else if (colRa === -1) {
+      // Verifica se col 0 tem RA e col 1 tem nome
+      const c0 = String(row[0] || '').trim();
+      const c1 = String(row[1] || '').trim();
+      if (/^\d{8,14}(?:-[0-9Xx])?$/.test(c0) && c1 && !/^(ativo|transferido|inativo|abandono)/i.test(c1)) {
+        raExtracted = c0;
+      }
+    }
+
+    // Situação
+    const situacao = String((colSit >= 0 ? row[colSit] : '') || 'Ativo').trim();
 
     // Dicionário de disciplinas do aluno
     const disciplinas: Record<string, DisciplinaFechamento> = {};
@@ -370,14 +438,13 @@ export async function parseFechamentoExcel(
 
     // Colunas de Total no final
     // TF | Fre(%) | FTAn | Fre An(%)
-    const lastColIndex = row.length - 1;
     let totalFaltas = 0;
     let frequenciaBimestre = '—';
     let faltasTotalAno: number | undefined = undefined;
     let frequenciaTotalAno: string | undefined = undefined;
 
     // Busca colunas de total a partir do final ou da última disciplina
-    for (let c = row.length - 4; c < row.length; c++) {
+    for (let c = Math.max(0, row.length - 4); c < row.length; c++) {
       const val = String(row[c] || '').trim();
       if (val.includes('%')) {
         if (frequenciaBimestre === '—') {
@@ -407,6 +474,7 @@ export async function parseFechamentoExcel(
       : null;
 
     alunosParsed.push({
+      ...(raExtracted ? { ra: raExtracted } : {}),
       nome: nomeCandidate,
       situacao,
       disciplinas,
@@ -569,9 +637,20 @@ export function parseFechamentoTexto(
     }
 
     const idxStatus = matchStatus.index;
-    const nomeAluno = linha.substring(0, idxStatus).trim();
+    const prefixoLinha = linha.substring(0, idxStatus).trim();
     const situacao = matchStatus[1];
     const restoLinha = linha.substring(idxStatus + matchStatus[0].length).trim();
+
+    // Extrair RA caso o PDF/texto inclua o registro do aluno antes da situação
+    let raExtraido: string | undefined = undefined;
+    let nomeAluno = prefixoLinha;
+    const raMatch = prefixoLinha.match(/(?:^|\s)((?:0{2,})?\d{7,14}(?:\s*-\s*[0-9Xx])?(?:\s*\/\s*[A-Z]{2})?)(?=\s|$)/i);
+    if (raMatch) {
+      raExtraido = raMatch[1].replace(/\s+/g, '').toUpperCase();
+      nomeAluno = prefixoLinha.replace(raMatch[0], ' ').replace(/\s+/g, ' ').trim();
+    }
+    // Remove eventual número de chamada inicial antes do nome
+    nomeAluno = nomeAluno.replace(/^\d{1,2}\s+/, '').trim();
 
     // Nome deve ter pelo menos duas palavras e caracteres válidos
     if (!nomeAluno || nomeAluno.split(' ').length < 2 || /\d/.test(nomeAluno)) {
@@ -612,9 +691,6 @@ export function parseFechamentoTexto(
     const disciplinas: Record<string, DisciplinaFechamento> = {};
     const notasValidas: number[] = [];
     let qtdAbaixoBasico = 0;
-
-    // Cada disciplina consome 4 tokens: Nº, M, F, AC
-    const qtdDisciplinas = Math.floor(discTokens.length / 4);
 
     for (let d = 0; d < disciplinasDetectadas.length; d++) {
       const discNome = disciplinasDetectadas[d];
@@ -664,6 +740,7 @@ export function parseFechamentoTexto(
       : null;
 
     alunosParsed.push({
+      ...(raExtraido ? { ra: raExtraido } : {}),
       nome: nomeAluno,
       situacao,
       disciplinas,
@@ -693,8 +770,31 @@ export function parseFechamentoTexto(
 }
 
 // ----------------------------------------------------
-// Motor de Pareamento Inteligente (Sem RA)
+// Motor de Pareamento Inteligente (RA Estrito + Nome/Turma com Proteção contra Homônimos)
 // ----------------------------------------------------
+function toCandidatoAmbiguo(s: any): CandidatoAmbiguoAluno {
+  return {
+    ra: String(s.ra || s.docId || s.id || ''),
+    nome: String(s.nome || 'Sem Nome'),
+    turma: String(s.turma || '—'),
+    status: String(s.status || 'ATIVO').toUpperCase()
+  };
+}
+
+function deduplicarCandidatos(lista: any[]): any[] {
+  const seen = new Set<string>();
+  const out: any[] = [];
+  for (const s of lista) {
+    if (!s) continue;
+    const key = String(s.ra || s.docId || s.id || normalizarNome(s.nome));
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(s);
+    }
+  }
+  return out;
+}
+
 export function vincularAlunosComBase(
   parsed: ParsedFechamentoResult,
   baseAlunos: any[]
@@ -705,28 +805,115 @@ export function vincularAlunosComBase(
   for (const item of parsed.alunos) {
     const normNomeRow = normalizarNome(item.nome);
     const rowTokens = normNomeRow.split(' ').filter(Boolean);
+    const raRowNorm = item.ra ? normalizarRaEstudante(item.ra) : '';
+    const raRowFull = item.ra ? normalizarRaDigitosCompletos(item.ra) : '';
 
-    // 1. Prioridade Máxima: Turma e Nome Completo Idênticos
-    let match = baseAlunos.find(s => {
-      const sNome = normalizarNome(s.nome);
-      const sTurma = normalizarTurma(s.turma);
-      return sNome === normNomeRow && normTurmaDoc && sTurma === normTurmaDoc;
-    });
+    // 1. PRIORIDADE MÁXIMA ESTRITA: RA presente no arquivo da SED
+    if (raRowNorm.length >= 6) {
+      const matchesRa = baseAlunos.filter(s => {
+        const sRaNorm = normalizarRaEstudante(s.ra || s.id);
+        const sRaFull = normalizarRaDigitosCompletos(s.ra || s.id);
+        return (sRaNorm && sRaNorm === raRowNorm) || (raRowFull.length >= 6 && sRaFull && sRaFull === raRowFull);
+      });
 
-    if (match) {
+      if (matchesRa.length === 1) {
+        resultados.push({
+          alunoParsed: item,
+          alunoBase: matchesRa[0],
+          tipoVinculo: 'ra_estrito',
+          confianca: 1.0,
+          raSugerido: matchesRa[0].ra,
+          turmaBase: matchesRa[0].turma,
+          ambiguo: false
+        });
+        continue;
+      }
+
+      if (matchesRa.length > 1) {
+        resultados.push({
+          alunoParsed: item,
+          alunoBase: null,
+          tipoVinculo: 'ra_estrito',
+          confianca: 0,
+          raSugerido: item.ra || null,
+          turmaBase: null,
+          ambiguo: true,
+          motivoAmbiguidade: `Múltiplos cadastros encontrados com o mesmo RA (${item.ra}). Selecione o estudante correto antes de gravar.`,
+          candidatosAmbiguos: deduplicarCandidatos(matchesRa).map(toCandidatoAmbiguo)
+        });
+        continue;
+      }
+
+      // RA presente no arquivo, porém não localizado na base: nunca sobrescrever outro aluno silenciosamente
+      const possiveisHomonimosPorNome = baseAlunos.filter(s => normalizarNome(s.nome) === normNomeRow);
+      if (possiveisHomonimosPorNome.length > 0) {
+        resultados.push({
+          alunoParsed: item,
+          alunoBase: null,
+          tipoVinculo: 'nao_encontrado',
+          confianca: 0,
+          raSugerido: item.ra || null,
+          turmaBase: null,
+          ambiguo: true,
+          motivoAmbiguidade: `RA "${item.ra}" não encontrado no banco, mas existe(m) estudante(s) com nome semelhante. Confirme manualmente para evitar erro.`,
+          candidatosAmbiguos: deduplicarCandidatos(possiveisHomonimosPorNome).map(toCandidatoAmbiguo)
+        });
+        continue;
+      }
+
       resultados.push({
         alunoParsed: item,
-        alunoBase: match,
-        tipoVinculo: 'turma_e_nome',
-        confianca: 1.0,
-        raSugerido: match.ra,
-        turmaBase: match.turma
+        alunoBase: null,
+        tipoVinculo: 'nao_encontrado',
+        confianca: 0,
+        raSugerido: item.ra || null,
+        turmaBase: null,
+        ambiguo: false
       });
       continue;
     }
 
-    // 2. Prioridade 2: Nome Completo Idêntico (mesmo que a turma na base esteja formatada diferente)
-    const matchesPorNome = baseAlunos.filter(s => normalizarNome(s.nome) === normNomeRow);
+    // 2. ARQUIVO SEM RA: Turma e Nome Completo Idênticos (verificando homônimos na mesma turma)
+    const matchesTurmaNome = deduplicarCandidatos(
+      baseAlunos.filter(s => {
+        const sNome = normalizarNome(s.nome);
+        const sTurma = normalizarTurma(s.turma);
+        return sNome === normNomeRow && normTurmaDoc && sTurma === normTurmaDoc;
+      })
+    );
+
+    if (matchesTurmaNome.length === 1) {
+      resultados.push({
+        alunoParsed: item,
+        alunoBase: matchesTurmaNome[0],
+        tipoVinculo: 'turma_e_nome',
+        confianca: 1.0,
+        raSugerido: matchesTurmaNome[0].ra,
+        turmaBase: matchesTurmaNome[0].turma,
+        ambiguo: false
+      });
+      continue;
+    }
+
+    if (matchesTurmaNome.length > 1) {
+      resultados.push({
+        alunoParsed: item,
+        alunoBase: null,
+        tipoVinculo: 'turma_e_nome',
+        confianca: 0,
+        raSugerido: null,
+        turmaBase: null,
+        ambiguo: true,
+        motivoAmbiguidade: `Homônimos detectados na turma ${parsed.metadata.turmaOriginal} (${matchesTurmaNome.length} cadastros com nome idêntico e sem RA no arquivo).`,
+        candidatosAmbiguos: matchesTurmaNome.map(toCandidatoAmbiguo)
+      });
+      continue;
+    }
+
+    // 3. Nome Completo Idêntico na Escola (verificando homônimos em turmas diferentes)
+    const matchesPorNome = deduplicarCandidatos(
+      baseAlunos.filter(s => normalizarNome(s.nome) === normNomeRow)
+    );
     if (matchesPorNome.length === 1) {
       resultados.push({
         alunoParsed: item,
@@ -734,63 +921,98 @@ export function vincularAlunosComBase(
         tipoVinculo: 'apenas_nome',
         confianca: 0.95,
         raSugerido: matchesPorNome[0].ra,
-        turmaBase: matchesPorNome[0].turma
+        turmaBase: matchesPorNome[0].turma,
+        ambiguo: false
       });
       continue;
     } else if (matchesPorNome.length > 1) {
-      // Se houver homônimos, prefere o aluno ativo
-      const ativo = matchesPorNome.find(s => String(s.status || 'ATIVO').toUpperCase() === 'ATIVO');
-      const escolhido = ativo || matchesPorNome[0];
       resultados.push({
         alunoParsed: item,
-        alunoBase: escolhido,
+        alunoBase: null,
         tipoVinculo: 'apenas_nome',
-        confianca: 0.9,
-        raSugerido: escolhido.ra,
-        turmaBase: escolhido.turma
+        confianca: 0,
+        raSugerido: null,
+        turmaBase: null,
+        ambiguo: true,
+        motivoAmbiguidade: `Homônimos encontrados na escola (${matchesPorNome.length} estudantes com este nome, arquivo sem RA). Escolha o estudante correto.`,
+        candidatosAmbiguos: matchesPorNome.map(toCandidatoAmbiguo)
       });
       continue;
     }
 
-    // 3. Prioridade 3: Pareamento Aproximado Seguro
-    // Verifica se primeiro e último nome coincidem na mesma turma ou na base
-    const candidatoAprox = baseAlunos.find(s => {
-      const sNome = normalizarNome(s.nome);
-      const sTokens = sNome.split(' ').filter(Boolean);
-      if (sTokens.length < 2 || rowTokens.length < 2) return false;
+    // 4. Pareamento Aproximado com Verificação de Similaridade Ambígua / Quase-Homônimos na Mesma Turma
+    const alunosMesmaTurma = normTurmaDoc
+      ? baseAlunos.filter(s => normalizarTurma(s.turma) === normTurmaDoc)
+      : [];
 
-      // Primeiro e último nome devem ser idênticos
-      if (sTokens[0] !== rowTokens[0] || sTokens[sTokens.length - 1] !== rowTokens[rowTokens.length - 1]) {
-        return false;
-      }
+    const poolBusca = alunosMesmaTurma.length > 0 ? alunosMesmaTurma : baseAlunos;
 
-      // Proporção de tokens coincidentes
-      const setBase = new Set(sTokens);
-      const coincidentes = rowTokens.filter(t => setBase.has(t));
-      const threshold = Math.min(sTokens.length, rowTokens.length) * 0.7;
-      return coincidentes.length >= threshold;
-    });
+    const candidatosAprox = deduplicarCandidatos(
+      poolBusca.filter(s => {
+        const sNome = normalizarNome(s.nome);
+        const sTokens = sNome.split(' ').filter(Boolean);
+        if (sTokens.length < 2 || rowTokens.length < 2) return false;
 
-    if (candidatoAprox) {
+        // Primeiro e último nome devem ser idênticos
+        if (sTokens[0] !== rowTokens[0] || sTokens[sTokens.length - 1] !== rowTokens[rowTokens.length - 1]) {
+          return false;
+        }
+
+        const setBase = new Set(sTokens);
+        const coincidentes = rowTokens.filter(t => setBase.has(t));
+        const threshold = Math.min(sTokens.length, rowTokens.length) * 0.7;
+        return coincidentes.length >= threshold;
+      })
+    );
+
+    // Verifica se há outros quase-homônimos na mesma turma (mesmo primeiro + último nome)
+    const quaseHomonimosMesmaTurma = rowTokens.length >= 2
+      ? deduplicarCandidatos(
+          alunosMesmaTurma.filter(s => {
+            const sTokens = normalizarNome(s.nome).split(' ').filter(Boolean);
+            return sTokens.length >= 2 && sTokens[0] === rowTokens[0] && sTokens[sTokens.length - 1] === rowTokens[rowTokens.length - 1];
+          })
+        )
+      : [];
+
+    if (candidatosAprox.length > 1 || (candidatosAprox.length >= 1 && quaseHomonimosMesmaTurma.length > 1)) {
+      const listaAmb = deduplicarCandidatos([...candidatosAprox, ...quaseHomonimosMesmaTurma]);
       resultados.push({
         alunoParsed: item,
-        alunoBase: candidatoAprox,
+        alunoBase: null,
+        tipoVinculo: 'aproximado',
+        confianca: 0,
+        raSugerido: null,
+        turmaBase: null,
+        ambiguo: true,
+        motivoAmbiguidade: `Similaridade ambígua na turma ${parsed.metadata.turmaOriginal} (arquivo sem RA): ${listaAmb.length} estudantes com primeiro e último nome semelhantes.`,
+        candidatosAmbiguos: listaAmb.map(toCandidatoAmbiguo)
+      });
+      continue;
+    }
+
+    if (candidatosAprox.length === 1) {
+      resultados.push({
+        alunoParsed: item,
+        alunoBase: candidatosAprox[0],
         tipoVinculo: 'aproximado',
         confianca: 0.85,
-        raSugerido: candidatoAprox.ra,
-        turmaBase: candidatoAprox.turma
+        raSugerido: candidatosAprox[0].ra,
+        turmaBase: candidatosAprox[0].turma,
+        ambiguo: false
       });
       continue;
     }
 
-    // 4. Não localizado na base
+    // 5. Não localizado na base
     resultados.push({
       alunoParsed: item,
       alunoBase: null,
       tipoVinculo: 'nao_encontrado',
       confianca: 0,
       raSugerido: null,
-      turmaBase: null
+      turmaBase: null,
+      ambiguo: false
     });
   }
 
@@ -808,8 +1030,8 @@ export async function salvarFechamentoNoFirestore(
   const bimKey = metadata.bimestreKey;
   const agoraISO = new Date().toISOString();
 
-  // Filtrar apenas vínculos válidos
-  const itensParaSalvar = vinculos.filter(v => v.alunoBase && (v.alunoBase.ra || v.alunoBase.docId || v.alunoBase.id));
+  // Filtrar apenas vínculos válidos e já desambiguados (nunca grava homônimo pendente)
+  const itensParaSalvar = vinculos.filter(v => !v.ambiguo && v.alunoBase && (v.alunoBase.ra || v.alunoBase.docId || v.alunoBase.id));
 
   if (itensParaSalvar.length === 0) {
     return { sucessos: 0, ignorados: vinculos.length, erros: 0 };
@@ -1506,6 +1728,7 @@ export function renderizarBoletimAlunoHtml(
 // Tornar disponível globalmente para clovisLegacyApp.js e outros scripts
 if (typeof window !== 'undefined') {
   (window as any).fechamentoNotasManager = {
+    normalizarRaEstudante,
     normalizarNome,
     normalizarTurma,
     detectarBimestreTexto,

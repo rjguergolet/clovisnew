@@ -62,6 +62,7 @@ export default function PainelDashboardsUnificado({
     const dashGeral = document.getElementById('content-dashboard');
     const dashAtrasos = document.getElementById('content-dashboard-atrasos');
     const dock = document.getElementById('legacy-dashboards-dock');
+    if (!dock && !dashGeral && !dashAtrasos) return;
 
     if (dashGeral && geralSlotRef.current) {
       dashGeral.classList.remove('hidden', 'tab-content');

@@ -1,10 +1,15 @@
 import { compararFrequenciaAluno, temDadosReaisNoMapao } from './attendanceComparisonHelper';
 import { limparNomeDisciplina } from './boletimPdfParser';
 import {
+  extrairEMigrarDocentesDoHorario,
+  getPeriodoOrder,
   isAlunoAtivo,
+  isInstitutionalOrAtpcCommitment,
+  isRealProfessorName,
   isRegularTeachingClass,
   isSameProfessor,
   isTeacherAtSchool,
+  matchUsuarioProfessor,
   normalizarDia,
   normalizeTeacherName
 } from '../utils';
@@ -689,7 +694,13 @@ export function extrairHoraMinutoAtraso(oc: any): { hhmm: string; minutosDesdeMe
   return null;
 }
 
-export const SLOTS_GRADE_PEI: { code: string; periodoId: number; label: string; horario: string; turno: 'Manhã' | 'Tarde' }[] = [
+export const SLOTS_GRADE_PEI: {
+  code: string;
+  periodoId: number;
+  label: string;
+  horario: string;
+  turno: 'Manhã' | 'Tarde' | 'Noite';
+}[] = [
   { code: '1M', periodoId: 1, label: '1M · 1ª Aula', horario: '07:00 - 07:50', turno: 'Manhã' },
   { code: '2M', periodoId: 2, label: '2M · 2ª Aula', horario: '07:50 - 08:40', turno: 'Manhã' },
   { code: '3M', periodoId: 3, label: '3M · 3ª Aula', horario: '08:50 - 09:40', turno: 'Manhã' },
@@ -698,98 +709,382 @@ export const SLOTS_GRADE_PEI: { code: string; periodoId: number; label: string; 
   { code: '6M', periodoId: 6, label: '6M · 6ª Aula', horario: '12:20 - 13:10', turno: 'Tarde' },
   { code: '7T', periodoId: 7, label: '7T · 7ª Aula', horario: '13:10 - 14:00', turno: 'Tarde' },
   { code: '8T', periodoId: 8, label: '8T · 8ª Aula', horario: '14:20 - 15:10', turno: 'Tarde' },
-  { code: '9T', periodoId: 9, label: '9T · 9ª Aula', horario: '15:10 - 16:00', turno: 'Tarde' }
+  { code: '9T', periodoId: 9, label: '9T · 9ª Aula', horario: '15:10 - 16:00', turno: 'Tarde' },
+  { code: '10T', periodoId: 10, label: '10T · 10ª Aula', horario: '16:10 - 17:00', turno: 'Tarde' },
+  { code: '11T', periodoId: 11, label: '11T · 11ª Aula', horario: '17:00 - 17:50', turno: 'Tarde' },
+  { code: '12T', periodoId: 12, label: '12T · 12ª Aula', horario: '17:50 - 18:40', turno: 'Tarde' },
+  { code: '13N', periodoId: 13, label: '13N · 13ª Aula', horario: '19:40 - 20:30', turno: 'Noite' },
+  { code: '14N', periodoId: 14, label: '14N · 14ª Aula', horario: '20:30 - 21:20', turno: 'Noite' }
 ];
+
+export interface DocenteUsuarioVinculoInfo {
+  usuarioNome: string;
+  email: string;
+  cargo: string;
+  automatico: boolean;
+  origem: string;
+}
+
+export interface AnaliseDocenteDisponivel {
+  nome: string;
+  disciplina: string;
+  area: string;
+  turno: string;
+  tipo: string;
+  aulasSemana: number;
+  substituicoesSemana: number;
+  cargaSemanalTotal: number;
+  aulasRestantesTeto: number;
+  usuarioVinculado: DocenteUsuarioVinculoInfo | null;
+  status: string;
+}
+
+export interface AnaliseDocenteEmAula {
+  nome: string;
+  turma: string;
+  disciplina: string;
+  emSubstituicao: boolean;
+  professorAusente?: string;
+  turno: string;
+  tipo: string;
+  cargaSemanalTotal: number;
+  usuarioVinculado: DocenteUsuarioVinculoInfo | null;
+}
+
+export interface AnaliseDocenteIndisponivel {
+  nome: string;
+  disciplina: string;
+  area: string;
+  turno: string;
+  tipo: string;
+  motivo: string;
+  categoria: 'ausencia' | 'compromisso' | 'expediente' | 'teto' | 'indisponibilidade';
+  cargaSemanalTotal: number;
+  usuarioVinculado: DocenteUsuarioVinculoInfo | null;
+}
+
+function getSemanaIntervaloIso(dataIso: string): { inicioSemana: string; fimSemana: string } {
+  const clean = String(dataIso || toIsoDate(new Date())).trim().split('T')[0];
+  const parts = clean.split('-').map(Number);
+  const d =
+    parts.length === 3 && !parts.some(isNaN)
+      ? new Date(parts[0], parts[1] - 1, parts[2])
+      : new Date();
+  const dow = d.getDay();
+  const diffToMon = dow === 0 ? -6 : 1 - dow;
+  const mon = new Date(d);
+  mon.setDate(d.getDate() + diffToMon);
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  const fmt = (dt: Date) =>
+    `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  return { inicioSemana: fmt(mon), fimSemana: fmt(sun) };
+}
 
 export function analisarJanelasDocentes(
   dia: string,
   slotCode: string,
   horarios: any[],
   professores: any[],
-  indisponibilidade: Record<string, any>
+  indisponibilidade: Record<string, any>,
+  options?: {
+    dataAlvo?: string;
+    substituicoes?: any[];
+    usuarios?: any[];
+  }
 ) {
   const slot = SLOTS_GRADE_PEI.find((s) => s.code === slotCode) || SLOTS_GRADE_PEI[0];
   const diaNorm = normalizarDia(dia);
+  const dataAlvo = toIsoDate(options?.dataAlvo || new Date()) || toIsoDate(new Date());
+  const { inicioSemana, fimSemana } = getSemanaIntervaloIso(dataAlvo);
+  const substituicoesAtivas = (options?.substituicoes || []).filter(
+    (s) => s && String(s.status || '').toUpperCase().trim() !== 'CANCELADA'
+  );
 
-  // Coletar todos os docentes únicos (da coleção professores + horários)
-  const docentesMap = new Map<string, { nome: string; disciplina: string; area: string; turno: string }>();
-  (professores || []).forEach((p) => {
-    const nome = String(p?.nome || p?.professor || '').trim();
-    if (!nome) return;
-    const key = normalizeTeacherName(nome);
-    if (!docentesMap.has(key)) {
-      docentesMap.set(key, {
-        nome,
-        disciplina: String(p?.disciplina || p?.componente || 'Polivalente / PEI'),
-        area: String(p?.area || ''),
-        turno: String(p?.turno || 'INTEGRAL')
-      });
-    }
-  });
-  (horarios || []).forEach((h) => {
-    const nome = String(h?.professor || '').trim();
-    if (!nome || nome.toLowerCase().includes('vago') || nome === '-') return;
-    const key = normalizeTeacherName(nome);
-    if (!docentesMap.has(key)) {
-      docentesMap.set(key, {
-        nome,
-        disciplina: String(h?.disciplina || 'Componente Curricular'),
-        area: String(h?.area || ''),
-        turno: 'INTEGRAL'
-      });
-    }
+  // Unificar professores reais de cadastro_professores + clovis_cadastro_professores + grade
+  const docentesLimpos = extrairEMigrarDocentesDoHorario(horarios || [], professores || []).filter(
+    (p) => p && isRealProfessorName(p.nome)
+  );
+
+  const docentesMap = new Map<
+    string,
+    { nome: string; disciplina: string; area: string; turno: string; tipo: string }
+  >();
+  docentesLimpos.forEach((p) => {
+    const key = normalizeTeacherName(p.nome);
+    if (!key) return;
+    docentesMap.set(key, {
+      nome: String(p.nome).trim(),
+      disciplina: String(p.disciplina || 'Polivalente / PEI'),
+      area: String(p.area || 'Gestão/Outros (OUT)'),
+      turno: String(p.turno || 'INTEGRAL').toUpperCase().trim(),
+      tipo: String(p.tipo || 'EFETIVO').toUpperCase().trim()
+    });
   });
 
-  const aulasNoSlot = (horarios || []).filter((h) => {
-    if (!isRegularTeachingClass(h)) return false;
+  // Mapear vínculos Usuário ↔ Professor do Horário
+  const docsArray = Array.from(docentesMap.values());
+  const usuarioPorProfKey = new Map<string, DocenteUsuarioVinculoInfo>();
+  const vinculosUsuarios: {
+    usuarioId: string;
+    usuarioNome: string;
+    email: string;
+    cargo: string;
+    professorNome: string | null;
+    origem: string | null;
+    automatico: boolean;
+  }[] = [];
+
+  (options?.usuarios || []).forEach((u) => {
+    const cargo = String(u?.nivel || u?.cargo || u?.role || 'PROFESSOR').toUpperCase().trim();
+    const match = matchUsuarioProfessor(u, docsArray);
+    vinculosUsuarios.push({
+      usuarioId: String(u?.id || ''),
+      usuarioNome: String(u?.nome || u?.displayName || u?.email || 'Usuário'),
+      email: String(u?.email || ''),
+      cargo,
+      professorNome: match?.professorNome || null,
+      origem: match?.origem || null,
+      automatico: Boolean(match?.automatico)
+    });
+    if (match?.professorNome) {
+      const pKey = normalizeTeacherName(match.professorNome);
+      if (pKey && !usuarioPorProfKey.has(pKey)) {
+        usuarioPorProfKey.set(pKey, {
+          usuarioNome: String(u?.nome || u?.displayName || ''),
+          email: String(u?.email || ''),
+          cargo,
+          automatico: match.automatico,
+          origem: match.origem
+        });
+      }
+    }
+  });
+
+  // Atividades no slot selecionado (aulas regulares e compromissos ATPC/formação)
+  const horariosNoSlot = (horarios || []).filter((h) => {
+    if (!h) return false;
     const hDia = normalizarDia(h?.dia);
-    const pNum = Number(String(h?.periodoId ?? '').replace(/\D/g, ''));
-    return hDia === diaNorm && pNum === slot.periodoId;
+    const pOrder = getPeriodoOrder(h?.periodoId);
+    return hDia === diaNorm && pOrder === slot.periodoId;
   });
 
-  const disponiveis: { nome: string; disciplina: string; area: string; status: string }[] = [];
-  const emAula: { nome: string; turma: string; disciplina: string }[] = [];
-  const indisponiveis: { nome: string; motivo: string }[] = [];
+  const aulasNoSlot = horariosNoSlot.filter((h) => isRegularTeachingClass(h));
+  const compromissosNoSlot = horariosNoSlot.filter((h) => isInstitutionalOrAtpcCommitment(h));
 
-  docentesMap.forEach((docente) => {
+  // Substituições na data alvo (todas da data e especificamente neste slot)
+  const subsNaData = substituicoesAtivas.filter((s) => {
+    const dSub = toIsoDate(s?.data || s?.data_referencia || s?.criadoEm);
+    return dSub === dataAlvo;
+  });
+  const subsNoSlotData = subsNaData.filter(
+    (s) => getPeriodoOrder(s?.periodoId ?? s?.periodo ?? s?.aula ?? s?.slot) === slot.periodoId
+  );
+  const subsNaSemana = substituicoesAtivas.filter((s) => {
+    const dSub = toIsoDate(s?.data || s?.data_referencia || s?.criadoEm);
+    return dSub >= inicioSemana && dSub <= fimSemana;
+  });
+
+  const disponiveis: AnaliseDocenteDisponivel[] = [];
+  const emAula: AnaliseDocenteEmAula[] = [];
+  const indisponiveis: AnaliseDocenteIndisponivel[] = [];
+
+  docentesMap.forEach((docente, profKey) => {
+    const usuarioVinculado = usuarioPorProfKey.get(profKey) || null;
+
+    // Carga semanal real (regência na grade + substituições assumidas na semana alvo)
+    const aulasSemana = (horarios || []).filter(
+      (h) => isRegularTeachingClass(h) && isSameProfessor(h?.professor, docente.nome)
+    ).length;
+
+    const substituicoesSemana = subsNaSemana.filter((s) =>
+      isSameProfessor(s?.professorSubstituto || s?.substituto, docente.nome)
+    ).length;
+
+    const cargaSemanalTotal = aulasSemana + substituicoesSemana;
+    const aulasRestantesTeto = Math.max(0, 32 - cargaSemanalTotal);
+
+    // 1. Verificar se o docente está ausente nesta data/slot
+    const ausenciaNoSlot = subsNoSlotData.find((s) =>
+      isSameProfessor(s?.professorAusente || s?.professorFaltante || s?.ausente, docente.nome)
+    );
+    const ausenciaNaData =
+      ausenciaNoSlot ||
+      subsNaData.find((s) =>
+        isSameProfessor(s?.professorAusente || s?.professorFaltante || s?.ausente, docente.nome)
+      );
+
+    if (ausenciaNaData) {
+      const motivoAus = String(ausenciaNaData?.motivo || 'Ausência registrada na data').trim();
+      const aulaOriginal = aulasNoSlot.find((a) => isSameProfessor(a?.professor, docente.nome));
+      indisponiveis.push({
+        nome: docente.nome,
+        disciplina: docente.disciplina,
+        area: docente.area,
+        turno: docente.turno,
+        tipo: docente.tipo,
+        motivo: ausenciaNoSlot
+          ? `Ausente neste horário: ${motivoAus}${aulaOriginal ? ` (${aulaOriginal.turma})` : ''}`
+          : `Ausência registrada em ${dataAlvo}: ${motivoAus}`,
+        categoria: 'ausencia',
+        cargaSemanalTotal,
+        usuarioVinculado
+      });
+      return;
+    }
+
+    // 2. Verificar se o docente JÁ está cobrindo uma substituição neste slot e data
+    const cobrindoSubstituicao = subsNoSlotData.find((s) =>
+      isSameProfessor(s?.professorSubstituto || s?.substituto, docente.nome)
+    );
+    if (cobrindoSubstituicao) {
+      emAula.push({
+        nome: docente.nome,
+        turma: String(cobrindoSubstituicao?.turma || '—'),
+        disciplina: String(cobrindoSubstituicao?.disciplina || docente.disciplina),
+        emSubstituicao: true,
+        professorAusente: String(
+          cobrindoSubstituicao?.professorAusente || cobrindoSubstituicao?.professorFaltante || ''
+        ).trim(),
+        turno: docente.turno,
+        tipo: docente.tipo,
+        cargaSemanalTotal,
+        usuarioVinculado
+      });
+      return;
+    }
+
+    // 3. Verificar aula regular na grade neste slot
     const aulaAtual = aulasNoSlot.find((a) => isSameProfessor(a?.professor, docente.nome));
     if (aulaAtual) {
       emAula.push({
         nome: docente.nome,
         turma: String(aulaAtual.turma || '-'),
-        disciplina: String(aulaAtual.disciplina || docente.disciplina)
+        disciplina: String(aulaAtual.disciplina || docente.disciplina),
+        emSubstituicao: false,
+        turno: docente.turno,
+        tipo: docente.tipo,
+        cargaSemanalTotal,
+        usuarioVinculado
       });
       return;
     }
 
+    // 4. Verificar compromisso PEI bloqueante (ATPCG, ATPCA, Formação, Alinhamento, Dirigido)
+    const compromissoAtual = compromissosNoSlot.find((c) => isSameProfessor(c?.professor, docente.nome));
+    if (compromissoAtual) {
+      const descComp = String(compromissoAtual?.disciplina || compromissoAtual?.turma || 'ATPC / Formação').trim();
+      indisponiveis.push({
+        nome: docente.nome,
+        disciplina: docente.disciplina,
+        area: docente.area,
+        turno: docente.turno,
+        tipo: docente.tipo,
+        motivo: `Compromisso PEI na grade: ${descComp}`,
+        categoria: 'compromisso',
+        cargaSemanalTotal,
+        usuarioVinculado
+      });
+      return;
+    }
+
+    // 5. Verificar turno / matriz de indisponibilidade / FOLGA
     const schoolCheck = isTeacherAtSchool(
       docente.nome,
       diaNorm,
       slot.periodoId,
       indisponibilidade,
       horarios,
-      professores
+      docentesLimpos
     );
 
     if (!schoolCheck.atSchool) {
+      const reasonStr = schoolCheck.reason || 'Janela / Fora de Expediente';
+      const isMatriz = reasonStr.toLowerCase().includes('indisponibilidade');
       indisponiveis.push({
-        nome: docente.nome,
-        motivo: schoolCheck.reason || 'Janela / Fora de Expediente'
-      });
-    } else {
-      disponiveis.push({
         nome: docente.nome,
         disciplina: docente.disciplina,
         area: docente.area,
-        status: 'Em Janela (Livre na Escola)'
+        turno: docente.turno,
+        tipo: docente.tipo,
+        motivo: reasonStr,
+        categoria: isMatriz ? 'indisponibilidade' : 'expediente',
+        cargaSemanalTotal,
+        usuarioVinculado
       });
+      return;
     }
+
+    // 6. Verificar Equipe Gestora sem regência de aulas (Diretor / Vice-Diretor / CGPG com 0 aulas na grade)
+    if (['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(docente.tipo) && aulasSemana === 0) {
+      indisponiveis.push({
+        nome: docente.nome,
+        disciplina: docente.disciplina,
+        area: docente.area,
+        turno: docente.turno,
+        tipo: docente.tipo,
+        motivo: `Equipe Gestora (${docente.tipo}) — Acionamento apenas em último recurso`,
+        categoria: 'expediente',
+        cargaSemanalTotal,
+        usuarioVinculado
+      });
+      return;
+    }
+
+    // 7. Verificar teto legal PEI (32 aulas semanais — LC 1.374/2022)
+    if (cargaSemanalTotal >= 32) {
+      indisponiveis.push({
+        nome: docente.nome,
+        disciplina: docente.disciplina,
+        area: docente.area,
+        turno: docente.turno,
+        tipo: docente.tipo,
+        motivo: `Teto semanal de 32 aulas atingido (${cargaSemanalTotal}/32h)`,
+        categoria: 'teto',
+        cargaSemanalTotal,
+        usuarioVinculado
+      });
+      return;
+    }
+
+    // 8. Docente realmente disponível na escola para eventual substituição/apoio
+    disponiveis.push({
+      nome: docente.nome,
+      disciplina: docente.disciplina,
+      area: docente.area,
+      turno: docente.turno,
+      tipo: docente.tipo,
+      aulasSemana,
+      substituicoesSemana,
+      cargaSemanalTotal,
+      aulasRestantesTeto,
+      usuarioVinculado,
+      status: 'Disponível na Escola (Janela)'
+    });
   });
+
+  const docentesSemUsuario = docsArray
+    .filter((d) => !usuarioPorProfKey.has(normalizeTeacherName(d.nome)))
+    .map((d) => d.nome)
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
   return {
     slot,
+    dataAlvo,
+    inicioSemana,
+    fimSemana,
+    totalDocentes: docsArray.length,
     disponiveis: disponiveis.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
     emAula: emAula.sort((a, b) => a.turma.localeCompare(b.turma, 'pt-BR')),
-    indisponiveis: indisponiveis.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+    indisponiveis: indisponiveis.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')),
+    vinculosResumo: {
+      totalDocentes: docsArray.length,
+      docentesComUsuario: docsArray.length - docentesSemUsuario.length,
+      docentesSemUsuario,
+      usuariosTotal: (options?.usuarios || []).length,
+      usuariosVinculados: vinculosUsuarios.filter((v) => Boolean(v.professorNome)).length,
+      usuariosSemVinculo: vinculosUsuarios.filter((v) => !v.professorNome && v.cargo !== 'SECRETARIA'),
+      listaVinculos: vinculosUsuarios.sort((a, b) => a.usuarioNome.localeCompare(b.usuarioNome, 'pt-BR'))
+    }
   };
 }

@@ -1261,7 +1261,10 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
               src={customLogoUrl}
               alt="Brasão Oficial EE Prof. Clóvis de Lucca"
               onError={(e) => {
-                (e.currentTarget as HTMLImageElement).src = '/assets/aistudio/Logo_Clovis_df1054e5.jpeg';
+                const img = e.currentTarget as HTMLImageElement;
+                if (!img.src.endsWith('/logo-clovis.svg')) {
+                  img.src = '/logo-clovis.svg';
+                }
               }}
               className="w-full h-full object-contain logo-escola-img"
             />

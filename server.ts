@@ -2,15 +2,253 @@ import 'dotenv/config';
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import compression from 'compression';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 
 import * as pdfParseModule from 'pdf-parse';
 const pdfParse = (pdfParseModule as any).default || pdfParseModule;
-import { getDatabase, getDocs, getDoc, setDoc, addDoc, updateDoc, deleteDoc, countDocs, executeBatch, prewarmCache, formatMongoDoc, searchAlunosInDb } from './src/server/mongodb.ts';
+import { getDatabase, getDocs, getDoc, setDoc, addDoc, updateDoc, deleteDoc, countDocs, executeBatch, prewarmCache, formatMongoDoc, searchAlunosInDb, resolveCollectionName, buildDocumentQuery } from './src/server/mongodb.ts';
 import { parseBoletimSEDText, limparNomeDisciplina } from './src/modules/boletimPdfParser.ts';
 import { parseRelatorioFrequenciaSED, normalizarNomeTurmaSED, normalizarRaSED } from './src/modules/frequenciaSedPdfParser.ts';
+
+const AUTH_SECRET = process.env.SESSION_SECRET || process.env.JWT_SECRET || 'clovis-lucca-2026-hmac-auth-secret-shield';
+
+const MOCK_FALLBACK_USERS: Record<string, any> = {
+  'diretor@clovis.com': { id: 'usr-diretor', nome: 'Diretor Escolar', email: 'diretor@clovis.com', cargo: 'DIRETOR', nivel: 'DIRETOR', nivelAcesso: 'DIRETOR', acesso_total: true },
+  'vice@clovis.com': { id: 'usr-vice', nome: 'Vice-Diretor Escolar', email: 'vice@clovis.com', cargo: 'VICE_DIRETOR', nivel: 'VICE_DIRETOR', nivelAcesso: 'VICE_DIRETOR', acesso_total: true },
+  'cgpg@clovis.com': { id: 'usr-cgpg', nome: 'Coordenador CGPG', email: 'cgpg@clovis.com', cargo: 'CGPG', nivel: 'CGPG', nivelAcesso: 'CGPG', acesso_total: false },
+  'paac@clovis.com': { id: 'usr-paac', nome: 'Professor PAAC', email: 'paac@clovis.com', cargo: 'PAAC', nivel: 'PAAC', nivelAcesso: 'PAAC', acesso_total: false },
+  'secretaria@clovis.com': { id: 'usr-sec', nome: 'Secretaria Escolar', email: 'secretaria@clovis.com', cargo: 'SECRETARIA', nivel: 'SECRETARIA', nivelAcesso: 'SECRETARIA', acesso_total: false },
+  'professor@clovis.com': { id: 'usr-prof', nome: 'Professor Docente', email: 'professor@clovis.com', cargo: 'PROFESSOR', nivel: 'PROFESSOR', nivelAcesso: 'PROFESSOR', acesso_total: false }
+};
+
+function normalizarRoleBackend(rawRole?: any): string {
+  if (!rawRole) return 'PROFESSOR';
+  const str = String(rawRole).trim().toUpperCase();
+  if (str === 'DIRETOR' || str === 'DIREÇÃO' || str === 'DIRECAO' || str === 'ADMIN') return 'DIRETOR';
+  if (str.includes('VICE') || str === 'VICE_DIRETOR' || str === 'VICE-DIRETOR') return 'VICE_DIRETOR';
+  if (str.includes('CGPG') || str.includes('COORDENA') || str.includes('CGPCG')) return 'CGPG';
+  if (str.includes('SECRETARIA')) return 'SECRETARIA';
+  if (str === 'PAAC' || str === 'PROFESSOR_PAAC' || (str.includes('PAAC') && !str.includes('PROFESSOR'))) return 'PAAC';
+  if (str.includes('PROFESSOR') || str.includes('TUTOR') || str.includes('DOCENTE')) return 'PROFESSOR';
+  if (str.includes('DIRETOR')) return 'DIRETOR';
+  return 'PROFESSOR';
+}
+
+function signSessionToken(payload: { id: string; email: string; realRole: string }): string {
+  const data = {
+    ...payload,
+    iat: Date.now(),
+    exp: Date.now() + 30 * 24 * 60 * 60 * 1000
+  };
+  const dataB64 = Buffer.from(JSON.stringify(data), 'utf8').toString('base64url');
+  const sigB64 = crypto.createHmac('sha256', AUTH_SECRET).update(dataB64).digest('base64url');
+  return `${dataB64}.${sigB64}`;
+}
+
+function verifySessionToken(token?: string | null): { id: string; email: string; realRole: string } | null {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [dataB64, sigB64] = parts;
+  const expectedSig = crypto.createHmac('sha256', AUTH_SECRET).update(dataB64).digest('base64url');
+  try {
+    const a = Buffer.from(sigB64, 'utf8');
+    const b = Buffer.from(expectedSig, 'utf8');
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+    const parsed = JSON.parse(Buffer.from(dataB64, 'base64url').toString('utf8'));
+    if (!parsed || !parsed.email || (parsed.exp && Date.now() > parsed.exp)) return null;
+    return {
+      id: String(parsed.id || ''),
+      email: String(parsed.email).trim().toLowerCase(),
+      realRole: normalizarRoleBackend(parsed.realRole)
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function resolveRealAuthenticatedUser(req: express.Request): Promise<{ id: string; email: string; realRole: string; nome?: string } | null> {
+  const authHeader = String(req.headers.authorization || '').trim();
+  if (!authHeader.toLowerCase().startsWith('bearer ')) return null;
+  const token = authHeader.slice(7).trim();
+  const decoded = verifySessionToken(token);
+  if (!decoded) return null;
+
+  try {
+    const db = await getDatabase();
+    const dbUser = await db.collection('usuarios').findOne({
+      email: { $regex: new RegExp(`^${decoded.email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
+    });
+    if (dbUser) {
+      const realRole = normalizarRoleBackend(dbUser.nivelAcesso || dbUser.nivel || dbUser.cargo);
+      return {
+        id: String(dbUser.id || dbUser._id || decoded.id),
+        email: String(dbUser.email || decoded.email).trim().toLowerCase(),
+        realRole,
+        nome: dbUser.nome
+      };
+    }
+  } catch (err) {
+    console.warn('[API RBAC] Aviso ao validar usuário no MongoDB, usando claims assinadas:', (err as any)?.message);
+  }
+
+  const mock = MOCK_FALLBACK_USERS[decoded.email];
+  if (mock) {
+    return {
+      id: String(mock.id || decoded.id),
+      email: decoded.email,
+      realRole: normalizarRoleBackend(mock.nivel || mock.cargo),
+      nome: mock.nome
+    };
+  }
+
+  return decoded;
+}
+
+async function authorizeDbOperation(
+  realUser: { id: string; email: string; realRole: string } | null,
+  op: { type: 'create' | 'set' | 'update' | 'delete'; collection: string; id?: string; data?: any; isBulkDelete?: boolean }
+): Promise<{ allowed: boolean; status: number; message: string }> {
+  const realCol = resolveCollectionName(op.collection);
+  const role = realUser ? normalizarRoleBackend(realUser.realRole) : '';
+
+  const ADMIN_ONLY_COLLECTIONS = new Set(['regras_acesso_rbac', 'config_sistema', 'configuracoes']);
+  const isSensitiveAdminCol = ADMIN_ONLY_COLLECTIONS.has(realCol) || realCol === 'usuarios';
+  const isConfigEscolaPermissionDoc =
+    realCol === 'config_escola' &&
+    (!op.id || ['regras_acesso_rbac', 'permissoes', 'rbac', 'config_geral'].includes(String(op.id).toLowerCase()));
+
+  // Operações que exigem obrigatoriamente usuário real autenticado via Bearer Token
+  const requiresAuth =
+    op.type === 'delete' ||
+    Boolean(op.isBulkDelete) ||
+    isSensitiveAdminCol ||
+    isConfigEscolaPermissionDoc ||
+    realCol === 'config_escola' ||
+    realCol === 'alunos';
+
+  if (requiresAuth && !realUser) {
+    return {
+      allowed: false,
+      status: 401,
+      message: 'Autenticação obrigatória no servidor para executar esta operação. Faça login novamente.'
+    };
+  }
+
+  // Bloqueio de limpeza em massa / reset de banco
+  if (op.isBulkDelete && role !== 'DIRETOR') {
+    return {
+      allowed: false,
+      status: 403,
+      message: `Acesso negado: Apenas o perfil real DIRETOR pode executar exclusão em lote / limpeza de banco (seu perfil real: ${role}).`
+    };
+  }
+
+  // Proteção estrita para regras de acesso, configurações administrativas e usuários
+  if (ADMIN_ONLY_COLLECTIONS.has(realCol) || isConfigEscolaPermissionDoc) {
+    if (role !== 'DIRETOR') {
+      return {
+        allowed: false,
+        status: 403,
+        message: `Acesso negado: Apenas o perfil real DIRETOR pode alterar configurações administrativas ou permissões em "${op.collection}" (seu perfil real: ${role}).`
+      };
+    }
+    return { allowed: true, status: 200, message: 'OK' };
+  }
+
+  if (realCol === 'config_escola') {
+    if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'SECRETARIA'].includes(role)) {
+      return {
+        allowed: false,
+        status: 403,
+        message: `Acesso negado: Perfil real "${role}" não autorizado a alterar configurações escolares.`
+      };
+    }
+  }
+
+  if (realCol === 'usuarios') {
+    if (op.type === 'delete' || op.type === 'create') {
+      if (role !== 'DIRETOR') {
+        return {
+          allowed: false,
+          status: 403,
+          message: `Acesso negado: Apenas o perfil real DIRETOR pode cadastrar ou excluir usuários (seu perfil real: ${role}).`
+        };
+      }
+      return { allowed: true, status: 200, message: 'OK' };
+    }
+
+    // Edição de usuários
+    if (role !== 'DIRETOR') {
+      const targetId = String(op.id || '').trim();
+      const db = await getDatabase();
+      const targetDoc = targetId ? await db.collection('usuarios').findOne(buildDocumentQuery(targetId)) : null;
+      const targetEmail = String(targetDoc?.email || '').trim().toLowerCase();
+      const isSelf =
+        (targetId && targetId === realUser!.id) ||
+        (targetEmail && targetEmail === realUser!.email);
+
+      if (!isSelf) {
+        return {
+          allowed: false,
+          status: 403,
+          message: `Acesso negado: Apenas o perfil real DIRETOR pode editar outros usuários (seu perfil real: ${role}).`
+        };
+      }
+
+      // Impede auto-escalação de privilégio via PUT/PATCH no próprio documento
+      const incomingData = op.data || {};
+      const attemptedRoleChange =
+        (incomingData.cargo && normalizarRoleBackend(incomingData.cargo) !== role) ||
+        (incomingData.nivel && normalizarRoleBackend(incomingData.nivel) !== role) ||
+        (incomingData.nivelAcesso && normalizarRoleBackend(incomingData.nivelAcesso) !== role) ||
+        (incomingData.acesso_total === true && role !== 'DIRETOR' && role !== 'VICE_DIRETOR');
+
+      if (attemptedRoleChange) {
+        return {
+          allowed: false,
+          status: 403,
+          message: `Acesso negado: Não é permitido alterar nível de acesso ou cargo sem perfil real DIRETOR.`
+        };
+      }
+    }
+    return { allowed: true, status: 200, message: 'OK' };
+  }
+
+  // Regras específicas de EXCLUSÃO (DELETE) por coleção
+  if (op.type === 'delete') {
+    if (realCol === 'alunos') {
+      if (!['DIRETOR', 'VICE_DIRETOR', 'SECRETARIA'].includes(role)) {
+        return {
+          allowed: false,
+          status: 403,
+          message: `Acesso negado: Perfil real "${role}" não tem permissão para excluir estudantes.`
+        };
+      }
+    } else if (['ocorrencias', 'busca_ativa', 'registros'].includes(realCol)) {
+      if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(role)) {
+        return {
+          allowed: false,
+          status: 403,
+          message: `Acesso negado: Perfil real "${role}" não tem permissão para excluir ocorrências ou registros de busca ativa.`
+        };
+      }
+    } else {
+      if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'SECRETARIA'].includes(role)) {
+        return {
+          allowed: false,
+          status: 403,
+          message: `Acesso negado: Perfil real "${role}" não possui autorização para excluir dados em "${op.collection}".`
+        };
+      }
+    }
+  }
+
+  return { allowed: true, status: 200, message: 'OK' };
+}
 
 async function startServer() {
   const app = express();
@@ -22,8 +260,6 @@ async function startServer() {
 
   // ==========================================
   // ROTAS DE API DO BANCO DE DADOS (MONGODB ATLAS)
-  // ==========================================
-
   // ==========================================
 
   // Health Check & Status da Conexão
@@ -50,7 +286,7 @@ async function startServer() {
     }
   });
 
-  // POST: Autenticação direta contra a coleção 'usuarios' do MongoDB Atlas (sem Firebase Auth)
+  // POST: Autenticação direta contra a coleção 'usuarios' do MongoDB Atlas (com Token HMAC)
   app.post('/api/auth/login', async (req, res) => {
     const { email, password } = req.body;
     if (!email || !String(email).trim()) {
@@ -62,18 +298,14 @@ async function startServer() {
     }
 
     try {
-      const db = await getDatabase();
       const emailLower = String(email).trim().toLowerCase();
-      const users = await db.collection('usuarios').find({}).toArray();
-
-      const MOCK_FALLBACK_USERS: Record<string, any> = {
-        'diretor@clovis.com': { id: 'usr-diretor', nome: 'Diretor Escolar', email: 'diretor@clovis.com', cargo: 'DIRETOR', nivel: 'DIRETOR', nivelAcesso: 'DIRETOR', acesso_total: true },
-        'vice@clovis.com': { id: 'usr-vice', nome: 'Vice-Diretor Escolar', email: 'vice@clovis.com', cargo: 'VICE_DIRETOR', nivel: 'VICE_DIRETOR', nivelAcesso: 'VICE_DIRETOR', acesso_total: true },
-        'cgpg@clovis.com': { id: 'usr-cgpg', nome: 'Coordenador CGPG', email: 'cgpg@clovis.com', cargo: 'CGPG', nivel: 'CGPG', nivelAcesso: 'CGPG', acesso_total: false },
-        'paac@clovis.com': { id: 'usr-paac', nome: 'Professor PAAC', email: 'paac@clovis.com', cargo: 'PAAC', nivel: 'PAAC', nivelAcesso: 'PAAC', acesso_total: false },
-        'secretaria@clovis.com': { id: 'usr-sec', nome: 'Secretaria Escolar', email: 'secretaria@clovis.com', cargo: 'SECRETARIA', nivel: 'SECRETARIA', nivelAcesso: 'SECRETARIA', acesso_total: false },
-        'professor@clovis.com': { id: 'usr-prof', nome: 'Professor Docente', email: 'professor@clovis.com', cargo: 'PROFESSOR', nivel: 'PROFESSOR', nivelAcesso: 'PROFESSOR', acesso_total: false }
-      };
+      let users: any[] = [];
+      try {
+        const db = await getDatabase();
+        users = await db.collection('usuarios').find({}).toArray();
+      } catch (dbErr: any) {
+        console.warn('[API Auth] Falha temporária ao consultar coleção usuarios, verificando contas fallback:', dbErr?.message);
+      }
 
       let user = users.find((u: any) => {
         const uEmail = String(u.email || '').trim().toLowerCase();
@@ -83,7 +315,7 @@ async function startServer() {
 
       if (!user && MOCK_FALLBACK_USERS[emailLower]) {
         if (senhaDigitada === 'Clovis@2026' || senhaDigitada.toLowerCase() === 'clovis@2026' || senhaDigitada.toLowerCase() === 'clovis2026') {
-          user = { ...MOCK_FALLBACK_USERS[emailLower], senha: 'Clovis@2026' };
+          user = { ...MOCK_FALLBACK_USERS[emailLower] };
         }
       }
 
@@ -92,11 +324,23 @@ async function startServer() {
       }
 
       const { _id, senha, ...dadosLimpos } = user;
+      const userId = String(user.id || _id?.toString() || `usr_${emailLower}`);
+      const realRole = normalizarRoleBackend(user.nivelAcesso || user.nivel || user.cargo);
+      const token = signSessionToken({
+        id: userId,
+        email: String(user.email || emailLower).trim().toLowerCase(),
+        realRole
+      });
+
       res.json({
         success: true,
+        token,
         user: {
-          id: user.id || _id?.toString(),
-          ...dadosLimpos
+          id: userId,
+          ...dadosLimpos,
+          cargo: realRole,
+          nivel: realRole,
+          nivelAcesso: realRole
         }
       });
     } catch (err: any) {
@@ -105,7 +349,7 @@ async function startServer() {
     }
   });
 
-  // POST: Executar lote de operações (writeBatch)
+  // POST: Executar lote de operações (writeBatch) com blindagem de cargo real
   app.post('/api/db/batch', async (req, res) => {
     const { operations } = req.body;
     if (!Array.isArray(operations)) {
@@ -113,6 +357,25 @@ async function startServer() {
     }
 
     try {
+      const realUser = await resolveRealAuthenticatedUser(req);
+      const deleteCount = operations.filter((o: any) => o && o.type === 'delete').length;
+      const isBulkDelete = deleteCount > 5;
+
+      for (const op of operations) {
+        if (!op || !op.collection) continue;
+        const opType = op.type === 'delete' ? 'delete' : (op.type === 'update' ? 'update' : 'set');
+        const authCheck = await authorizeDbOperation(realUser, {
+          type: opType,
+          collection: String(op.collection),
+          id: op.id ? String(op.id) : undefined,
+          data: op.data,
+          isBulkDelete
+        });
+        if (!authCheck.allowed) {
+          return res.status(authCheck.status).json({ error: authCheck.message });
+        }
+      }
+
       await executeBatch(operations);
       res.json({ success: true, count: operations.length });
     } catch (err: any) {
@@ -258,7 +521,21 @@ async function startServer() {
     }
 
     try {
-      const result = await addDoc(collection, req.body);
+      const realUser = await resolveRealAuthenticatedUser(req);
+      const authCheck = await authorizeDbOperation(realUser, {
+        type: 'create',
+        collection,
+        data: req.body
+      });
+      if (!authCheck.allowed) {
+        return res.status(authCheck.status).json({ error: authCheck.message });
+      }
+
+      const dadosLimpos = { ...req.body };
+      delete dadosLimpos.id;
+      delete dadosLimpos._id;
+
+      const result = await addDoc(collection, dadosLimpos);
       res.status(201).json({ success: true, ...result });
     } catch (err: any) {
       console.error(`[API DB] Erro ao adicionar em '${collection}':`, err.message);
@@ -273,6 +550,17 @@ async function startServer() {
   app.put('/api/db/:collection/:id', async (req, res) => {
     const { collection, id } = req.params;
     try {
+      const realUser = await resolveRealAuthenticatedUser(req);
+      const authCheck = await authorizeDbOperation(realUser, {
+        type: 'set',
+        collection,
+        id,
+        data: req.body
+      });
+      if (!authCheck.allowed) {
+        return res.status(authCheck.status).json({ error: authCheck.message });
+      }
+
       // Cria uma cópia dos dados e remove as chaves de identificação
       const dadosLimpos = { ...req.body };
       delete dadosLimpos.id;
@@ -294,6 +582,17 @@ async function startServer() {
   app.patch('/api/db/:collection/:id', async (req, res) => {
     const { collection, id } = req.params;
     try {
+      const realUser = await resolveRealAuthenticatedUser(req);
+      const authCheck = await authorizeDbOperation(realUser, {
+        type: 'update',
+        collection,
+        id,
+        data: req.body
+      });
+      if (!authCheck.allowed) {
+        return res.status(authCheck.status).json({ error: authCheck.message });
+      }
+
       const dadosLimpos = { ...req.body };
       delete dadosLimpos.id;
       delete dadosLimpos._id;
@@ -314,6 +613,16 @@ async function startServer() {
     const { collection, id } = req.params;
 
     try {
+      const realUser = await resolveRealAuthenticatedUser(req);
+      const authCheck = await authorizeDbOperation(realUser, {
+        type: 'delete',
+        collection,
+        id
+      });
+      if (!authCheck.allowed) {
+        return res.status(authCheck.status).json({ error: authCheck.message });
+      }
+
       await deleteDoc(collection, id);
       res.json({ success: true, id });
     } catch (err: any) {
@@ -614,6 +923,16 @@ Rigorosamente retorne APENAS um JSON válido no formato:
   // Salvar Frequências Processadas em Lote no Banco (Suporta Multi-Turmas e Flags de Tendência)
   app.post('/api/frequencia-sed/salvar-lote', async (req, res) => {
     try {
+      const realUser = await resolveRealAuthenticatedUser(req);
+      if (!realUser) {
+        return res.status(401).json({ error: 'Autenticação obrigatória para gravar frequência SED no banco.' });
+      }
+      if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'SECRETARIA'].includes(realUser.realRole)) {
+        return res.status(403).json({
+          error: `Acesso negado: Perfil real "${realUser.realRole}" não tem permissão para gravar frequência SED em lote.`
+        });
+      }
+
       const { turma, mes, anoLetivo, totalAulasDadas, alunos, turmas, usuarioEmissor } = req.body;
 
       // Unifica lista de turmas para salvar em lote
@@ -933,19 +1252,52 @@ ${estagioDesejado && estagioDesejado !== 'auto' ? `O operador solicitou explicit
   // ==========================================
   app.post('/api/ai/parecer-pedagogico', async (req, res) => {
     try {
-      const { aluno, fechamentoNotas, ocorrencias, resumoDossieTexto, promptPersonalizado, instrucoesAdicionais } = req.body;
+      const {
+        aluno,
+        fechamentoNotas,
+        ocorrencias,
+        buscaAtivaRegistros,
+        frequenciaDiariaResumo,
+        dispensas,
+        resumoDossieTexto,
+        promptPersonalizado,
+        instrucoesAdicionais
+      } = req.body;
 
       if (!aluno || !aluno.nome) {
         return res.status(400).json({ error: 'Dados do estudante são obrigatórios para a elaboração do parecer.' });
       }
 
       const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-      const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+      const ai = apiKey
+        ? new GoogleGenAI({ apiKey, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } })
+        : null;
+
+      const limparNomeAutorIA = (raw: any, item?: any): string => {
+        const candid = [item?.autor_nome, item?.autor_criacao?.nome, raw, item?.usuario, item?.autor];
+        for (const c of candid) {
+          if (!c) continue;
+          const limpo = String(c)
+            .replace(/<[^>]*>/g, ' ')
+            .replace(/\([^)]*\)/g, ' ')
+            .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, ' ')
+            .replace(/\s*[-–|]+\s*$/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+          if (limpo && !['USUARIO', 'USUÁRIO', 'GESTAO', 'GESTÃO'].includes(limpo.toUpperCase())) {
+            return limpo;
+          }
+        }
+        return 'Equipe Escolar';
+      };
 
       const nomeAluno = String(aluno.nome || '').trim();
       const turmaAluno = String(aluno.turma || aluno.serie || 'Não informada').trim();
       const raAluno = String(aluno.ra || '').trim();
       const freqAtual = String(aluno.frequencia_atual || aluno.presenca_anual || aluno.presenca || 'Não informada').trim();
+      const freqAnterior = String(aluno.frequencia_anterior || aluno.presenca_anterior || '').trim();
+      const presenca1506 = String(aluno.presenca_15_06 || '').trim();
+      const presenca2606 = String(aluno.presenca_26_06 || '').trim();
       const atrasosCount = Number(aluno.atrasos || 0);
       const tutor = String(aluno.tutor || aluno.tutor_2026 || '').trim() || 'Não informado';
       const clube = String(aluno.clube || '').trim() || 'Não informado';
@@ -958,7 +1310,9 @@ ${estagioDesejado && estagioDesejado !== 'auto' ? `O operador solicitou explicit
       // 1. Processamento e Análise Profunda das Notas e Rendimento Escolar
       const bims = ['1B', '2B', '3B', '4B', 'FINAL'];
       const disciplinasAbaixo: { nome: string; nota: string | number; faltas: number }[] = [];
-      const todasDisciplinasConsolidadas: Record<string, { nome: string; nota: any; faltas: number }> = {};
+      const disciplinasAtencao: { nome: string; nota: string | number; faltas: number }[] = [];
+      const disciplinasDestaque: { nome: string; nota: string | number; faltas: number }[] = [];
+      const todasDisciplinasConsolidadas: Record<string, { nome: string; nota: any; faltas: number; notaNum: number | null }> = {};
       const mediasBimestraisValidas: number[] = [];
       let totalFaltasAcumuladas = 0;
       let mediaGeralConsolidada: number | string = '—';
@@ -1024,17 +1378,25 @@ ${estagioDesejado && estagioDesejado !== 'auto' ? `O operador solicitou explicit
                   todasDisciplinasConsolidadas[nomeDisc] = {
                     nome: nomeDisc,
                     nota: n,
-                    faltas: typeof dVal === 'object' && dVal?.faltas ? Number(dVal.faltas) : 0
+                    faltas: typeof dVal === 'object' && dVal?.faltas ? Number(dVal.faltas) : 0,
+                    notaNum: rawNotaNum
                   };
 
                   if (isAbaixo && n !== '—') {
-                    if (!disciplinasAbaixo.some(d => d.nome.toLowerCase() === nomeDisc.toLowerCase())) {
-                      disciplinasAbaixo.push({
-                        nome: nomeDisc,
-                        nota: n,
-                        faltas: typeof dVal === 'object' && dVal?.faltas ? Number(dVal.faltas) : 0
-                      });
-                    }
+                    const existIdx = disciplinasAbaixo.findIndex(d => d.nome.toLowerCase() === nomeDisc.toLowerCase());
+                    const entry = { nome: nomeDisc, nota: n, faltas: typeof dVal === 'object' && dVal?.faltas ? Number(dVal.faltas) : 0 };
+                    if (existIdx >= 0) disciplinasAbaixo[existIdx] = entry;
+                    else disciplinasAbaixo.push(entry);
+                  } else if (rawNotaNum !== null && rawNotaNum >= 5.0 && rawNotaNum < 6.0) {
+                    const existIdx = disciplinasAtencao.findIndex(d => d.nome.toLowerCase() === nomeDisc.toLowerCase());
+                    const entry = { nome: nomeDisc, nota: n, faltas: typeof dVal === 'object' && dVal?.faltas ? Number(dVal.faltas) : 0 };
+                    if (existIdx >= 0) disciplinasAtencao[existIdx] = entry;
+                    else disciplinasAtencao.push(entry);
+                  } else if (rawNotaNum !== null && rawNotaNum >= 7.0) {
+                    const existIdx = disciplinasDestaque.findIndex(d => d.nome.toLowerCase() === nomeDisc.toLowerCase());
+                    const entry = { nome: nomeDisc, nota: n, faltas: typeof dVal === 'object' && dVal?.faltas ? Number(dVal.faltas) : 0 };
+                    if (existIdx >= 0) disciplinasDestaque[existIdx] = entry;
+                    else disciplinasDestaque.push(entry);
                   }
 
                   return `${nomeDisc}: Nota ${n} (${f})`;
@@ -1069,20 +1431,77 @@ ${estagioDesejado && estagioDesejado !== 'auto' ? `O operador solicitou explicit
         notasTexto = 'Rendimento escolar em acompanhamento contínuo / sem fechamentos bimestrais consolidados na SED.';
       }
 
-      // 2. Processamento e Análise Profunda das Ocorrências, Mediações CONVIVA e Ações
-      let ocorrenciasTexto = 'Nenhum registro de ocorrência pedagógica, mediação ou busca ativa no histórico.';
-      if (Array.isArray(ocorrencias) && ocorrencias.length > 0) {
-        ocorrenciasTexto = ocorrencias.map((o: any, idx: number) => {
-          const tipo = o.tipo || o.origem || 'Geral';
-          const data = o.data || 'Sem data';
-          const desc = o.descricao || o.observacao || 'Sem descrição';
-          const usuario = o.usuario || o.autor || 'Gestão Escolar';
-          const conviva = (o.registradoConviva || o.registrado_conviva) ? ` [REGISTRADO NO CONVIVA SP #${o.codigoConviva || o.codigo_conviva || 'SIM'}]` : '';
-          const providencias = o.encaminhamento || o.providencias || o.resposta || '';
-          const ciencia = o.cienciaResponsavel ? ' [Família ciente]' : '';
-          return `[Registro ${idx + 1}] Data: ${data} | Tipo/Origem: ${tipo}${conviva}${ciencia} | Registrado por: ${usuario}\n   • Fato/Relato: "${desc}"${providencias ? `\n   • Encaminhamentos/Providências: "${providencias}"` : ''}`;
-        }).join('\n\n');
+      // 2. Consolidação e Categorização Profunda: CONVIVA SP, Busca Ativa e Ocorrências Pedagógicas
+      const registrosEntrada: any[] = Array.isArray(ocorrencias) ? [...ocorrencias] : [];
+      if (Array.isArray(buscaAtivaRegistros)) {
+        buscaAtivaRegistros.forEach((ba: any) => {
+          const exists = registrosEntrada.some(r =>
+            (ba.id && r.id === ba.id) ||
+            (String(r.data || '').slice(0, 10) === String(ba.data || '').slice(0, 10) &&
+              String(r.descricao || '').trim() === String(ba.descricao || '').trim())
+          );
+          if (!exists) registrosEntrada.push({ ...ba, origem: 'BUSCA_ATIVA' });
+        });
       }
+
+      const listaConviva: any[] = [];
+      const listaBuscaAtiva: any[] = [];
+      const listaOcorrencias: any[] = [];
+
+      registrosEntrada.slice(0, 60).forEach((o: any) => {
+        const tipoUp = String(o.tipo || o.tipoContato || o.origem || '').toUpperCase();
+        const origemUp = String(o.origem || '').toUpperCase();
+        const tagsUp: string[] = Array.isArray(o.tags) ? o.tags.map((t: any) => String(t).toUpperCase()) : [];
+        const isConviva = Boolean(
+          o.registradoConviva || o.registrado_conviva || o.isConviva ||
+          tagsUp.some((t: string) => t.includes('CONVIVA')) || tipoUp.includes('CONVIVA')
+        );
+        const isBuscaAtiva = origemUp === 'BUSCA_ATIVA' || tipoUp.includes('BUSCA ATIVA') || o.houveResposta !== undefined || Boolean(o.tipoContato);
+
+        if (isConviva) listaConviva.push(o);
+        if (isBuscaAtiva) listaBuscaAtiva.push(o);
+        else listaOcorrencias.push(o);
+      });
+
+      const formatarListaRegistros = (arr: any[], incluirCanalBA = false) => {
+        if (!arr || arr.length === 0) return 'Nenhum registro nesta categoria.';
+        return arr.map((o: any, idx: number) => {
+          const tipo = o.tipo || o.tipoContato || o.origem || 'Geral';
+          const data = o.data || o.dataRegistro || 'Sem data';
+          const desc = o.descricao || o.observacao || 'Sem descrição';
+          const nomeAutor = limparNomeAutorIA(o.usuario || o.autor, o);
+          const convivaCod = (o.registradoConviva || o.registrado_conviva)
+            ? ` [CONVIVA SP${(o.codigoConviva || o.codigo_conviva) ? ' #' + (o.codigoConviva || o.codigo_conviva) : ''}]`
+            : '';
+          const canalStr = incluirCanalBA && (o.tipoContato || o.houveResposta !== undefined)
+            ? ` | Canal: ${o.tipoContato || 'Contato'} | Retorno da família: ${o.houveResposta === true || o.houveResposta === 'sim' ? 'Sim' : (o.houveResposta === false || o.houveResposta === 'nao' ? 'Sem resposta' : 'Em acompanhamento')}`
+            : '';
+          const providencias = o.encaminhamento || o.providencias || o.resposta || o.retorno || '';
+          const ciencia = o.cienciaResponsavel ? ' [Família ciente]' : '';
+          return `[${idx + 1}] Data: ${data} | Tipo: ${tipo}${convivaCod}${ciencia}${canalStr} | Autor: ${nomeAutor}\n   • Relato: "${desc}"${providencias ? `\n   • Encaminhamento/Providência: "${providencias}"` : ''}`;
+        }).join('\n');
+      };
+
+      const textoConviva = formatarListaRegistros(listaConviva, false);
+      const textoBuscaAtiva = formatarListaRegistros(listaBuscaAtiva, true);
+      const textoOcorrencias = formatarListaRegistros(listaOcorrencias, false);
+
+      // Resumo de Frequência Diária e Dispensas
+      const freqDiariaLinha = frequenciaDiariaResumo
+        ? `• Chamada Diária Escolar: ${frequenciaDiariaResumo.totalDiasChamada || 0} dias lançados (${frequenciaDiariaResumo.presencas || 0} presenças, ${frequenciaDiariaResumo.faltasChamadaDiaria || 0} faltas, ${frequenciaDiariaResumo.dispensasOuLicencas || 0} licenças/dispensas) | Faltas consecutivas recentes: ${frequenciaDiariaResumo.faltasConsecutivasAtuais || 0}${frequenciaDiariaResumo.gatilhoBuscaAtiva3Faltas ? ' (GATILHO ATIVO: 3+ faltas seguidas)' : ''}`
+        : '';
+
+      const dispensasTexto = Array.isArray(dispensas) && dispensas.length > 0
+        ? `• Dispensas Legais / Atestados (${dispensas.length}): ${dispensas.map((d: any) => `${d.motivo || 'Dispensa'} (${d.dataInicio} a ${d.dataFim})`).join('; ')}`
+        : '';
+
+      const historicoFrequenciaMarcos = [
+        freqAnterior ? `Frequência anterior: ${freqAnterior}` : '',
+        presenca1506 ? `15/06: ${presenca1506}` : '',
+        presenca2606 ? `26/06: ${presenca2606}` : '',
+        aluno.sla_busca_ativa ? `SLA Busca Ativa: ${aluno.sla_busca_ativa}` : '',
+        aluno.reincidente ? 'Estudante marcado como REINCIDENTE em Busca Ativa' : ''
+      ].filter(Boolean).join(' | ');
 
       // Anotações pedagógicas complementares
       const anotacoesExtras = [
@@ -1097,63 +1516,81 @@ ${estagioDesejado && estagioDesejado !== 'auto' ? `O operador solicitou explicit
       const diretrizesUsuario = (promptPersonalizado || instrucoesAdicionais || '').trim();
 
       const systemInstruction = `Você é o Especialista em Coordenação Pedagógica e Gestão Escolar da Escola Estadual Clóvis de Lucca, integrante do Programa de Ensino Integral (PEI) da Secretaria da Educação do Estado de São Paulo (SEDUC-SP).
-Sua missão é realizar uma leitura analítica exaustiva e rigorosa de TODOS os registros do Dossiê Escolar do estudante e redigir um PARECER PEDAGÓGICO OFICIAL, FORMAL, INDIVIDUALIZADO E CONCLUSIVO.
+Sua missão é realizar uma leitura analítica completa de TODOS os dados do Dossiê Escolar do estudante, atribuindo IMPORTÂNCIA CENTRAL ao Histórico Unificado de Ocorrências Pedagógicas, aos protocolos CONVIVA SP e aos registros de Busca Ativa Escolar, integrados ao rendimento acadêmico, frequência, rotinas do PEI e Projeto de Vida, para redigir um PARECER PEDAGÓGICO OFICIAL, FORMAL, INDIVIDUALIZADO E CONCLUSIVO.
 
 REGRA CRÍTICA DE FIDELIDADE FACTUAL AOS REGISTROS:
-- É EXPRESSAMENTE PROIBIDO gerar textos padronizados, vagos ou genéricos.
-- O parecer deve espelhar fielmente a realidade documentada do estudante em cada detalhe:
-  1. CONVIVÊNCIA E COMPORTAMENTO: Se o histórico registra episódios de indisciplina, atitudes afrontosas, boatos, intrigas, conflitos interpessoais, uso indevido de celular ou resistência a normas, DESCREVA ESSES FATOS com precisão pedagógica. Da mesma forma, se o histórico for exemplar e cooperativo, descreva essa atitude positiva.
-  2. ATIVIDADES DO PEI: Cite nominalmente o Clube Juvenil em que participa (ex: "Mãos Criativas"), a Eletiva (ex: "Xadrez e Foco") e o(a) Professor(a) Tutor(a) (ex: "professor Leandro").
-  3. RENDIMENTO ACADÊMICO E FREQUÊNCIA: Apresente com exatidão a taxa de frequência (ex: 88%) e o número de faltas acumuladas no ano (ex: 39 faltas). Apresente a média geral consolidada (ex: 5,0) e CITE EXPRESSAMENTE CADA COMPONENTE CURRICULAR COM NOTA ABAIXO DA MÉDIA E SEU RESPECTIVO VALOR (ex: "Língua Portuguesa (4,0), Redação e Leitura (2,0) e Inglês (3,5)"), além de registrar a participação ou necessidade de recomposição e reforço intensivo ou AEE.
-  4. INTERVENÇÕES DA GESTÃO E FAMÍLIA (2º Parágrafo): Mencione as ações reais que constam nos registros: acolhimentos, termos de acordo/compromisso firmados, reuniões/chamados aos responsáveis legais, postura da família (parceria ou episódios de resistência) e acionamento de rede de proteção (Conselho Tutelar, FICAI) se aplicável.
-  5. ENCAMINHAMENTOS PRÁTICOS E PROJETO DE VIDA: Indique recomendações objetivas para o Conselho de Classe e alinhamento com a família: fortalecimento do plano de recuperação nas disciplinas com defasagem citadas, metas de frequência, pacto conjunto de corresponsabilidade comportamental, e apoio ao resgate e consolidação do Projeto de Vida NOMINAL do estudante (ex: "voltado para a carreira de advogada").
+- É EXPRESSAMENTE PROIBIDO gerar textos padronizados, vagos, inventar fatos ou omitir informações documentadas.
+- O parecer deve refletir fielmente a realidade documentada do estudante em todas as dimensões:
+  1. HISTÓRICO UNIFICADO (OCORRÊNCIAS PEDAGÓGICAS, CONVIVA SP E BUSCA ATIVA) — PESO PRINCIPAL:
+     * Analise todos os relatos das Ocorrências Pedagógicas (conflitos, indisciplina, atitudes em sala, uso de celular, atrasos recorrentes, mediações restaurativas ou postura cooperativa/exemplar).
+     * Considere expressamente os protocolos registrados no CONVIVA SP (com códigos/natureza quando houver) e as providências tomadas.
+     * Considere os contatos e retornos da Busca Ativa Escolar (ligações, WhatsApp, visitas/convocações, retornos positivos ou falta de resposta da família, gatilho de 3 faltas consecutivas, dispensas médicas/legais, FICAI, Ofício DEMP ou Conselho Tutelar).
+  2. ATIVIDADES DO PEI: Cite nominalmente o Clube Juvenil, a Eletiva, o Protagonismo (se houver) e o(a) Professor(a) Tutor(a).
+  3. RENDIMENTO ACADÊMICO E FREQUÊNCIA GLOBAL: Apresente a taxa de frequência SED (e evolução/chamada diária se houver), total de faltas acumuladas, atrasos, média geral consolidada, CITE NOMINALMENTE cada componente curricular abaixo da média (< 5,0) com sua nota exata (além de menção breve a componentes em atenção 5,0–5,9 ou destaques >= 7,0 se relevante), e registre Recomposição de Aprendizagem ou AEE.
+  4. INTERVENÇÕES E ENCAMINHAMENTOS (2º Parágrafo): Sintetize a resposta do estudante e da família às intervenções realizadas pela escola/rede de proteção e indique recomendações objetivas para o Conselho de Classe, metas de frequência/pontualidade, plano de recuperação nas disciplinas defasadas e apoio direto ao Projeto de Vida NOMINAL do estudante.
 
 ESTRUTURA OBRIGATÓRIA:
 - RIGOROSAMENTE DOIS (2) PARÁGRAFOS fluidos, articulados e coesos.
-- NÃO use títulos, tópicos (bullets), cumprimentos, saudações ou assinaturas.
+- NÃO use títulos, tópicos (bullets), cumprimentos, saudações, assinaturas ou e-mails.
 - Redija em caixa mista normal da língua portuguesa (NÃO use caixa alta / caps lock).
 - Retorne apenas os dois parágrafos separados por uma linha em branco.`;
 
-      const promptUser = `${diretrizesUsuario ? `DIRETRIZES E INSTRUÇÕES ESPECÍFICAS DA EQUIPE GESTORA:\n${diretrizesUsuario}\n\n` : ''}Analise todos os dados e registros oficiais do Dossiê Escolar a seguir e elabore o Parecer Pedagógico Oficial em exatamente dois parágrafos:
+      const promptUser = `${diretrizesUsuario ? `DIRETRIZES E INSTRUÇÕES ESPECÍFICAS DA EQUIPE GESTORA:\n${diretrizesUsuario}\n\n` : ''}Analise integralmente TODOS os dados reais do Dossiê Escolar abaixo (com atenção prioritária ao Histórico Unificado de Ocorrências Pedagógicas, CONVIVA SP e Busca Ativa) e elabore o Parecer Pedagógico Oficial em exatamente dois parágrafos:
 
 --- DOSSIÊ ESCOLAR OFICIAL DO ESTUDANTE ---
-• Estudante: ${nomeAluno}
-• RA: ${raAluno} | Turma/Série: ${turmaAluno} | Segmento: ${aluno.segmento || 'Ensino Fundamental'} | Matrícula: ${aluno.status || 'Ativo'}
-• Frequência Escolar Oficial (SED): ${freqAtual} | Total de Faltas Acumuladas no Ano: ${totalFaltasAcumuladas > 0 ? `${totalFaltasAcumuladas} faltas` : 'Acompanhamento SED'} | Atrasos: ${atrasosCount}
-• Rendimento Escolar Consolidado:
-  - Média Geral Consolidada: ${mediaGeralConsolidada}
-  - Disciplinas Estruturais com Nota Abaixo da Média (< 5.0) / Defasagem Identificada: ${disciplinasAbaixo.length > 0 ? disciplinasAbaixo.map(d => `${d.nome} (${d.nota})`).join(', ') : 'Nenhuma nota abaixo da média registrada.'}
-  - Quadro Detalhado por Bimestre:
+• Estudante: ${nomeAluno} | RA: ${raAluno} | Turma/Série: ${turmaAluno} | Segmento: ${aluno.segmento || 'Ensino Fundamental/Médio'} | Matrícula: ${aluno.status || 'Ativo'}
+
+[PRIORIDADE CENTRAL] 1. HISTÓRICO UNIFICADO DE OCORRÊNCIAS PEDAGÓGICAS, CONVIVA SP E BUSCA ATIVA (${registrosEntrada.length} registro(s) totais):
+  1A) Protocolos CONVIVA SP (${listaConviva.length} registro(s)):
+${textoConviva}
+
+  1B) Registros & Contatos de Busca Ativa Escolar (${listaBuscaAtiva.length} registro(s)):
+${textoBuscaAtiva}
+
+  1C) Ocorrências Pedagógicas, Mediações, Atrasos & Dispensas (${listaOcorrencias.length} registro(s)):
+${textoOcorrencias}
+
+2. FREQUÊNCIA, PONTUALIDADE E DISPENSAS:
+• Frequência Oficial SED: ${freqAtual} | Faltas Acumuladas: ${totalFaltasAcumuladas > 0 ? `${totalFaltasAcumuladas} faltas` : 'Em acompanhamento SED'} | Atrasos registrados: ${atrasosCount}
+${historicoFrequenciaMarcos ? `• Marcos/Evolução de Frequência e SLA: ${historicoFrequenciaMarcos}` : ''}
+${freqDiariaLinha ? freqDiariaLinha : ''}
+${dispensasTexto ? dispensasTexto : ''}
+
+3. RENDIMENTO ACADÊMICO E FECHAMENTO DE NOTAS (SED):
+• Média Geral Consolidada: ${mediaGeralConsolidada}
+• Disciplinas Abaixo da Média (< 5,0): ${disciplinasAbaixo.length > 0 ? disciplinasAbaixo.map(d => `${d.nome} (${d.nota})`).join(', ') : 'Nenhuma nota abaixo de 5,0 registrada.'}
+• Disciplinas em Ponto de Atenção (5,0 a 5,9): ${disciplinasAtencao.length > 0 ? disciplinasAtencao.map(d => `${d.nome} (${d.nota})`).join(', ') : 'Nenhuma.'}
+• Disciplinas com Bom Desempenho (>= 7,0): ${disciplinasDestaque.length > 0 ? disciplinasDestaque.map(d => `${d.nome} (${d.nota})`).join(', ') : 'Sem destaque registrado acima de 7,0.'}
+• Quadro Detalhado por Bimestre:
 ${notasTexto}
-• Tutoria & Atividades do PEI:
-  - Professor(a) Tutor(a): ${tutor}
-  - Clube Juvenil: ${clube}
-  - Eletiva Escolar: ${eletiva}
-  - Etiquetas de Protagonismo Juvenil: ${protagonismo}
-  - Sonhos & Projeto de Vida: ${pv}
-• Programas e Apoios Pedagógicos:
-  - Projeto de Recomposição de Aprendizagem / Reforço: ${recomposicao}
-  - Atendimento Educacional Especializado (AEE): ${aee}
-• Histórico Unificado de Ocorrências, Mediações CONVIVA e Busca Ativa (Total: ${Array.isArray(ocorrencias) ? ocorrencias.length : 0} registros):
-${ocorrenciasTexto}
-${anotacoesExtras ? `\n• Registros e Histórico Complementar:\n${anotacoesExtras}` : ''}
+
+4. TUTORIA, ATIVIDADES PEI E APOIOS PEDAGÓGICOS:
+• Professor(a) Tutor(a): ${tutor}
+• Clube Juvenil: ${clube}
+• Eletiva Escolar: ${eletiva}
+• Protagonismo Juvenil: ${protagonismo}
+• Sonhos & Projeto de Vida: ${pv}
+• Projeto de Recomposição / Reforço: ${recomposicao}
+• Atendimento Educacional Especializado (AEE): ${aee}
+${anotacoesExtras ? `\n5. REGISTROS HISTÓRICOS COMPLEMENTARES (2025/2026, OFÍCIOS, FICAI):\n${anotacoesExtras}` : ''}
 ${resumoDossieTexto ? `\n• Síntese Integrada do Dossiê:\n${resumoDossieTexto}` : ''}
 --- FIM DO DOSSIÊ ---`;
 
-      const modelosDisponiveis = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+      const modelosDisponiveis = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
       let textoGerado = '';
 
       if (ai) {
         for (const modelo of modelosDisponiveis) {
           if (textoGerado && textoGerado.length > 50) break;
           try {
+            const configPayload: any = { systemInstruction };
+            if (modelo !== 'gemini-4-hydrogen') {
+              configPayload.temperature = 0.5;
+            }
             const response = await ai.models.generateContent({
               model: modelo,
               contents: promptUser,
-              config: {
-                systemInstruction,
-                temperature: 0.7
-              }
+              config: configPayload
             });
 
             const txt = response.text ? response.text.trim() : '';
@@ -1174,11 +1611,15 @@ ${resumoDossieTexto ? `\n• Síntese Integrada do Dossiê:\n${resumoDossieTexto
         });
       }
 
-      // Fallback estruturado inteligente de altíssima fidelidade aos dados
-      const fallbackTexto = gerarParecerPedagogicoFallback(aluno, fechamentoNotas, ocorrencias || [], {
+      const fallbackTexto = gerarParecerPedagogicoFallback(aluno, fechamentoNotas, registrosEntrada, {
         disciplinasAbaixo,
+        disciplinasAtencao,
         mediaGeralConsolidada,
-        totalFaltasAcumuladas
+        totalFaltasAcumuladas,
+        listaConviva,
+        listaBuscaAtiva,
+        frequenciaDiariaResumo,
+        dispensas
       });
 
       res.json({
@@ -1188,7 +1629,11 @@ ${resumoDossieTexto ? `\n• Síntese Integrada do Dossiê:\n${resumoDossieTexto
     } catch (err: any) {
       console.error('[API AI Parecer Pedagógico] Erro:', err.message);
       try {
-        const fallbackTexto = gerarParecerPedagogicoFallback(req.body?.aluno || {}, req.body?.fechamentoNotas || {}, req.body?.ocorrencias || []);
+        const fallbackTexto = gerarParecerPedagogicoFallback(
+          req.body?.aluno || {},
+          req.body?.fechamentoNotas || {},
+          req.body?.ocorrencias || []
+        );
         res.json({
           success: true,
           parecer: fallbackTexto
@@ -2820,14 +3265,22 @@ Direção e Equipe Gestora`;
   function gerarParecerPedagogicoFallback(aluno: any, fechamentoNotas: any, ocorrencias: any[], extras?: any): string {
     const nome = String(aluno.nome || 'O(A) estudante').trim();
     const turma = String(aluno.turma || aluno.serie || '').trim();
-    const freq = String(aluno.frequencia_atual || aluno.presenca_anual || aluno.presenca || '88%').trim();
+    const freq = String(aluno.frequencia_atual || aluno.presenca_anual || aluno.presenca || 'em acompanhamento').trim();
+    const atrasosCount = Number(aluno.atrasos || 0);
     const tutor = String(aluno.tutor || aluno.tutor_2026 || '').trim();
     const eletiva = String(aluno.eletivas || aluno.eletiva || '').trim();
     const clube = String(aluno.clube || '').trim();
     const pv = String(aluno.projeto_vida_2026 || aluno.projeto_vida || aluno.pv || aluno.sonhos || '').trim();
     const isRec = Boolean(aluno.recomposicao);
     const isAee = Boolean(aluno.aee);
-    const qtdOcorrencias = Array.isArray(ocorrencias) ? ocorrencias.length : 0;
+    const listaUnificada = Array.isArray(ocorrencias) ? ocorrencias : [];
+    const qtdOcorrencias = listaUnificada.length;
+    const qtdConviva = Array.isArray(extras?.listaConviva)
+      ? extras.listaConviva.length
+      : listaUnificada.filter((o: any) => o.registradoConviva || o.registrado_conviva || String(o.tipo || '').toUpperCase().includes('CONVIVA')).length;
+    const qtdBuscaAtiva = Array.isArray(extras?.listaBuscaAtiva)
+      ? extras.listaBuscaAtiva.length
+      : listaUnificada.filter((o: any) => String(o.origem || '').toUpperCase() === 'BUSCA_ATIVA' || o.tipoContato || o.houveResposta !== undefined).length;
 
     // Faltas acumuladas
     let totalFaltas = extras?.totalFaltasAcumuladas || Number(aluno.faltas_acumuladas || aluno.faltas || aluno.totalFaltas || 0);
@@ -2843,7 +3296,7 @@ Direção e Equipe Gestora`;
     // Média Geral
     let mediaGeral = extras?.mediaGeralConsolidada;
     if (!mediaGeral || mediaGeral === '—') {
-      mediaGeral = String(aluno.media_geral_calculada || aluno.media_geral || aluno.media || '5,0');
+      mediaGeral = String(aluno.media_geral_calculada || aluno.media_geral || aluno.media || 'em apuração');
     }
 
     // Disciplinas abaixo da média (< 5.0)
@@ -2871,60 +3324,60 @@ Direção e Equipe Gestora`;
       });
     }
 
-    // Análise semântica factual dos registros de ocorrências
-    const allOcorrenciasText = ocorrencias.map((o: any) => `${o.tipo || ''} ${o.descricao || ''} ${o.observacao || ''} ${o.encaminhamento || ''}`).join(' ').toLowerCase();
+    const allOcorrenciasText = listaUnificada.map((o: any) => `${o.tipo || ''} ${o.descricao || ''} ${o.observacao || ''} ${o.encaminhamento || ''}`).join(' ').toLowerCase();
 
-    const temIndisciplina = allOcorrenciasText.includes('indisciplina') || allOcorrenciasText.includes('afrontosa') || allOcorrenciasText.includes('desrespeito') || allOcorrenciasText.includes('atitude') || allOcorrenciasText.includes('desacato') || allOcorrenciasText.includes('inadequada');
+    const temIndisciplina = allOcorrenciasText.includes('indisciplina') || allOcorrenciasText.includes('afrontosa') || allOcorrenciasText.includes('desrespeito') || allOcorrenciasText.includes('desacato') || allOcorrenciasText.includes('inadequada');
     const temConflitos = allOcorrenciasText.includes('conflito') || allOcorrenciasText.includes('boato') || allOcorrenciasText.includes('fofoca') || allOcorrenciasText.includes('atrito') || allOcorrenciasText.includes('desentendimento') || allOcorrenciasText.includes('agress');
     const temChamadoPais = allOcorrenciasText.includes('responsav') || allOcorrenciasText.includes('pais') || allOcorrenciasText.includes('mae') || allOcorrenciasText.includes('mãe') || allOcorrenciasText.includes('pai') || allOcorrenciasText.includes('termo') || allOcorrenciasText.includes('acordo');
     const temResistencia = allOcorrenciasText.includes('resistencia') || allOcorrenciasText.includes('recusa') || allOcorrenciasText.includes('nega') || allOcorrenciasText.includes('nao aceit') || allOcorrenciasText.includes('não aceit');
-    const temRedeProtecao = allOcorrenciasText.includes('conselho tutelar') || allOcorrenciasText.includes('ficai') || allOcorrenciasText.includes('demp') || allOcorrenciasText.includes('rede de prote') || allOcorrenciasText.includes('conviva');
+    const temRedeProtecao = Boolean(aluno.ficha_ct || aluno.oficio) || allOcorrenciasText.includes('conselho tutelar') || allOcorrenciasText.includes('ficai') || allOcorrenciasText.includes('demp') || allOcorrenciasText.includes('rede de prote');
 
-    // 1º Parágrafo
     let perfilComportamental = '';
     if (temIndisciplina || temConflitos) {
-      perfilComportamental = `marcada por desafios significativos no âmbito convivencial e comportamental, destacando-se por ${temIndisciplina ? 'frequentes episódios de indisciplina e atitudes afrontosas' : 'desafios convivenciais'}${temConflitos ? ' e envolvimento recorrente em boatos e conflitos interpessoais que afetam o ambiente escolar' : ''}.`;
+      perfilComportamental = `marcada por registros relevantes no Histórico Unificado (${qtdOcorrencias} registro(s), sendo ${qtdConviva} protocolo(s) CONVIVA SP e ${qtdBuscaAtiva} ação(ões) de Busca Ativa), evidenciando ${temIndisciplina ? 'episódios de indisciplina e necessidade de mediação de normas' : 'desafios convivenciais'}${temConflitos ? ' e conflitos interpessoais acompanhados pela equipe escolar' : ''}.`;
     } else if (qtdOcorrencias > 0) {
-      perfilComportamental = `acompanhada por intervenções de mediação escolar e acompanhamento contínuo da convivência.`;
+      perfilComportamental = `acompanhada por ${qtdOcorrencias} registro(s) no Histórico Unificado (${qtdConviva} CONVIVA SP e ${qtdBuscaAtiva} ação(ões) de Busca Ativa Escolar), com ações orientativas e de mediação pedagógica.`;
     } else {
-      perfilComportamental = `pautada pelo compromisso com os combinados de convivência e participação positiva nas rotinas escolares.`;
+      perfilComportamental = `pautada pelo cumprimento dos combinados de convivência e ausência de apontamentos disciplinares ou protocolos CONVIVA SP.`;
     }
 
     const peiParts: string[] = [];
     if (clube && clube !== 'Não informado') peiParts.push(`no clube "${clube}"`);
     if (eletiva && eletiva !== 'Não informada') peiParts.push(`na eletiva "${eletiva}"`);
     const peiAtivStr = peiParts.length > 0 ? `no protagonismo juvenil ${peiParts.join(' e ')}` : 'nas ações de protagonismo juvenil';
-    const tutoriaStr = tutor && tutor !== 'Não informado' ? `, além do acompanhamento sistemático da tutoria pelo(a) professor(a) ${tutor}` : '';
-
-    const rotinasPei = `Apesar do engajamento em atividades como ${peiAtivStr}${tutoriaStr}, a estudante demonstra dificuldade em assumir a corresponsabilidade por suas ações.`;
+    const tutoriaStr = tutor && tutor !== 'Não informado' ? `, sob acompanhamento da tutoria do(a) professor(a) ${tutor}` : '';
+    const rotinasPei = `No âmbito do PEI, participa ${peiAtivStr}${tutoriaStr}.`;
 
     const faltasStr = totalFaltas > 0 ? ` com ${totalFaltas} faltas acumuladas no ano` : '';
-    const discDefasagemStr = disciplinasAbaixo.length > 0
-      ? `, com notas abaixo da média em disciplinas estruturais como ${disciplinasAbaixo.map(d => `${d.nome} (${d.nota})`).join(', ')}`
+    const atrasosStr = atrasosCount > 0 ? ` e ${atrasosCount} atraso(s) registrado(s)` : '';
+    const consecStr = extras?.frequenciaDiariaResumo?.gatilhoBuscaAtiva3Faltas
+      ? ` (com alerta ativo de ${extras.frequenciaDiariaResumo.faltasConsecutivasAtuais} faltas consecutivas na chamada diária)`
       : '';
-    const apoioStr = isRec ? ', embora participe do projeto de recomposição e reforço intensivo' : (isAee ? ', contando com apoio do Atendimento Educacional Especializado (AEE)' : '');
+    const discDefasagemStr = disciplinasAbaixo.length > 0
+      ? `, com defasagem pontual em ${disciplinasAbaixo.map(d => `${d.nome} (${d.nota})`).join(', ')}`
+      : '';
+    const apoioStr = isRec ? ', participando do projeto de recomposição e reforço intensivo' : (isAee ? ', contando com apoio do Atendimento Educacional Especializado (AEE)' : '');
 
-    const acadStr = `Acadêmico e pontualmente, sua frequência atual registra ${freq}${faltasStr}, e seu rendimento consolidado aponta uma média geral de ${mediaGeral}${discDefasagemStr}${apoioStr}.`;
+    const acadStr = `Em relação à assiduidade e ao rendimento, registra frequência de ${freq}${faltasStr}${atrasosStr}${consecStr}, com média geral consolidada de ${mediaGeral}${discDefasagemStr}${apoioStr}.`;
 
-    const par1 = `A estudante ${nome}, matriculada no ${turma} da E.E. Clóvis de Lucca, apresenta uma trajetória no Programa de Ensino Integral (PEI) ${perfilComportamental} ${rotinasPei} ${acadStr}`;
+    const par1 = `O(A) estudante ${nome}, matriculado(a) no ${turma || 'respectivo ano/série'} da E.E. Clóvis de Lucca (PEI), apresenta trajetória escolar ${perfilComportamental} ${rotinasPei} ${acadStr}`;
 
-    // 2º Parágrafo
     let sinteseIntervencoes = '';
-    if (temChamadoPais || temResistencia || temRedeProtecao || qtdOcorrencias > 0) {
-      sinteseIntervencoes = `Como síntese da evolução formativa e comportamental, observa-se que as diversas intervenções mediadas pela gestão, equipe pedagógica e tutoria — incluindo acolhimentos, termos de acordo e chamados aos responsáveis — ainda não foram suficientes para a alteração autônoma de conduta${temResistencia ? ', evidenciando inclusive episódios de resistência familiar' : ''}${temRedeProtecao ? ' e a necessidade de acionamento da rede de proteção integral' : ''}.`;
+    if (temChamadoPais || temResistencia || temRedeProtecao || qtdBuscaAtiva > 0 || qtdConviva > 0) {
+      sinteseIntervencoes = `Na síntese das intervenções registradas pela Gestão, Tutoria, CONVIVA e Busca Ativa, verificam-se ${qtdBuscaAtiva > 0 ? 'diligências de contato familiar para garantia da permanência escolar, ' : ''}acolhimentos e diálogos com os responsáveis legais${temResistencia ? ', registrando-se resistência parcial em determinados encaminhamentos' : ''}${temRedeProtecao ? ', além de articulação com a rede de proteção integral (FICAI/Conselho Tutelar)' : ''}.`;
     } else {
-      sinteseIntervencoes = `Como síntese da evolução formativa e comportamental, observa-se desenvolvimento gradual das competências cognitivas e socioemocionais preconizadas no currículo paulista, com resposta favorável às mediações pedagógicas.`;
+      sinteseIntervencoes = `Na síntese da evolução formativa, observa-se resposta favorável às orientações pedagógicas e convivenciais desenvolvidas ao longo do período letivo.`;
     }
 
     const recDisciplinas = disciplinasAbaixo.length > 0
-      ? `o fortalecimento do plano de recuperação de aprendizagem nas disciplinas com defasagem (${disciplinasAbaixo.map(d => d.nome).join(', ')}), `
-      : 'o fortalecimento do plano de acompanhamento pedagógico contínuo, ';
+      ? `o fortalecimento do plano de recuperação nas disciplinas com defasagem (${disciplinasAbaixo.map(d => d.nome).join(', ')}), `
+      : 'a continuidade do acompanhamento pedagógico contínuo, ';
 
     const pvMencao = pv && pv !== 'Não informado'
-      ? ` e o resgate do Projeto de Vida da estudante (voltado para ${pv.toLowerCase().startsWith('carreira') || pv.toLowerCase().startsWith('área') ? pv : `a carreira de ${pv}`})`
+      ? ` e o fortalecimento do seu Projeto de Vida (${pv})`
       : ' e a consolidação do seu Projeto de Vida';
 
-    const recomendacoes = `Para o acompanhamento no próximo Conselho de Classe e alinhamento com a família, recomenda-se ${recDisciplinas}o estabelecimento de metas claras de melhoria na frequência e a condução de reuniões periódicas com os responsáveis legais para firmar um pacto conjunto de corresponsabilidade comportamental, visando apoiar o desenvolvimento socioemocional${pvMencao}.`;
+    const recomendacoes = `Para os encaminhamentos do Conselho de Classe e alinhamento com a família, recomenda-se ${recDisciplinas}metas objetivas de manutenção da frequência e pontualidade, além de pacto de corresponsabilidade com os responsáveis legais visando o desenvolvimento socioemocional${pvMencao}.`;
 
     const par2 = `${sinteseIntervencoes} ${recomendacoes}`;
 

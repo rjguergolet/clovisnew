@@ -13,6 +13,7 @@ export interface MongoUser {
   nivel?: string;
   nivelAcesso?: string;
   acesso_total?: boolean;
+  professorVinculado?: string;
 }
 
 export interface MongoUserCredential {
@@ -37,7 +38,8 @@ function getSavedUser(): MongoUser | null {
           cargo: parsed.cargo || parsed.nivel || parsed.nivelAcesso || 'PROFESSOR',
           nivel: parsed.nivel || parsed.cargo || 'PROFESSOR',
           nivelAcesso: parsed.nivelAcesso || parsed.cargo || 'PROFESSOR',
-          acesso_total: parsed.acesso_total ?? true
+          acesso_total: parsed.acesso_total ?? true,
+          professorVinculado: parsed.professorVinculado || ''
         };
       }
     }
@@ -55,6 +57,24 @@ export function getAuth(_app?: any) {
     get currentUser() {
       return activeUser || getSavedUser();
     }
+  };
+}
+
+export function getAuthToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem('clovis_auth_token');
+  } catch {
+    return null;
+  }
+}
+
+export function getAuthHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
+  const token = getAuthToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extraHeaders
   };
 }
 
@@ -83,12 +103,16 @@ export async function signInWithEmailAndPassword(_auth: any, email: string, pass
     cargo: u.cargo || u.nivel || 'PROFESSOR',
     nivel: u.nivel || u.cargo || 'PROFESSOR',
     nivelAcesso: u.nivelAcesso || u.cargo || 'PROFESSOR',
-    acesso_total: u.acesso_total ?? true
+    acesso_total: u.acesso_total ?? true,
+    professorVinculado: u.professorVinculado || ''
   };
 
   activeUser = user;
 
   if (typeof window !== 'undefined') {
+    if (result.token) {
+      localStorage.setItem('clovis_auth_token', result.token);
+    }
     localStorage.setItem('usuarioLogado', JSON.stringify({
       ...u,
       id: user.id,
@@ -99,6 +123,7 @@ export async function signInWithEmailAndPassword(_auth: any, email: string, pass
       nivel: user.nivel,
       nivelAcesso: user.nivelAcesso,
       acesso_total: user.acesso_total,
+      professorVinculado: user.professorVinculado || '',
       ativo: true
     }));
   }
@@ -113,7 +138,7 @@ export async function signInWithEmailAndPassword(_auth: any, email: string, pass
 export async function createUserWithEmailAndPassword(_auth: any, email: string, password: string): Promise<MongoUserCredential> {
   const res = await fetch('/api/db/usuarios', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({
       email,
       senha: password,
@@ -123,6 +148,11 @@ export async function createUserWithEmailAndPassword(_auth: any, email: string, 
       criadoEm: new Date().toISOString()
     })
   });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Não autorizado a criar usuário.');
+  }
 
   const data = await res.json();
   const user: MongoUser = {
@@ -145,6 +175,7 @@ export async function createUserWithEmailAndPassword(_auth: any, email: string, 
 export async function signOut(_auth?: any): Promise<void> {
   activeUser = null;
   if (typeof window !== 'undefined') {
+    localStorage.removeItem('clovis_auth_token');
     localStorage.removeItem('usuarioLogado');
     localStorage.removeItem('usuario_logado');
   }
@@ -182,11 +213,15 @@ export async function updatePassword(user: MongoUser, newPassword: string): Prom
   const userId = user.id || user.uid;
   if (!userId) throw new Error('Usuário sem ID válido');
 
-  await fetch(`/api/db/usuarios/${encodeURIComponent(userId)}`, {
+  const res = await fetch(`/api/db/usuarios/${encodeURIComponent(userId)}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAuthHeaders(),
     body: JSON.stringify({ senha: newPassword })
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Erro ao atualizar senha.');
+  }
 }
 
 export type Auth = any;

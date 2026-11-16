@@ -340,22 +340,21 @@ export async function obterDocumentosColecao(colName) {
  * Verifica se o usuário atual possui o perfil de autorização de gestão (DIRETOR, VICE_DIRETOR, CGPG, SECRETARIA)
  */
 export function validarPermissaoDiretor() {
-  const role = typeof window !== 'undefined' && typeof window.obterRoleAtual === 'function'
-    ? window.obterRoleAtual()
-    : (typeof window !== 'undefined' && (window.currentUserRole || localStorage.getItem('usuario_nivel') || localStorage.getItem('userRole'))) || 'DIRETOR';
+  if (typeof window !== 'undefined' && typeof window.obterRoleAtual === 'function') {
+    window.obterRoleAtual();
+  }
+  const role = (typeof window !== 'undefined' && (window.realUserRole || window.currentUserRole || localStorage.getItem('usuario_nivel') || localStorage.getItem('userRole'))) || 'PROFESSOR';
 
   const roleNorm = String(role || '').toUpperCase().trim().replace(/-/g, '_');
   const permitido = roleNorm === 'DIRETOR' || roleNorm === 'VICE_DIRETOR' || roleNorm.includes('DIRETOR') || roleNorm === 'ADMIN' || roleNorm === 'SECRETARIA' || roleNorm === 'CGPG';
 
   if (!permitido) {
-    const msg = `Acesso restrito: Apenas a equipe de Gestão e Secretaria Escolar possui autorização para exportar ou restaurar backups do sistema (perfil atual: ${roleNorm}).`;
+    const msg = `Acesso restrito: Apenas a equipe de Gestão e Secretaria Escolar (cargo real) possui autorização para exportar ou restaurar backups do sistema (perfil real atual: ${roleNorm}).`;
     if (typeof window !== 'undefined') {
       if (typeof window.showToast === 'function') {
         window.showToast(msg, 'warning', 6000);
       } else if (typeof window.showErrorToast === 'function') {
         window.showErrorToast(msg);
-      } else {
-        alert(msg);
       }
     }
     return false;

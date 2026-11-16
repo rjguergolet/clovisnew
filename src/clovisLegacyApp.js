@@ -46,6 +46,8 @@
       import { initializeApp, deleteApp, getApps, getApp } from "./lib/appBridge";
       import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "./lib/auth";
       import { initializeFirestore, memoryLocalCache, doc, setDoc, getDoc, updateDoc, deleteDoc, addDoc, collection, getDocs, getCountFromServer, query, where, limit, orderBy, startAfter, writeBatch, onSnapshot, arrayUnion, getFirestore } from "./lib/database";
+      import { matchUsuarioProfessor, isRealProfessorName, isSameProfessor, extrairEMigrarDocentesDoHorario, isRegularTeachingClass } from "./utils";
+      import { gerarESalvarDossieAlunoPdf } from "./utils/dossiePdfExport";
 
       // Configuração Oficial MongoDB Atlas
       const mongoConfig = {
@@ -227,17 +229,26 @@
 
       // =========================================================
       // HELPER DE VERIFICAÇÃO DE PERMISSÃO DE EXCLUSÃO E EDIÇÃO SENSÍVEL (RBAC)
-      // Retorna true para permitir a exclusão e edição por todos os perfis autorizados do sistema.
+      // Respeita o perfil efetivo na UI (incluindo simulação do Diretor) e exige perfil real autorizado.
       window.podeExcluir = function() {
-        return true;
+        const effectiveRole = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
+        const realRole = window.realUserRole || effectiveRole;
+        return ["DIRETOR", "VICE_DIRETOR", "CGPG"].includes(effectiveRole) &&
+               ["DIRETOR", "VICE_DIRETOR", "CGPG"].includes(realRole);
       };
 
       window.isDirecao = function() {
-        return true;
+        const effectiveRole = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
+        const realRole = window.realUserRole || effectiveRole;
+        return ["DIRETOR", "VICE_DIRETOR"].includes(effectiveRole) &&
+               ["DIRETOR", "VICE_DIRETOR"].includes(realRole);
       };
 
       window.podeEditarSensivel = function() {
-        return true;
+        const effectiveRole = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
+        const realRole = window.realUserRole || effectiveRole;
+        return ["DIRETOR", "VICE_DIRETOR", "CGPG", "SECRETARIA"].includes(effectiveRole) &&
+               ["DIRETOR", "VICE_DIRETOR", "CGPG", "SECRETARIA"].includes(realRole);
       };
 
       // FUNÇÃO AUXILIAR CENTRALIZADA DE REMOÇÃO COMPLETA DE OCORRÊNCIAS / REGISTROS
@@ -441,12 +452,16 @@
           return;
         }
 
-        if (window.podeExcluir && !window.podeExcluir()) {
-          const msgAviso = "Ação não permitida: O seu perfil (" + (window.obterRoleAtual ? window.obterRoleAtual() : "USUÁRIO") + ") não possui autorização para excluir dados.";
+        const realRole = window.realUserRole || (window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR");
+        const isDeletePermitidoCliente =
+          colecao === 'usuarios' ? realRole === 'DIRETOR'
+          : colecao === 'alunos' ? ['DIRETOR', 'VICE_DIRETOR', 'SECRETARIA'].includes(realRole)
+          : (window.podeExcluir && window.podeExcluir());
+
+        if (!isDeletePermitidoCliente) {
+          const msgAviso = "Ação não permitida: O seu perfil real (" + realRole + ") não possui autorização para excluir registros em '" + colecao + "'.";
           if (typeof window.showToast === "function") {
-            window.showToast(msgAviso, 'warning', 3500);
-          } else {
-            alert(msgAviso);
+            window.showToast(msgAviso, 'warning', 4000);
           }
           return;
         }
@@ -3241,16 +3256,25 @@
 
         const containerSimulador = document.getElementById("container-simulador-cargo");
         const simuladorCargo = document.getElementById("simulador-cargo");
+        const mobileSimuladorContainer = document.getElementById("mobile-sheet-simulador-container");
+        const mobileSimuladorCargo = document.getElementById("mobile-simulador-cargo");
 
         let effectiveRole = realRole;
 
         // O simulador de nível de acesso fica visível EXCLUSIVAMENTE quando o usuário real for DIRETOR
         if (realRole === "DIRETOR") {
           if (containerSimulador) containerSimulador.classList.remove("hidden");
+          if (mobileSimuladorContainer) mobileSimuladorContainer.classList.remove("hidden");
           const valSimulador = simuladorCargo ? simuladorCargo.value : "DIRETOR";
           effectiveRole = window.normalizarUserRole(valSimulador);
+          if (mobileSimuladorCargo && mobileSimuladorCargo.value !== valSimulador) {
+            mobileSimuladorCargo.value = valSimulador;
+          }
         } else {
           if (containerSimulador) containerSimulador.classList.add("hidden");
+          if (mobileSimuladorContainer) mobileSimuladorContainer.classList.add("hidden");
+          if (simuladorCargo) simuladorCargo.value = realRole;
+          if (mobileSimuladorCargo) mobileSimuladorCargo.value = realRole;
           effectiveRole = realRole;
         }
 
@@ -3269,6 +3293,7 @@
         let email = currentUser?.email?.trim() || "";
         let displayName = currentUser?.displayName?.trim() || "";
         let role = (typeof window.obterRoleAtual === "function" ? window.obterRoleAtual() : "PROFESSOR") || "PROFESSOR";
+        const realRole = window.realUserRole || role;
 
         if (typeof localStorage !== "undefined") {
           const rawSaved = localStorage.getItem("usuarioLogado");
@@ -3306,6 +3331,7 @@
           nome: displayName,
           email: emailFinal,
           cargo: role,
+          realRole: realRole,
           formatoCompleto: textoCompleto,
           textoCompleto: textoCompleto
         };
@@ -3617,6 +3643,60 @@
         }
 
         return str;
+      };
+
+      // Extrai SOMENTE o nome do autor (sem e-mail, sem cargo em parênteses, sem HTML) para impressão limpa no Dossiê
+      window.extrairSomenteNomeAutor = function(autorRaw, recordObj) {
+        const ehEmailOuGenerico = (val) => {
+          const s = String(val || "").trim();
+          if (!s) return true;
+          const up = s.toUpperCase();
+          if (["USUARIO", "USUÁRIO", "USUÁRIO NÃO IDENTIFICADO", "USUÁRIO DESCONHECIDO", "USUARIO REGISTRADO", "USUÁRIO REGISTRADO", "GESTAO", "GESTÃO", "GESTAO ESCOLAR", "GESTÃO ESCOLAR"].includes(up)) return true;
+          return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+        };
+
+        const candidatos = [
+          recordObj?.autor_nome,
+          recordObj?.autor_criacao?.nome,
+          recordObj?.usuario_nome,
+          autorRaw,
+          recordObj?.usuario,
+          recordObj?.autor
+        ];
+
+        for (const cand of candidatos) {
+          if (!cand) continue;
+          let limpo = String(cand)
+            .replace(/<[^>]*>/g, " ")
+            .replace(/\([^)]*\)/g, " ")
+            .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, " ")
+            .replace(/\s*[-–|]+\s*$/g, "")
+            .replace(/\s+/g, " ")
+            .trim();
+          if (!ehEmailOuGenerico(limpo)) {
+            return limpo;
+          }
+        }
+
+        const fallbackEmail = recordObj?.autor_email || String(autorRaw || "").match(/[A-Za-z0-9._%+-]+@/)?.[0]?.replace("@", "");
+        if (fallbackEmail) {
+          const prefixo = String(fallbackEmail).split("@")[0].replace(/[._-]+/g, " ").trim();
+          if (prefixo) return prefixo;
+        }
+        return "Equipe Escolar";
+      };
+
+      window.obterLogoEscolaAtualUrl = function() {
+        try {
+          const customLogo = localStorage.getItem("clovis_custom_logo");
+          if (customLogo && (customLogo.startsWith("data:") || customLogo.startsWith("/") || customLogo.startsWith("http"))) {
+            return customLogo;
+          }
+        } catch {}
+        const domPreview = document.querySelector("#preview-logo-grande-img")?.getAttribute("src")
+          || document.querySelector("img.logo-escola-img")?.getAttribute("src");
+        if (domPreview && !domPreview.includes("undefined")) return domPreview;
+        return "/logo-clovis.svg";
       };
 
       // Abrir formulário de ocorrência pré-selecionando o aluno e marcando CONVIVA SP
@@ -4339,7 +4419,30 @@
 
       if (simuladorCargo) {
         simuladorCargo.addEventListener("change", () => {
+          window.obterRoleAtual();
           window.atualizarVisibilidadeAbasEPermissoes();
+          const userRoleDisplay = document.getElementById("userRoleDisplay");
+          if (userRoleDisplay) {
+            userRoleDisplay.textContent = (window.realUserRole === "DIRETOR" && window.userRole !== "DIRETOR")
+              ? `${window.userRole} (Simulado)`
+              : window.userRole;
+          }
+        });
+      }
+
+      const mobileSimuladorCargoEl = document.getElementById("mobile-simulador-cargo");
+      if (mobileSimuladorCargoEl) {
+        mobileSimuladorCargoEl.addEventListener("change", () => {
+          if (window.realUserRole !== "DIRETOR") return;
+          if (simuladorCargo) simuladorCargo.value = mobileSimuladorCargoEl.value;
+          window.obterRoleAtual();
+          window.atualizarVisibilidadeAbasEPermissoes();
+          const userRoleDisplay = document.getElementById("userRoleDisplay");
+          if (userRoleDisplay) {
+            userRoleDisplay.textContent = (window.realUserRole === "DIRETOR" && window.userRole !== "DIRETOR")
+              ? `${window.userRole} (Simulado)`
+              : window.userRole;
+          }
         });
       }
 
@@ -12378,6 +12481,11 @@ Yasmin Seline`;
       // FERRAMENTA A: Zerar Dados (Virada de Semestre)
       const handleZerarCamposLote = async (e) => {
         if (e) e.preventDefault();
+        if (typeof window.obterRoleAtual === "function") window.obterRoleAtual();
+        if (window.realUserRole !== "DIRETOR") {
+          window.showToast?.("Acesso negado: apenas o perfil real de DIRETOR pode zerar campos em lote.", "error", 4000);
+          return;
+        }
         console.log("[DEBUG Admin] Botão de zerar campos em lote clicado");
 
         const btnZerarSelecionados = document.getElementById("btn-zerar-lote") || document.getElementById("btn-zerar-selecionados");
@@ -12521,6 +12629,11 @@ Yasmin Seline`;
       const btnAbrirViradaAno = document.getElementById("btn-abrir-virada-ano");
       if (btnAbrirViradaAno) {
         btnAbrirViradaAno.addEventListener("click", () => {
+          if (typeof window.obterRoleAtual === "function") window.obterRoleAtual();
+          if (window.realUserRole !== "DIRETOR") {
+            window.showToast?.("Acesso negado: apenas o perfil real de DIRETOR pode executar a Virada de Ano.", "error", 4000);
+            return;
+          }
           const modal = document.getElementById("modal-virada-ano");
           const e1 = document.getElementById("virada-etapa-1");
           const e2 = document.getElementById("virada-etapa-2");
@@ -12552,6 +12665,11 @@ Yasmin Seline`;
       const btnConfirmarViradaFinal = document.getElementById("btn-confirmar-virada-final");
       if (btnConfirmarViradaFinal) {
         btnConfirmarViradaFinal.addEventListener("click", async () => {
+          if (typeof window.obterRoleAtual === "function") window.obterRoleAtual();
+          if (window.realUserRole !== "DIRETOR") {
+            window.showToast?.("Acesso negado: apenas o perfil real de DIRETOR pode executar a Virada de Ano.", "error", 4000);
+            return;
+          }
           const inp = document.getElementById("input-confirmacao-virada");
           const val = inp ? inp.value.trim().toUpperCase() : "";
 
@@ -12646,6 +12764,11 @@ Yasmin Seline`;
       // Lógica do Botão Zerar Banco de Dados (Reset Total - Danger Zone)
       const handleZerarBancoTotal = async (e) => {
         if (e) e.preventDefault();
+        if (typeof window.obterRoleAtual === "function") window.obterRoleAtual();
+        if (window.realUserRole !== "DIRETOR") {
+          window.showToast?.("Acesso negado: apenas o perfil real de DIRETOR pode zerar o banco de dados.", "error", 4000);
+          return;
+        }
         console.log("[DEBUG Admin] Botão de exclusão total (Danger Zone) clicado");
 
         const btnZerar = document.getElementById("btn-danger-wipe") || document.getElementById("btn-zerar-alunos");
@@ -12842,13 +12965,171 @@ Yasmin Seline`;
       // =========================================================
       let usuarioEmEdicaoId = null;
       let usuariosCacheMap = {};
+      let professoresHorarioCatalogCache = [];
+
+      async function carregarProfessoresHorarioParaVinculo(forceRefresh = false) {
+        if (!forceRefresh && Array.isArray(professoresHorarioCatalogCache) && professoresHorarioCatalogCache.length > 0) {
+          return professoresHorarioCatalogCache;
+        }
+        let profsCadastro = [];
+        let horariosLista = Array.isArray(window.gradeCache) ? window.gradeCache : [];
+
+        try {
+          const cachedProfs = localStorage.getItem("clovis_cadastro_professores");
+          if (cachedProfs) {
+            const parsed = JSON.parse(cachedProfs);
+            if (Array.isArray(parsed)) profsCadastro = parsed;
+          }
+        } catch (e) {}
+
+        try {
+          if (horariosLista.length === 0) {
+            const cachedHor = localStorage.getItem("clovis_horarios_cache");
+            if (cachedHor) {
+              const parsedH = JSON.parse(cachedHor);
+              if (Array.isArray(parsedH)) horariosLista = parsedH;
+            }
+          }
+        } catch (e) {}
+
+        try {
+          const [profDocSnap, customGradeSnap, horariosSnap] = await Promise.all([
+            getDoc(doc(db, "config_escola", "cadastro_professores")).catch(() => null),
+            horariosLista.length === 0 ? getDoc(doc(db, "config_escola", "grade_horarios_custom")).catch(() => null) : Promise.resolve(null),
+            horariosLista.length === 0 ? getDocs(collection(db, "horarios")).catch(() => null) : Promise.resolve(null)
+          ]);
+
+          if (profDocSnap && profDocSnap.exists && profDocSnap.exists() && Array.isArray(profDocSnap.data().professores)) {
+            profsCadastro = profDocSnap.data().professores;
+          }
+          if (horariosSnap && horariosSnap.forEach) {
+            const arr = [];
+            horariosSnap.forEach(d => arr.push({ id: d.id, ...d.data() }));
+            if (arr.length > 0) horariosLista = arr;
+          }
+          if (horariosLista.length === 0 && customGradeSnap && customGradeSnap.exists && customGradeSnap.exists()) {
+            const gData = customGradeSnap.data();
+            const arrG = Array.isArray(gData.grade) ? gData.grade : (Array.isArray(gData.slots) ? gData.slots : []);
+            if (arrG.length > 0) horariosLista = arrG;
+          }
+        } catch (err) {
+          console.warn("Aviso ao carregar professores do horário para vínculo:", err?.message || err);
+        }
+
+        const migrados = extrairEMigrarDocentesDoHorario(horariosLista, profsCadastro)
+          .filter(p => p && isRealProfessorName(p.nome))
+          .map(p => {
+            const slotsUnicos = new Set();
+            const aulasCount = (horariosLista || []).filter(h => {
+              if (!h || !isSameProfessor(h.professor, p.nome) || !isRegularTeachingClass(h)) return false;
+              const sk = `${String(h.dia || "").toLowerCase()}_${String(h.periodoId || "")}`;
+              if (slotsUnicos.has(sk)) return false;
+              slotsUnicos.add(sk);
+              return true;
+            }).length;
+            return { ...p, aulasRegenciaGrade: aulasCount };
+          })
+          .sort((a, b) => String(a.nome).localeCompare(String(b.nome), "pt-BR"));
+
+        professoresHorarioCatalogCache = migrados;
+        popularSelectsProfessorVinculado(migrados);
+        return migrados;
+      }
+
+      function popularSelectsProfessorVinculado(profs) {
+        const ids = ["admin-user-professor-vinculado", "modal-user-professor-vinculado"];
+        ids.forEach(elId => {
+          const sel = document.getElementById(elId);
+          if (!sel) return;
+          const prevVal = sel.value;
+          const baseFirst = elId === "admin-user-professor-vinculado"
+            ? `<option value="">-- Vincular automaticamente pelo nome --</option><option value="__SEM_VINCULO__">Sem vínculo com o horário (Administrativo)</option>`
+            : `<option value="">-- Detectar automaticamente / Sem vínculo --</option><option value="__SEM_VINCULO__">Sem vínculo docente (Administrativo)</option>`;
+          const opts = (profs || []).map(p => {
+            const extra = [p.disciplina, p.aulasRegenciaGrade ? `${p.aulasRegenciaGrade}h` : null, p.turno === "FOLGA" ? "FOLGA" : null].filter(Boolean).join(" · ");
+            const safeNome = String(p.nome).replace(/"/g, "&quot;");
+            return `<option value="${safeNome}">${p.nome}${extra ? ` (${extra})` : ""}</option>`;
+          }).join("");
+          sel.innerHTML = baseFirst + opts;
+          if (prevVal) sel.value = prevVal;
+        });
+      }
+
+      window.vincularUsuariosHorariosEmLote = async function() {
+        const role = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
+        const realRole = window.realUserRole || role;
+        if (realRole !== "DIRETOR") {
+          window.showToast("Apenas o perfil real de DIRETOR pode vincular usuários em lote.", "warning", 3500);
+          return;
+        }
+
+        const profs = await carregarProfessoresHorarioParaVinculo(true);
+        if (!profs || profs.length === 0) {
+          window.showToast("Nenhum professor encontrado na grade horária 2026 para vincular.", "warning", 3500);
+          return;
+        }
+
+        const listaUsuarios = Object.values(usuariosCacheMap || {});
+        if (listaUsuarios.length === 0) {
+          await window.carregarListaUsuarios();
+        }
+
+        const usuariosAtual = Object.values(usuariosCacheMap || {});
+        let vinculados = 0;
+        let jaVinculados = 0;
+        let semCorrespondencia = [];
+
+        for (const u of usuariosAtual) {
+          if (!u || !u.id) continue;
+          const cargoUp = String(u.nivel || u.cargo || "").toUpperCase().trim();
+          if (cargoUp === "SECRETARIA" || u.professorVinculado === "__SEM_VINCULO__") continue;
+
+          if (u.professorVinculado && String(u.professorVinculado).trim() !== "") {
+            jaVinculados++;
+            continue;
+          }
+
+          const match = matchUsuarioProfessor(u, profs);
+          if (match && match.professorNome) {
+            try {
+              await updateDoc(doc(db, "usuarios", u.id), {
+                professorVinculado: match.professorNome,
+                dataAtualizacao: new Date().toISOString()
+              });
+              u.professorVinculado = match.professorNome;
+              vinculados++;
+            } catch (e) {
+              console.warn("Erro ao vincular usuário", u.nome, e);
+            }
+          } else {
+            semCorrespondencia.push(u.nome || u.email);
+          }
+        }
+
+        if (typeof window.registrarLogAuditoria === "function" && vinculados > 0) {
+          window.registrarLogAuditoria({
+            modulo: "Administração",
+            acao: "ATUALIZAR",
+            descricao: `Vinculados automaticamente ${vinculados} usuário(s) aos professores da Grade Horária 2026`,
+            detalhes: { vinculados, jaVinculados, pendentes: semCorrespondencia.length }
+          });
+        }
+
+        await window.carregarListaUsuarios();
+        if (vinculados > 0) {
+          window.showToast(`${vinculados} usuário(s) vinculado(s) ao horário 2026! (${jaVinculados} já vinculados${semCorrespondencia.length ? `, ${semCorrespondencia.length} pendente(s) de seleção manual` : ""})`, "success", 5000);
+        } else {
+          window.showToast(`Nenhum novo vínculo pendente (${jaVinculados} já vinculados${semCorrespondencia.length ? `, ${semCorrespondencia.length} sem correspondência automática` : ""}).`, "info", 4500);
+        }
+      };
 
       window.carregarListaUsuarios = async function() {
         const bodyUsuarios = document.getElementById("tabela-usuarios-body");
         if (!bodyUsuarios) return;
 
         const role = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
-        const isDiretor = (role === "DIRETOR");
+        const realRole = window.realUserRole || role;
+        const isDiretor = (role === "DIRETOR" && realRole === "DIRETOR");
 
         // Obter e-mail do usuário logado
         const usuarioSalvoStr = localStorage.getItem("usuarioLogado");
@@ -12860,14 +13141,15 @@ Yasmin Seline`;
 
         bodyUsuarios.innerHTML = `
           <tr>
-            <td colspan="4" class="p-4 text-center text-slate-400 italic font-medium">
-              <i class="fa-solid fa-spinner animate-spin mr-2"></i>Carregando equipe do Banco de Dados...
+            <td colspan="5" class="p-4 text-center text-slate-400 italic font-medium">
+              <i class="fa-solid fa-spinner animate-spin mr-2"></i>Carregando equipe e vínculos do horário...
             </td>
           </tr>
         `;
 
         let usuariosList = [];
         usuariosCacheMap = {};
+        const profsHorario = await carregarProfessoresHorarioParaVinculo();
 
         try {
           const querySnap = await getDocs(collection(db, "usuarios"));
@@ -12936,7 +13218,7 @@ Yasmin Seline`;
           if (usuariosList.length === 0) {
             bodyUsuarios.innerHTML = `
               <tr>
-                <td colspan="4" class="p-4 text-center text-slate-400 italic font-medium">
+                <td colspan="5" class="p-4 text-center text-slate-400 italic font-medium">
                   Nenhum registro de usuário correspondente encontrado na equipe.
                 </td>
               </tr>
@@ -12950,6 +13232,31 @@ Yasmin Seline`;
             const email = u.email || "-";
             const nivel = u.nivel || u.cargo || "Professor";
             const isTotal = u.acesso_total ? `<span class="ml-1 text-[9px] px-1.5 py-0.2 bg-emerald-100 text-emerald-800 rounded font-bold border border-emerald-200">TOTAL</span>` : "";
+
+            const match = matchUsuarioProfessor(u, profsHorario);
+            const profInfo = match ? profsHorario.find(p => isSameProfessor(p.nome, match.professorNome)) : null;
+            let vinculoHtml = `<span class="text-[10px] text-slate-400 italic">Sem vínculo docente</span>`;
+            if (u.professorVinculado === "__SEM_VINCULO__" || String(nivel).toUpperCase() === "SECRETARIA") {
+              vinculoHtml = `<span class="px-2 py-0.5 bg-slate-100 text-slate-600 font-semibold rounded text-[10px] border border-slate-200">Administrativo</span>`;
+            } else if (match && !match.automatico) {
+              const metaStr = profInfo ? `${profInfo.disciplina || "Geral"}${profInfo.aulasRegenciaGrade ? ` · ${profInfo.aulasRegenciaGrade}h` : ""}` : "Grade 2026";
+              vinculoHtml = `
+                <div class="inline-flex flex-col gap-0.5">
+                  <span class="px-2 py-0.5 bg-emerald-50 text-emerald-800 font-bold rounded text-[10px] border border-emerald-200 inline-flex items-center gap-1">
+                    <i class="fa-solid fa-link text-[9px]"></i> ${match.professorNome}
+                  </span>
+                  <span class="text-[10px] text-slate-500">${metaStr}</span>
+                </div>`;
+            } else if (match && match.automatico) {
+              const metaStr = profInfo ? `${profInfo.disciplina || "Geral"}${profInfo.aulasRegenciaGrade ? ` · ${profInfo.aulasRegenciaGrade}h` : ""}` : "Sugestão Horário";
+              vinculoHtml = `
+                <div class="inline-flex flex-col gap-0.5">
+                  <span class="px-2 py-0.5 bg-amber-50 text-amber-800 font-bold rounded text-[10px] border border-amber-200 inline-flex items-center gap-1" title="Sugestão automática — clique em Vincular Usuários ou Editar para confirmar">
+                    <i class="fa-solid fa-wand-magic-sparkles text-[9px]"></i> Sugestão: ${match.professorNome}
+                  </span>
+                  <span class="text-[10px] text-slate-500">${metaStr}</span>
+                </div>`;
+            }
 
             // Botão Excluir renderizado apenas para DIRETOR
             const btnExcluirHtml = isDiretor ? `
@@ -12979,13 +13286,14 @@ Yasmin Seline`;
                   </span>
                   ${isTotal}
                 </td>
+                <td class="p-3">${vinculoHtml}</td>
                 <td class="p-3 text-right">
                   <div class="flex items-center justify-end gap-1.5">
                     <button 
                       type="button"
                       onclick="window.prepararEdicaoUsuarioModal('${u.id}')"
                       class="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded text-xs transition cursor-pointer shadow-xs inline-flex items-center gap-1"
-                      title="Editar dados e senha de acesso"
+                      title="Editar dados, vínculo no horário e senha de acesso"
                     >
                       <i class="fa-solid fa-pen-to-square text-[10px]"></i>
                       <span>Editar</span>
@@ -13005,7 +13313,7 @@ Yasmin Seline`;
       };
 
       // Modal de Edição de Credenciais do Usuário
-      window.prepararEdicaoUsuarioModal = function(docId) {
+      window.prepararEdicaoUsuarioModal = async function(docId) {
         if (!docId) return;
         const user = usuariosCacheMap[docId];
         if (!user) {
@@ -13013,8 +13321,11 @@ Yasmin Seline`;
           return;
         }
 
+        const profsHorario = await carregarProfessoresHorarioParaVinculo();
+
         const role = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
-        const isDiretor = (role === "DIRETOR");
+        const realRole = window.realUserRole || role;
+        const isDiretor = (role === "DIRETOR" && realRole === "DIRETOR");
 
         const modal = document.getElementById("modal-editar-credenciais-usuario");
         const elId = document.getElementById("modal-user-id");
@@ -13022,6 +13333,8 @@ Yasmin Seline`;
         const elEmail = document.getElementById("modal-user-email");
         const elNivel = document.getElementById("modal-user-nivel");
         const containerNivel = document.getElementById("container-modal-user-nivel");
+        const elProfVinculado = document.getElementById("modal-user-professor-vinculado");
+        const containerProfVinculado = document.getElementById("container-modal-user-professor");
         const elNovaSenha = document.getElementById("modal-user-nova-senha");
         const elConfirmarSenha = document.getElementById("modal-user-confirmar-senha");
         const errMsgBox = document.getElementById("modal-user-error-msg");
@@ -13032,15 +13345,21 @@ Yasmin Seline`;
         if (elNome) elNome.value = user.nome || "";
         if (elEmail) elEmail.value = user.email || "";
         if (elNivel) elNivel.value = user.nivel || user.cargo || "PROFESSOR_PAAC";
+        if (elProfVinculado) {
+          const matchAuto = !user.professorVinculado ? matchUsuarioProfessor(user, profsHorario) : null;
+          elProfVinculado.value = user.professorVinculado || (matchAuto ? matchAuto.professorNome : "");
+        }
         if (elNovaSenha) elNovaSenha.value = "";
         if (elConfirmarSenha) elConfirmarSenha.value = "";
 
         if (!isDiretor) {
           if (elEmail) elEmail.readOnly = true;
           if (containerNivel) containerNivel.classList.add("hidden");
+          if (containerProfVinculado) containerProfVinculado.classList.add("hidden");
         } else {
           if (elEmail) elEmail.readOnly = false;
           if (containerNivel) containerNivel.classList.remove("hidden");
+          if (containerProfVinculado) containerProfVinculado.classList.remove("hidden");
         }
 
         if (modal) modal.classList.remove("hidden");
@@ -13099,7 +13418,17 @@ Yasmin Seline`;
 
         try {
           const role = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
-          const isDiretor = (role === "DIRETOR");
+          const realRole = window.realUserRole || role;
+          const isDiretor = (role === "DIRETOR" && realRole === "DIRETOR");
+          if (realRole !== "DIRETOR") {
+            const usuarioEditado = usuariosCacheMap[docId];
+            const loggedEmailCheck = (auth.currentUser?.email || (() => { try { return JSON.parse(localStorage.getItem("usuarioLogado") || "{}").email; } catch { return ""; } })() || "").toLowerCase().trim();
+            const targetEmailCheck = String(usuarioEditado?.email || "").toLowerCase().trim();
+            if (!usuarioEditado || (loggedEmailCheck && targetEmailCheck && loggedEmailCheck !== targetEmailCheck)) {
+              setModalError("Acesso negado: você só pode atualizar as suas próprias credenciais.");
+              return;
+            }
+          }
 
           // Atualizar senha no Sistema Auth se fornecida
           if (novaSenha) {
@@ -13141,6 +13470,7 @@ Yasmin Seline`;
           }
 
           // Atualizar dados no Banco de Dados
+          const profVinculadoSel = document.getElementById("modal-user-professor-vinculado")?.value ?? "";
           const updateData = {
             nome: nome,
             email: email,
@@ -13150,6 +13480,9 @@ Yasmin Seline`;
           if (isDiretor && nivel) {
             updateData.nivel = nivel;
             updateData.cargo = nivel;
+          }
+          if (isDiretor) {
+            updateData.professorVinculado = profVinculadoSel;
           }
 
           if (novaSenha) {
@@ -13169,6 +13502,9 @@ Yasmin Seline`;
                 if (isDiretor && nivel) {
                   uObj.nivelAcesso = nivel;
                   uObj.cargo = nivel;
+                }
+                if (isDiretor) {
+                  uObj.professorVinculado = profVinculadoSel;
                 }
                 localStorage.setItem("usuarioLogado", JSON.stringify(uObj));
               }
@@ -13221,8 +13557,9 @@ Yasmin Seline`;
       // Exclusão com confirmação e Toast de sucesso
       window.excluirUsuarioFirestore = async function(docId) {
         if (!docId) return;
-        if (window.podeExcluir && !window.podeExcluir()) {
-          window.showToast("Ação não permitida: O seu perfil não possui autorização para excluir usuários.", 'warning', 3500);
+        if (typeof window.obterRoleAtual === "function") window.obterRoleAtual();
+        if (window.realUserRole !== "DIRETOR" || (window.podeExcluir && !window.podeExcluir())) {
+          window.showToast("Ação não permitida: Apenas o perfil real de DIRETOR possui autorização para excluir usuários.", 'warning', 3500);
           return;
         }
 
@@ -13266,17 +13603,30 @@ Yasmin Seline`;
 
         formCad.addEventListener("submit", async (e) => {
           e.preventDefault();
+          if (typeof window.obterRoleAtual === "function") window.obterRoleAtual();
+          if (window.realUserRole !== "DIRETOR") {
+            window.showToast("Acesso negado: apenas o perfil real de DIRETOR pode cadastrar usuários.", "error", 4000);
+            return;
+          }
           const btnSubmit = document.getElementById("btn-cadastrar-usuario");
 
           const elNome = document.getElementById("admin-user-nome");
           const elEmail = document.getElementById("admin-user-email");
           const elSenha = document.getElementById("admin-user-senha");
           const elNivel = document.getElementById("admin-user-nivel") || document.getElementById("admin-user-cargo");
+          const elProfVinculado = document.getElementById("admin-user-professor-vinculado");
 
           const nome = elNome ? elNome.value.trim() : "";
           const email = elEmail ? elEmail.value.trim() : "";
           const senha = elSenha ? elSenha.value.trim() : "";
           const nivel = elNivel ? elNivel.value : "Professor";
+          let professorVinculado = elProfVinculado ? elProfVinculado.value.trim() : "";
+
+          if (!professorVinculado) {
+            const profs = await carregarProfessoresHorarioParaVinculo();
+            const autoMatch = matchUsuarioProfessor({ nome, email, nivel }, profs);
+            if (autoMatch) professorVinculado = autoMatch.professorNome;
+          }
 
           if (!nome || !email || !senha) {
             window.showToast("Por favor, preencha todos os campos do formulário.", 'warning');
@@ -13299,6 +13649,7 @@ Yasmin Seline`;
               senha: senha,
               nivel: nivel,
               cargo: nivel,
+              professorVinculado: professorVinculado,
               acesso_total: true,
               dataAtualizacao: new Date().toISOString()
             };
@@ -13367,7 +13718,7 @@ Yasmin Seline`;
       // ==========================================
       window.abrirModalCadastroLoteEquipe = function() {
         const role = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
-        if (role !== "DIRETOR") {
+        if (role !== "DIRETOR" || window.realUserRole !== "DIRETOR") {
           if (typeof window.showToast === "function") {
             window.showToast("Apenas o DIRETOR possui permissão para cadastrar a equipe em lote.", "warning");
           }
@@ -13393,7 +13744,7 @@ Yasmin Seline`;
 
       window.processarCadastroLoteEquipe = async function() {
         const role = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
-        if (role !== "DIRETOR") {
+        if (role !== "DIRETOR" || window.realUserRole !== "DIRETOR") {
           if (typeof window.showToast === "function") {
             window.showToast("Apenas o DIRETOR possui permissão para cadastrar a equipe em lote.", "warning");
           }
@@ -15915,36 +16266,185 @@ Yasmin Seline`;
         }, 300);
       };
 
-      // Mapeamento e consolidação de Ocorrências e Ações do Aluno para Dossiê
+      function escapeHtmlDossie(str) {
+        return String(str ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      // Garante que Ocorrências, Busca Ativa e Frequência Diária estejam carregadas em RAM antes de imprimir ou gerar parecer
+      window.garantirRegistrosDossieEmMemoria = async function() {
+        const tarefas = [];
+
+        if (!Array.isArray(window.todosContatosBaCache) || window.todosContatosBaCache.length === 0) {
+          tarefas.push(
+            getDocs(collection(db, "busca_ativa")).then(snap => {
+              const lista = [];
+              snap.forEach(d => lista.push({ id: d.id, ...d.data() }));
+              lista.sort((a, b) => new Date(b.data || b.dataRegistro || 0) - new Date(a.data || a.dataRegistro || 0));
+              window.todosContatosBaCache = lista;
+              window._lastContatosBaLoadTs = Date.now();
+              if (typeof window.indexarContatosBuscaAtiva === "function") {
+                window.indexarContatosBuscaAtiva(lista);
+              } else {
+                const map = new Map();
+                lista.forEach(c => {
+                  const rawRa = String(c.ra || "").trim();
+                  const cleanRa = rawRa.replace(/\D/g, "");
+                  if (rawRa) {
+                    if (!map.has(rawRa)) map.set(rawRa, []);
+                    map.get(rawRa).push(c);
+                  }
+                  if (cleanRa && cleanRa !== rawRa) {
+                    if (!map.has(cleanRa)) map.set(cleanRa, []);
+                    map.get(cleanRa).push(c);
+                  }
+                });
+                window.contatosBaPorRaMap = map;
+              }
+            }).catch(e => console.warn("Aviso ao pré-carregar busca_ativa para dossiê:", e))
+          );
+        }
+
+        const temOcorrencias = (Array.isArray(window.ocorrenciasCache) && window.ocorrenciasCache.length > 0)
+          || (Array.isArray(window.ocorrenciasTopLevel) && window.ocorrenciasTopLevel.length > 0);
+        if (!temOcorrencias) {
+          tarefas.push(
+            getDocs(collection(db, "ocorrencias")).then(snap => {
+              const lista = [];
+              snap.forEach(d => lista.push({ id: d.id, ...d.data() }));
+              lista.sort((a, b) => new Date(b.data || b.dataRegistro || 0) - new Date(a.data || a.dataRegistro || 0));
+              window.ocorrenciasTopLevel = lista;
+              window._lastOcorrenciasLoadTs = Date.now();
+            }).catch(e => console.warn("Aviso ao pré-carregar ocorrencias para dossiê:", e))
+          );
+        }
+
+        if (!Array.isArray(window.frequenciaDiariaCache) && typeof window.carregarChamadaDiariaCache === "function") {
+          tarefas.push(
+            window.carregarChamadaDiariaCache().catch(() => {})
+          );
+        }
+
+        if (tarefas.length > 0) {
+          await Promise.all(tarefas);
+        }
+      };
+
+      // Mapeamento e consolidação de Ocorrências, CONVIVA e Busca Ativa do Aluno para Dossiê / IA
       window.obterOcorrenciasAluno = function(aluno) {
         if (!aluno) return [];
         const raStr = String(aluno.ra || "").trim();
         const raClean = raStr.replace(/\D/g, "");
+        const nomeAlunoNorm = String(aluno.nome || "").toLowerCase().trim();
 
-        // Se houver no window.currentModalStudentAcoes e for o mesmo RA do modal ativo
+        const correspondeAluno = (rec) => {
+          if (!rec) return false;
+          const rRa = String(rec.ra || rec.aluno_ra || rec.alunoRa || "").trim();
+          const rClean = rRa.replace(/\D/g, "");
+          if (raStr && rRa === raStr) return true;
+          if (raClean && rClean && rClean === raClean) return true;
+          if (!rRa && nomeAlunoNorm) {
+            const rNome = String(rec.nomeAluno || rec.aluno_nome || rec.nome || "").toLowerCase().trim();
+            if (rNome && rNome === nomeAlunoNorm) return true;
+          }
+          return false;
+        };
+
+        const lista = [];
+        const idsVistos = new Set();
+        const assinaturasVistas = new Set();
+
+        const adicionarRegistro = (item, origemDefault = "OCORRENCIA") => {
+          if (!item) return;
+          const raw = item.rawDoc || item;
+          const docId = item.id ? String(item.id).trim() : "";
+          const isSyntheticId = !docId || docId.startsWith("emb_") || docId.startsWith("oc_");
+          if (docId && !isSyntheticId && idsVistos.has(docId)) return;
+
+          const dataVal = item.data || item.dataRegistro || raw.data || raw.dataRegistro || "";
+          const dataDia = String(dataVal).slice(0, 10);
+          const descVal = String(item.descricao || item.observacao || raw.descricao || raw.observacao || "").trim();
+          const tipoVal = String(item.tipo || item.tipoContato || raw.tipo || raw.tipoContato || (origemDefault === "BUSCA_ATIVA" ? "Contato Busca Ativa" : "Atendimento Pedagógico")).trim();
+          const origemVal = String(item.origem || raw.origem || (tipoVal.toUpperCase().includes("BUSCA ATIVA") || item.tipoContato || item.houveResposta !== undefined ? "BUSCA_ATIVA" : origemDefault)).toUpperCase();
+
+          const sig = `${dataDia}|${origemVal}|${descVal.toLowerCase().slice(0, 140)}`;
+          if (descVal && assinaturasVistas.has(sig)) return;
+
+          if (docId && !isSyntheticId) idsVistos.add(docId);
+          if (descVal) assinaturasVistas.add(sig);
+
+          const tagsArr = Array.isArray(item.tags) ? item.tags : (Array.isArray(raw.tags) ? raw.tags : []);
+          const isConviva = Boolean(
+            item.registradoConviva || item.registrado_conviva || item.isConviva ||
+            raw.registradoConviva || raw.registrado_conviva ||
+            tagsArr.some(t => String(t).toUpperCase().includes("CONVIVA")) ||
+            tipoVal.toUpperCase().includes("CONVIVA")
+          );
+
+          lista.push({
+            id: docId || `reg_${raStr}_${lista.length}`,
+            origem: origemVal,
+            tipo: tipoVal,
+            data: dataVal,
+            descricao: descVal || "Sem descrição",
+            encaminhamento: item.encaminhamento || item.providencias || item.resposta || item.retorno || raw.encaminhamento || raw.providencias || raw.resposta || "",
+            tipoContato: item.tipoContato || raw.tipoContato || "",
+            houveResposta: item.houveResposta ?? raw.houveResposta ?? null,
+            usuario: item.usuario || item.autor || raw.usuario || raw.autor || "",
+            autor_nome: item.autor_nome || raw.autor_nome || item.autor_criacao?.nome || raw.autor_criacao?.nome || "",
+            autor_email: item.autor_email || raw.autor_email || "",
+            editado_por_nome: item.editado_por_nome || raw.editado_por_nome || "",
+            isAtraso: Boolean(item.isAtraso || raw.isAtraso || tipoVal.toUpperCase().includes("ATRASO")),
+            isDispensa: Boolean(item.isDispensa || raw.isDispensa || tipoVal.toUpperCase().includes("DISPENSA")),
+            dataInicio: item.dataInicio || raw.dataInicio || "",
+            dataFim: item.dataFim || raw.dataFim || "",
+            motivoDispensa: item.motivoDispensa || raw.motivoDispensa || "",
+            registradoConviva: isConviva,
+            codigoConviva: item.codigoConviva || item.codigo_conviva || raw.codigoConviva || raw.codigo_conviva || "",
+            cienciaResponsavel: Boolean(item.cienciaResponsavel || raw.cienciaResponsavel),
+            tags: tagsArr,
+            rawDoc: raw
+          });
+        };
+
+        // 1. Ações já consolidadas no modal se ativo para este aluno
         const modalRa = document.getElementById("modal-aluno-ra-hidden")?.value;
         const modalAberto = modalRa && String(modalRa).trim() === raStr && !document.getElementById("modal-ficha-aluno")?.classList.contains("hidden");
-        if (modalAberto && Array.isArray(window.currentModalStudentAcoes) && window.currentModalStudentAcoes.length > 0) {
-          return window.currentModalStudentAcoes;
+        if (modalAberto && Array.isArray(window.currentModalStudentAcoes)) {
+          window.currentModalStudentAcoes.forEach(a => adicionarRegistro(a, a.origem || "OCORRENCIA"));
         }
 
-        // Buscar no cache de ocorrências global se existir
-        const pool = Array.isArray(window.ocorrenciasCache) && window.ocorrenciasCache.length > 0
-          ? window.ocorrenciasCache
-          : (Array.isArray(window.ocorrenciasTopLevel) ? window.ocorrenciasTopLevel : []);
-
-        if (pool.length > 0) {
-          const encontradas = pool.filter(o => {
-            const oRa = String(o.ra || "").trim();
-            return oRa === raStr || (raClean && oRa.replace(/\D/g, "") === raClean);
-          });
-          if (encontradas.length > 0) return encontradas;
+        // 2. Coleção ocorrencias em RAM (ocorrenciasCache e ocorrenciasTopLevel)
+        if (Array.isArray(window.ocorrenciasCache)) {
+          window.ocorrenciasCache.forEach(oc => { if (correspondeAluno(oc)) adicionarRegistro(oc, "OCORRENCIA"); });
+        }
+        if (Array.isArray(window.ocorrenciasTopLevel)) {
+          window.ocorrenciasTopLevel.forEach(oc => { if (correspondeAluno(oc)) adicionarRegistro(oc, "OCORRENCIA"); });
         }
 
-        // Fallback nos dados embutidos no objeto do estudante
-        if (Array.isArray(aluno.ocorrencias) && aluno.ocorrencias.length > 0) return aluno.ocorrencias;
-        if (Array.isArray(aluno.acoes) && aluno.acoes.length > 0) return aluno.acoes;
-        return [];
+        // 3. Coleção busca_ativa em RAM (contatosBaPorRaMap e todosContatosBaCache)
+        if (window.contatosBaPorRaMap instanceof Map) {
+          (window.contatosBaPorRaMap.get(raStr) || []).forEach(ba => adicionarRegistro(ba, "BUSCA_ATIVA"));
+          if (raClean && raClean !== raStr) {
+            (window.contatosBaPorRaMap.get(raClean) || []).forEach(ba => adicionarRegistro(ba, "BUSCA_ATIVA"));
+          }
+        } else if (Array.isArray(window.todosContatosBaCache)) {
+          window.todosContatosBaCache.forEach(ba => { if (correspondeAluno(ba)) adicionarRegistro(ba, "BUSCA_ATIVA"); });
+        }
+
+        // 4. Dados embutidos no objeto do estudante
+        const embutidos = [
+          ...(Array.isArray(aluno.ocorrencias) ? aluno.ocorrencias : []),
+          ...(Array.isArray(aluno.registros) ? aluno.registros : []),
+          ...(Array.isArray(aluno.acoes) ? aluno.acoes : [])
+        ];
+        embutidos.forEach(oc => adicionarRegistro(oc, oc.tipoContato || oc.houveResposta !== undefined ? "BUSCA_ATIVA" : "OCORRENCIA"));
+
+        lista.sort((a, b) => new Date(b.data || 0) - new Date(a.data || 0));
+        return lista;
       };
 
       // Gerador Universal do HTML Timbrado Oficial do Dossiê do Estudante
@@ -15955,37 +16455,34 @@ Yasmin Seline`;
         const modalFicha = document.getElementById("modal-ficha-aluno");
         const modalAtivo = Boolean(options.useModalValues && modalRa && String(modalRa).trim() === String(aluno.ra).trim() && modalFicha && !modalFicha.classList.contains("hidden"));
 
+        const logoUrl = window.obterLogoEscolaAtualUrl ? window.obterLogoEscolaAtualUrl() : "/logo-clovis.svg";
         const nome = (modalAtivo ? (document.getElementById("modal-edit-nome")?.value || aluno.nome) : aluno.nome) || "ESTUDANTE SEM NOME";
-        const nomeUpper = String(nome).toUpperCase();
+        const nomeUpper = escapeHtmlDossie(String(nome).toUpperCase());
         const digito = aluno.digito ? `-${aluno.digito}` : "";
-        const raVal = (aluno.ra ? `${aluno.ra}${digito}` : (aluno.id || "—")).toUpperCase();
-        const numChamada = aluno.numero_chamada || aluno.numero || "—";
+        const raVal = escapeHtmlDossie((aluno.ra ? `${aluno.ra}${digito}` : (aluno.id || "—")).toUpperCase());
+        const numChamada = escapeHtmlDossie(aluno.numero_chamada || aluno.numero || "—");
         const turma = (modalAtivo ? (document.getElementById("modal-edit-turma")?.value || aluno.turma) : aluno.turma) || "—";
-        const turmaUpper = String(turma).toUpperCase();
+        const turmaUpper = escapeHtmlDossie(String(turma).toUpperCase());
         const status = (modalAtivo ? (document.getElementById("modal-edit-status")?.value || aluno.status) : aluno.status) || "ATIVO";
-        const statusUpper = String(status).toUpperCase();
+        const statusUpper = escapeHtmlDossie(String(status).toUpperCase());
         const segmento = (modalAtivo ? (document.getElementById("modal-edit-segmento")?.value || aluno.segmento) : aluno.segmento) || "—";
-        const segmentoUpper = String(segmento).toUpperCase();
+        const segmentoUpper = escapeHtmlDossie(String(segmento).toUpperCase());
         const tutor = (modalAtivo ? (document.getElementById("modal-edit-tutor")?.value || aluno.tutor || aluno.tutor_2026) : (aluno.tutor || aluno.tutor_2026)) || "—";
-        const tutorUpper = String(tutor).toUpperCase();
+        const tutorUpper = escapeHtmlDossie(String(tutor).toUpperCase());
         const clube = (modalAtivo ? (document.getElementById("modal-edit-clube")?.value || aluno.clube) : aluno.clube) || "—";
-        const clubeUpper = String(clube).toUpperCase();
+        const clubeUpper = escapeHtmlDossie(String(clube).toUpperCase());
         const eletiva = (modalAtivo ? (document.getElementById("modal-edit-eletiva")?.value || aluno.eletivas || aluno.eletiva) : (aluno.eletivas || aluno.eletiva)) || "—";
-        const eletivaUpper = String(eletiva).toUpperCase();
+        const eletivaUpper = escapeHtmlDossie(String(eletiva).toUpperCase());
         const protagonismo = (modalAtivo ? (document.getElementById("modal-edit-protagonismo")?.value || aluno.protagonismo) : aluno.protagonismo) || "—";
-        const protagonismoUpper = String(protagonismo).toUpperCase();
+        const protagonismoUpper = escapeHtmlDossie(String(protagonismo).toUpperCase());
         const pv = (modalAtivo ? (document.getElementById("modal-edit-pv")?.value || aluno.projeto_vida_2026 || aluno.projeto_vida || aluno.projetoDeVida || aluno.pv || aluno.sonhos || aluno.projetodevida || aluno.projetoVida) : (aluno.projeto_vida_2026 || aluno.projeto_vida || aluno.projetoDeVida || aluno.pv || aluno.sonhos || aluno.projetodevida || aluno.projetoVida)) || "—";
-        const pvUpper = String(pv).toUpperCase();
-        const evolucao = (modalAtivo ? (document.getElementById("modal-edit-evolucao")?.value || aluno.evolucao) : aluno.evolucao) || "—";
-        const evolucaoUpper = String(evolucao).toUpperCase();
+        const pvTexto = escapeHtmlDossie(String(pv).trim());
+        const evolucaoRaw = (modalAtivo ? (document.getElementById("modal-edit-evolucao")?.value || aluno.evolucao) : aluno.evolucao) || "";
+        const evolucaoTexto = escapeHtmlDossie(String(evolucaoRaw).trim());
 
-        const freqVal = (modalAtivo ? document.getElementById("modal-display-freq-val")?.textContent : null) || aluno.presenca_anual || aluno.presenca_atual || aluno.presenca || "—";
-        const freqData = (modalAtivo ? document.getElementById("modal-display-freq-data")?.textContent : null) || "SED SP";
-        const atrasos = (modalAtivo ? document.getElementById("modal-display-atrasos-val")?.textContent : null) || aluno.atrasos || "0";
+        const freqVal = escapeHtmlDossie((modalAtivo ? document.getElementById("modal-display-freq-val")?.textContent : null) || aluno.presenca_anual || aluno.presenca_atual || aluno.presenca || "—");
+        const freqData = escapeHtmlDossie((modalAtivo ? document.getElementById("modal-display-freq-data")?.textContent : null) || "SED SP");
 
-        // CORREÇÃO CRÍTICA DO BUG DE AEE E RECOMPOSIÇÃO:
-        // Apenas lê do DOM se o modal de edição estiver comprovadamente ativo para ESTE aluno.
-        // Caso contrário, valida estritamente os dados do banco/memória usando as funções verificadoras oficiais.
         const isRec = (modalAtivo && document.getElementById("modal-edit-recomposicao"))
           ? document.getElementById("modal-edit-recomposicao").checked
           : window.verificarAlunoRecomposicao(aluno);
@@ -15998,6 +16495,9 @@ Yasmin Seline`;
         const aeeVal = isAee ? "SIM" : "NÃO";
 
         const acoesList = window.obterOcorrenciasAluno(aluno);
+        const atrasosCalculados = acoesList.filter(a => a.isAtraso && !a.isDispensa).length;
+        const atrasosRaw = (modalAtivo ? document.getElementById("modal-display-atrasos-val")?.textContent : null) || aluno.atrasos || atrasosCalculados || "0";
+        const atrasos = Math.max(parseInt(String(atrasosRaw).replace(/\D/g, ""), 10) || 0, atrasosCalculados);
 
         const dataEmissao = options.dataEmissao || new Date().toLocaleDateString("pt-BR", {
           day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
@@ -16023,7 +16523,7 @@ Yasmin Seline`;
                 <span class="font-extrabold text-blue-950 uppercase text-[11px]">Quadro Sintético de Médias Bimestrais (SED SP)</span>
                 <span class="text-[10px] text-slate-500 font-mono">Ano Letivo 2026</span>
               </div>
-              <div class="grid grid-cols-2 sm:grid-cols-6 gap-2 text-center">
+              <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center">
                 <div class="p-2 bg-white rounded border border-slate-200">
                   <span class="text-[9px] text-slate-500 uppercase block font-bold">1º Bimestre</span>
                   <span class="font-black text-sm text-blue-950">${nObj['1B']?.mediaGeral !== undefined ? nObj['1B'].mediaGeral : '—'}</span>
@@ -16047,49 +16547,77 @@ Yasmin Seline`;
                 <div class="p-2 bg-amber-50 rounded border border-amber-300">
                   <span class="text-[9px] text-amber-900 uppercase block font-bold">Conselho Final</span>
                   <span class="font-black text-sm text-amber-950">${nObj['FINAL']?.mediaGeral !== undefined ? nObj['FINAL'].mediaGeral : '—'}</span>
-                  <span class="text-[9px] text-amber-800 block">${aluno.situacao_final_ano || nObj['FINAL']?.situacao || 'Em Curso'}</span>
+                  <span class="text-[9px] text-amber-800 block">${escapeHtmlDossie(aluno.situacao_final_ano || nObj['FINAL']?.situacao || 'Em Curso')}</span>
                 </div>
                 <div class="p-2 bg-blue-50 rounded border border-blue-300">
                   <span class="text-[9px] text-blue-900 uppercase block font-bold">Média Consolidada</span>
                   <span class="font-black text-sm ${mediaDossie.media !== null && mediaDossie.media < 5.0 ? 'text-rose-700' : 'text-blue-950'}">${mediaDossie.mediaFormatada}</span>
-                  <span class="text-[9px] text-blue-700 block">${mediaDossie.detalheBimestres}</span>
+                  <span class="text-[9px] text-blue-700 block">${escapeHtmlDossie(mediaDossie.detalheBimestres)}</span>
                 </div>
               </div>
             </div>
           `;
         }
 
-        // 2. Renderizar Histórico Unificado de Ocorrências e Busca Ativa
+        // 2. Renderizar Histórico Unificado de Ocorrências, CONVIVA e Busca Ativa (layout espaçoso sem Controle Conviva / sem coluna Registrado por / sem e-mail)
         let acoesHtml = "";
         if (acoesList.length > 0) {
           acoesHtml = `
-            <table class="w-full text-left border-collapse border border-slate-300 text-xs mt-2">
+            <table class="w-full text-left border-collapse border border-slate-300 text-[11px] mt-2 table-fixed">
               <thead class="dossie-header-repeat">
-                <tr class="bg-slate-100 text-slate-800 font-bold uppercase text-[10px] border-b border-slate-300">
-                  <th class="py-1.5 px-2 text-center w-8 border-r border-slate-300">#</th>
-                  <th class="py-1.5 px-2 border-r border-slate-300 w-24">Data</th>
-                  <th class="py-1.5 px-2 border-r border-slate-300 w-28">Origem / Tipo</th>
-                  <th class="py-1.5 px-2 border-r border-slate-300">Descrição / Encaminhamento</th>
-                  <th class="py-1.5 px-2 text-center border-r border-slate-300 w-28">Controle Conviva</th>
-                  <th class="py-1.5 px-2 text-center w-24">Registrado por</th>
+                <tr class="bg-slate-100 text-slate-800 font-bold uppercase text-[9.5px] border-b border-slate-300">
+                  <th class="py-1.5 px-1.5 text-center border-r border-slate-300" style="width: 30px;">#</th>
+                  <th class="py-1.5 px-2 border-r border-slate-300" style="width: 74px;">Data</th>
+                  <th class="py-1.5 px-2 border-r border-slate-300" style="width: 108px;">Origem / Tipo</th>
+                  <th class="py-1.5 px-2.5">Registro / Relato & Encaminhamentos</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-200">
                 ${acoesList.map((ac, idx) => {
-                  const isConviva = Boolean(ac.registradoConviva || ac.registrado_conviva);
-                  const codConviva = ac.codigoConviva || ac.codigo_conviva || "";
-                  const badgeConviva = isConviva
-                    ? `<span class="px-1.5 py-0.5 bg-purple-100 text-purple-900 border border-purple-300 font-extrabold rounded text-[9px] uppercase inline-block">CONVIVA ${codConviva ? '#' + codConviva : ''}</span>`
-                    : `<span class="px-1.5 py-0.5 bg-slate-100 text-slate-600 border border-slate-300 font-bold rounded text-[9px] uppercase inline-block">INTERNO</span>`;
+                  const rawDataFmt = typeof formatarDataBR === "function" ? (formatarDataBR(ac.data) || ac.data || "—") : (ac.data || "—");
+                  const dataFmt = escapeHtmlDossie(rawDataFmt);
+                  const origemUpper = String(ac.origem || "").toUpperCase();
+                  const isBuscaAtiva = origemUpper === "BUSCA_ATIVA";
+                  const tipoExibicao = escapeHtmlDossie(ac.tipo || (isBuscaAtiva ? "BUSCA ATIVA" : "OCORRÊNCIA"));
+                  const origemBadge = isBuscaAtiva
+                    ? `<span class="block text-[8.5px] font-black text-emerald-800 uppercase tracking-wide mb-0.5">Busca Ativa</span>`
+                    : `<span class="block text-[8.5px] font-black text-blue-900 uppercase tracking-wide mb-0.5">Ocorrência</span>`;
+
+                  const descLimpa = escapeHtmlDossie(String(ac.descricao || ac.observacao || "—").trim());
+                  const encLimpo = escapeHtmlDossie(String(ac.encaminhamento || "").trim());
+                  const encNovo = encLimpo && !descLimpa.toLowerCase().includes(encLimpo.toLowerCase());
+
+                  const baCanalInfo = isBuscaAtiva && (ac.tipoContato || ac.houveResposta !== null)
+                    ? `<div class="mt-1 text-[9.5px] text-emerald-900 font-medium">${ac.tipoContato ? `Canal: ${escapeHtmlDossie(ac.tipoContato)}` : ""}${ac.tipoContato && ac.houveResposta !== null && ac.houveResposta !== undefined ? " &bull; " : ""}${ac.houveResposta === true || ac.houveResposta === "sim" ? "Retorno da família: Sim" : (ac.houveResposta === false || ac.houveResposta === "nao" ? "Retorno da família: Sem resposta" : "")}</div>`
+                    : "";
+
+                  const dispensaInfo = ac.isDispensa && ac.dataInicio && ac.dataFim
+                    ? `<div class="mt-1 text-[9.5px] text-blue-900 font-semibold">Período de Dispensa: ${escapeHtmlDossie(String(ac.dataInicio).split("-").reverse().join("/"))} a ${escapeHtmlDossie(String(ac.dataFim).split("-").reverse().join("/"))}${ac.motivoDispensa ? ` (${escapeHtmlDossie(ac.motivoDispensa)})` : ""}</div>`
+                    : "";
+
+                  const nomeAutor = escapeHtmlDossie(
+                    window.extrairSomenteNomeAutor
+                      ? window.extrairSomenteNomeAutor(ac.usuario || ac.autor, ac.rawDoc || ac)
+                      : (ac.autor_nome || "Equipe Escolar")
+                  );
 
                   return `
-                    <tr class="border-b border-slate-200">
-                      <td class="py-1.5 px-2 text-center font-bold text-slate-500">${idx + 1}</td>
-                      <td class="py-1.5 px-2 font-mono text-slate-700">${typeof formatarDataBR === 'function' ? (formatarDataBR(ac.data) || ac.data || "—") : (ac.data || "—")}</td>
-                      <td class="py-1.5 px-2 font-bold uppercase ${ac.origem === 'BUSCA_ATIVA' ? 'text-amber-800' : 'text-blue-900'}">${ac.tipo || ac.origem || 'OCORRÊNCIA'}</td>
-                      <td class="py-1.5 px-2 text-slate-800 uppercase whitespace-pre-wrap">${ac.descricao || ac.observacao || "—"}</td>
-                      <td class="py-1.5 px-2 text-center border-r border-slate-300 whitespace-nowrap">${badgeConviva}</td>
-                      <td class="py-1.5 px-2 text-center text-slate-600 uppercase text-[10px]">${ac.usuario || ac.autor || "GESTÃO"}</td>
+                    <tr class="border-b border-slate-200 align-top">
+                      <td class="py-2 px-1.5 text-center font-bold text-slate-500 border-r border-slate-200">${idx + 1}</td>
+                      <td class="py-2 px-2 font-mono text-[10px] text-slate-700 border-r border-slate-200 whitespace-nowrap">${dataFmt}</td>
+                      <td class="py-2 px-2 border-r border-slate-200 break-words">
+                        ${origemBadge}
+                        <span class="font-bold uppercase text-[10px] leading-tight block ${isBuscaAtiva ? 'text-emerald-900' : 'text-slate-800'}">${tipoExibicao}</span>
+                      </td>
+                      <td class="py-2 px-2.5 text-slate-800 break-words">
+                        <div class="whitespace-pre-wrap leading-relaxed text-[11px] text-slate-800">${descLimpa}</div>
+                        ${baCanalInfo}
+                        ${dispensaInfo}
+                        ${encNovo ? `<div class="mt-1 pt-1 border-t border-slate-100 text-[10px] text-slate-700 whitespace-pre-wrap"><strong class="text-slate-800">Encaminhamento:</strong> ${encLimpo}</div>` : ""}
+                        <div class="mt-1 text-[9px] text-slate-500 leading-tight">
+                          Registrado por: <span class="font-semibold text-slate-600">${nomeAutor}</span>
+                        </div>
+                      </td>
                     </tr>
                   `;
                 }).join('')}
@@ -16110,24 +16638,29 @@ Yasmin Seline`;
               <thead class="dossie-header-repeat">
                 <tr>
                   <th class="font-normal text-left pb-3 border-b-2 border-blue-900">
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <div>
-                        <span class="text-[10px] font-extrabold uppercase tracking-widest text-slate-700 block">
-                          Governo do Estado de São Paulo &bull; Secretaria da Educação
-                        </span>
-                        <h1 class="text-base font-black text-blue-950 uppercase tracking-wide">
-                          E.E. CLÓVIS DE LUCCA &bull; PROGRAMA DE ENSINO INTEGRAL (PEI)
-                        </h1>
-                        <h2 class="text-xs font-bold text-blue-800 uppercase">
-                          DOSSIÊ ESCOLAR OFICIAL DO ESTUDANTE: ${nomeUpper}
-                        </h2>
-                        <p class="text-[10px] text-slate-500 mt-0.5">
-                          RA: <strong class="text-slate-800 font-mono">${raVal}</strong> &bull; Turma: <strong class="text-slate-800">${turmaUpper}</strong> &bull; Nº: <strong class="text-slate-800">${numChamada}</strong>
-                        </p>
+                    <div class="flex items-center justify-between gap-4">
+                      <div class="flex items-center gap-3.5 min-w-0">
+                        <div class="w-14 h-14 sm:w-16 sm:h-16 shrink-0 rounded-lg border border-slate-200 bg-white p-1 flex items-center justify-center">
+                          <img src="${logoUrl}" alt="Logo E.E. Clóvis de Lucca" class="w-full h-full object-contain logo-escola-img" />
+                        </div>
+                        <div class="min-w-0">
+                          <span class="text-[9.5px] font-extrabold uppercase tracking-widest text-slate-600 block">
+                            Governo do Estado de São Paulo &bull; Secretaria da Educação
+                          </span>
+                          <h1 class="text-sm sm:text-base font-black text-blue-950 uppercase tracking-wide leading-tight">
+                            E.E. CLÓVIS DE LUCCA &bull; PROGRAMA DE ENSINO INTEGRAL (PEI)
+                          </h1>
+                          <h2 class="text-xs font-bold text-blue-800 uppercase mt-0.5">
+                            DOSSIÊ ESCOLAR OFICIAL DO ESTUDANTE: ${nomeUpper}
+                          </h2>
+                          <p class="text-[10px] text-slate-600 mt-0.5">
+                            RA: <strong class="text-slate-900 font-mono">${raVal}</strong> &bull; Turma: <strong class="text-slate-900">${turmaUpper}</strong> &bull; Nº: <strong class="text-slate-900">${numChamada}</strong>
+                          </p>
+                        </div>
                       </div>
-                      <div class="text-left sm:text-right text-[11px] text-slate-500 shrink-0">
-                        <p class="font-bold text-slate-800">Emissão: ${dataEmissao}</p>
-                        <span class="inline-block px-2 py-0.5 mt-1 text-[10px] font-black rounded border ${statusUpper === 'ATIVO' ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-amber-50 text-amber-900 border-amber-300'} uppercase">
+                      <div class="text-right text-[10.5px] text-slate-500 shrink-0">
+                        <p class="font-bold text-slate-800">Emissão: ${escapeHtmlDossie(dataEmissao)}</p>
+                        <span class="inline-block px-2 py-0.5 mt-1 text-[9.5px] font-black rounded border ${statusUpper === 'ATIVO' ? 'bg-emerald-50 text-emerald-800 border-emerald-300' : 'bg-amber-50 text-amber-900 border-amber-300'} uppercase">
                           Status: ${statusUpper}
                         </span>
                       </div>
@@ -16138,7 +16671,7 @@ Yasmin Seline`;
               <tbody>
                 <tr>
                   <td class="pt-4 align-top font-normal text-left">
-                    {/* 1. Identificação do Estudante & Frequência */}
+                    <!-- 1. Identificação do Estudante & Frequência -->
                     <div class="dossie-section mb-4">
                       <h3 class="text-xs font-bold text-blue-900 uppercase border-b border-slate-300 pb-1 mb-2 flex items-center justify-between">
                         <span>1. Identificação do Estudante & Frequência Escolar</span>
@@ -16169,7 +16702,7 @@ Yasmin Seline`;
                           <tr class="border-b border-slate-200">
                             <td class="bg-slate-100 p-2 font-bold border-r border-slate-300">Média Geral SED (Notas):</td>
                             <td class="p-2 font-black ${mediaDossie.media !== null && mediaDossie.media < 5.0 ? 'text-red-700' : 'text-blue-950'} border-r border-slate-300">
-                              ${mediaDossie.mediaFormatada} <span class="text-[10px] font-normal text-slate-500">(${mediaDossie.detalheBimestres})</span>
+                              ${mediaDossie.mediaFormatada} <span class="text-[10px] font-normal text-slate-500">(${escapeHtmlDossie(mediaDossie.detalheBimestres)})</span>
                             </td>
                             <td class="bg-slate-100 p-2 font-bold border-r border-slate-300">Bimestres com Fechamento:</td>
                             <td class="p-2 font-bold text-slate-800">${mediaDossie.bimestresContados > 0 ? `${mediaDossie.bimestresContados} bimestre(s)` : 'Aguardando SED'}</td>
@@ -16188,7 +16721,7 @@ Yasmin Seline`;
                       </table>
                     </div>
 
-                    {/* 2. Tutoria, Protagonismo Juvenil & Projeto de Vida */}
+                    <!-- 2. Tutoria, Protagonismo Juvenil & Projeto de Vida -->
                     <div class="dossie-section mb-4">
                       <h3 class="text-xs font-bold text-blue-900 uppercase border-b border-slate-300 pb-1 mb-2">
                         2. Tutoria, Protagonismo Juvenil & Projeto de Vida
@@ -16209,23 +16742,23 @@ Yasmin Seline`;
                           </tr>
                           <tr>
                             <td class="bg-slate-100 p-2 font-bold border-r border-slate-300">Sonhos & Projeto de Vida:</td>
-                            <td colspan="3" class="p-2 text-slate-800 uppercase italic">${pvUpper}</td>
+                            <td colspan="3" class="p-2 text-slate-800 italic">${pvTexto}</td>
                           </tr>
                         </tbody>
                       </table>
                     </div>
 
-                    {/* 3. Parecer Pedagógico & Evolução do Estudante */}
+                    <!-- 3. Parecer Pedagógico & Evolução do Estudante -->
                     <div class="dossie-section mb-4">
                       <h3 class="text-xs font-bold text-blue-900 uppercase border-b border-slate-300 pb-1 mb-2">
                         3. Parecer Pedagógico & Evolução do Estudante
                       </h3>
-                      <div class="p-3 bg-slate-50 border border-slate-300 rounded text-xs text-slate-800 uppercase whitespace-pre-wrap min-h-[40px]">
-                        ${evolucaoUpper !== "—" ? evolucaoUpper : "Nenhum parecer cadastrado até o momento."}
+                      <div class="p-3 bg-slate-50 border border-slate-300 rounded text-xs text-slate-800 leading-relaxed whitespace-pre-wrap min-h-[44px]">
+                        ${evolucaoTexto && evolucaoTexto !== "—" ? evolucaoTexto : "Nenhum parecer cadastrado até o momento."}
                       </div>
                     </div>
 
-                    {/* 4. Rendimento Escolar & Fechamento de Notas */}
+                    <!-- 4. Rendimento Escolar & Fechamento de Notas -->
                     <div class="dossie-section mb-4">
                       <h3 class="text-xs font-bold text-blue-900 uppercase border-b border-slate-300 pb-1 mb-2 flex items-center justify-between">
                         <span>4. Rendimento Escolar & Fechamento de Notas (SED)</span>
@@ -16236,7 +16769,7 @@ Yasmin Seline`;
                       </div>
                     </div>
 
-                    {/* 5. Histórico Unificado de Ocorrências Pedagógicas e Busca Ativa */}
+                    <!-- 5. Histórico Unificado de Ocorrências Pedagógicas, CONVIVA e Busca Ativa -->
                     <div class="dossie-section mb-6">
                       <h3 class="text-xs font-bold text-blue-900 uppercase border-b border-slate-300 pb-1 mb-2 flex items-center justify-between">
                         <span>5. Histórico Unificado de Ocorrências Pedagógicas, CONVIVA e Busca Ativa</span>
@@ -16245,23 +16778,32 @@ Yasmin Seline`;
                       ${acoesHtml}
                     </div>
 
-                    {/* Termo de Ciência & Assinaturas Oficiais */}
-                    <div class="dossie-signature-block pt-12 mt-12 border-t border-slate-300 grid grid-cols-4 gap-4 text-center text-[10px] text-slate-700 uppercase">
-                      <div>
-                        <div class="border-t border-slate-400 pt-1 font-bold">Professor(a) Tutor(a) PEI</div>
-                        <div class="text-[9px] text-slate-500">${tutorUpper}</div>
-                      </div>
-                      <div>
-                        <div class="border-t border-slate-400 pt-1 font-bold">Coordenação Pedagógica</div>
-                        <div class="text-[9px] text-slate-500">Equipe de Gestão PEI</div>
-                      </div>
-                      <div>
-                        <div class="border-t border-slate-400 pt-1 font-bold">Direção Escolar</div>
-                        <div class="text-[9px] text-slate-500">E.E. Clóvis de Lucca</div>
-                      </div>
-                      <div>
-                        <div class="border-t border-slate-400 pt-1 font-bold">Responsável Legal</div>
-                        <div class="text-[9px] text-slate-500">Ciência da Família</div>
+                    <!-- Termo de Ciência & Assinaturas Oficiais -->
+                    <div class="dossie-signature-block pt-4 mt-6 border-t border-slate-300">
+                      <p class="text-[9.5px] font-bold uppercase tracking-wider text-slate-500 text-center mb-2">
+                        Termo de Ciência &amp; Validação Institucional
+                      </p>
+                      <div class="dossie-signature-grid grid grid-cols-1 sm:grid-cols-2 gap-x-10 gap-y-5 text-center text-[10px] text-slate-700 uppercase">
+                        <div>
+                          <div class="h-12"></div>
+                          <div class="border-t border-slate-500 pt-1.5 font-bold text-slate-800">Professor(a) Tutor(a) PEI</div>
+                          <div class="text-[9px] text-slate-500 truncate">${tutorUpper}</div>
+                        </div>
+                        <div>
+                          <div class="h-12"></div>
+                          <div class="border-t border-slate-500 pt-1.5 font-bold text-slate-800">Coordenação Pedagógica</div>
+                          <div class="text-[9px] text-slate-500">Equipe de Gestão PEI &bull; Carimbo / Assinatura</div>
+                        </div>
+                        <div>
+                          <div class="h-12"></div>
+                          <div class="border-t border-slate-500 pt-1.5 font-bold text-slate-800">Direção Escolar</div>
+                          <div class="text-[9px] text-slate-500">E.E. Clóvis de Lucca &bull; Carimbo / Assinatura</div>
+                        </div>
+                        <div>
+                          <div class="h-12"></div>
+                          <div class="border-t border-slate-500 pt-1.5 font-bold text-slate-800">Responsável Legal</div>
+                          <div class="text-[9px] text-slate-500">Ciência da Família &bull; Data: ____/____/2026</div>
+                        </div>
                       </div>
                     </div>
 
@@ -16277,18 +16819,23 @@ Yasmin Seline`;
       };
 
       // Impressão Individual do Dossiê do Aluno
-      window.imprimirDossieAluno = function() {
+      window.imprimirDossieAluno = async function() {
         const raHidden = document.getElementById("modal-aluno-ra-hidden")?.value || "";
         if (!raHidden) {
           window.showToast("Nenhum estudante selecionado no dossiê para impressão.", "warning");
           return;
         }
 
-        const aluno = (window.allStudentsData || []).find(s => String(s.ra) === String(raHidden)) || window.currentAlunoModalData || {};
-
         const container = document.getElementById("conteudo-impressao-dossie-aluno");
         const modal = document.getElementById("modal-impressao-dossie-aluno");
         if (!container || !modal) return;
+
+        if (typeof window.garantirRegistrosDossieEmMemoria === "function") {
+          await window.garantirRegistrosDossieEmMemoria();
+        }
+
+        const alunoFromList = (window.allStudentsData || []).find(s => String(s.ra) === String(raHidden)) || {};
+        const aluno = { ...alunoFromList, ...(window.currentAlunoModalData || {}) };
 
         container.innerHTML = window.gerarHtmlDossieAluno(aluno, { useModalValues: true });
 
@@ -16297,6 +16844,122 @@ Yasmin Seline`;
         setTimeout(() => {
           window.print();
         }, 300);
+      };
+
+      // Download Direto do Dossiê do Estudante em Arquivo PDF (sem janela de impressão)
+      window.salvarDossieAlunoPdf = async function(btnEl) {
+        const raHidden = document.getElementById("modal-aluno-ra-hidden")?.value || "";
+        if (!raHidden) {
+          window.showToast("Nenhum estudante selecionado no dossiê para gerar o PDF.", "warning");
+          return;
+        }
+
+        const btns = btnEl
+          ? [btnEl]
+          : Array.from(document.querySelectorAll("[data-btn-salvar-dossie-pdf]"));
+        const backups = btns.map(b => ({ b, html: b.innerHTML, disabled: b.disabled }));
+        btns.forEach(b => {
+          b.disabled = true;
+          b.innerHTML = `<i class="fa-solid fa-spinner animate-spin text-xs"></i><span>Gerando PDF...</span>`;
+        });
+
+        try {
+          if (typeof window.garantirRegistrosDossieEmMemoria === "function") {
+            await window.garantirRegistrosDossieEmMemoria();
+          }
+
+          const alunoFromList = (window.allStudentsData || []).find(s => String(s.ra) === String(raHidden)) || {};
+          const aluno = { ...alunoFromList, ...(window.currentAlunoModalData || {}) };
+
+          const modalRa = document.getElementById("modal-aluno-ra-hidden")?.value;
+          const modalFicha = document.getElementById("modal-ficha-aluno");
+          const modalAtivo = Boolean(modalRa && String(modalRa).trim() === String(aluno.ra || raHidden).trim() && modalFicha && !modalFicha.classList.contains("hidden"));
+
+          const logoUrl = window.obterLogoEscolaAtualUrl ? window.obterLogoEscolaAtualUrl() : "/logo-clovis.svg";
+          const nome = (modalAtivo ? (document.getElementById("modal-edit-nome")?.value || aluno.nome) : aluno.nome) || "ESTUDANTE SEM NOME";
+          const digito = aluno.digito ? `-${aluno.digito}` : "";
+          const raVal = (aluno.ra ? `${aluno.ra}${digito}` : (aluno.id || raHidden || "—")).toUpperCase();
+          const numChamada = String(aluno.numero_chamada || aluno.numero || "—");
+          const turma = (modalAtivo ? (document.getElementById("modal-edit-turma")?.value || aluno.turma) : aluno.turma) || "—";
+          const status = (modalAtivo ? (document.getElementById("modal-edit-status")?.value || aluno.status) : aluno.status) || "ATIVO";
+          const segmento = (modalAtivo ? (document.getElementById("modal-edit-segmento")?.value || aluno.segmento) : aluno.segmento) || "—";
+          const tutor = (modalAtivo ? (document.getElementById("modal-edit-tutor")?.value || aluno.tutor || aluno.tutor_2026) : (aluno.tutor || aluno.tutor_2026)) || "—";
+          const clube = (modalAtivo ? (document.getElementById("modal-edit-clube")?.value || aluno.clube) : aluno.clube) || "—";
+          const eletiva = (modalAtivo ? (document.getElementById("modal-edit-eletiva")?.value || aluno.eletivas || aluno.eletiva) : (aluno.eletivas || aluno.eletiva)) || "—";
+          const protagonismo = (modalAtivo ? (document.getElementById("modal-edit-protagonismo")?.value || aluno.protagonismo) : aluno.protagonismo) || "—";
+          const projetoVida = (modalAtivo ? (document.getElementById("modal-edit-pv")?.value || aluno.projeto_vida_2026 || aluno.projeto_vida || aluno.projetoDeVida || aluno.pv || aluno.sonhos || aluno.projetodevida || aluno.projetoVida) : (aluno.projeto_vida_2026 || aluno.projeto_vida || aluno.projetoDeVida || aluno.pv || aluno.sonhos || aluno.projetodevida || aluno.projetoVida)) || "—";
+          const evolucao = (modalAtivo ? (document.getElementById("modal-edit-evolucao")?.value || aluno.evolucao) : aluno.evolucao) || "";
+
+          const freqVal = (modalAtivo ? document.getElementById("modal-display-freq-val")?.textContent : null) || aluno.presenca_anual || aluno.presenca_atual || aluno.presenca || "—";
+          const freqData = (modalAtivo ? document.getElementById("modal-display-freq-data")?.textContent : null) || "SED SP";
+
+          const isRec = (modalAtivo && document.getElementById("modal-edit-recomposicao"))
+            ? document.getElementById("modal-edit-recomposicao").checked
+            : window.verificarAlunoRecomposicao(aluno);
+
+          const isAee = (modalAtivo && document.getElementById("modal-edit-aee"))
+            ? document.getElementById("modal-edit-aee").checked
+            : window.verificarAlunoAEE(aluno);
+
+          const acoesList = window.obterOcorrenciasAluno ? window.obterOcorrenciasAluno(aluno) : [];
+          const atrasosCalculados = acoesList.filter(a => a.isAtraso && !a.isDispensa).length;
+          const atrasosRaw = (modalAtivo ? document.getElementById("modal-display-atrasos-val")?.textContent : null) || aluno.atrasos || atrasosCalculados || "0";
+          const atrasos = Math.max(parseInt(String(atrasosRaw).replace(/\D/g, ""), 10) || 0, atrasosCalculados);
+
+          const mediaDossie = window.calcularMediaNotasEstudante
+            ? window.calcularMediaNotasEstudante(aluno)
+            : { media: null, mediaFormatada: "—", bimestresContados: 0, detalheBimestres: "Sem notas" };
+
+          const dataEmissao = new Date().toLocaleDateString("pt-BR", {
+            day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
+          });
+
+          const fileName = await gerarESalvarDossieAlunoPdf({
+            logoUrl,
+            nome: String(nome),
+            raVal,
+            numChamada,
+            turma: String(turma),
+            status: String(status),
+            segmento: String(segmento),
+            freqVal: String(freqVal),
+            freqData: String(freqData),
+            atrasos,
+            mediaFormatada: String(mediaDossie.mediaFormatada || "—"),
+            detalheBimestres: String(mediaDossie.detalheBimestres || "Sem notas"),
+            bimestresContados: Number(mediaDossie.bimestresContados || 0),
+            recomposicaoVal: isRec ? "SIM" : "NÃO",
+            aeeVal: isAee ? "SIM" : "NÃO",
+            tutor: String(tutor),
+            clube: String(clube),
+            eletiva: String(eletiva),
+            protagonismo: String(protagonismo),
+            projetoVida: String(projetoVida),
+            evolucao: String(evolucao),
+            dataEmissao,
+            fechamentoNotas: aluno.fechamento_notas || {},
+            situacaoFinal: aluno.situacao_final_ano || aluno.fechamento_notas?.FINAL?.situacao || "Em Curso",
+            ocorrencias: acoesList,
+            extrairSomenteNomeAutor: window.extrairSomenteNomeAutor || ((raw) => String(raw || "Equipe Escolar")),
+            formatarDataBR: typeof formatarDataBR === "function" ? formatarDataBR : undefined
+          });
+
+          if (typeof window.showToast === "function") {
+            window.showToast(`PDF "${fileName}" baixado com sucesso!`, "success");
+          }
+        } catch (err) {
+          console.error("Erro ao gerar PDF direto do dossiê:", err);
+          if (typeof window.showErrorToast === "function") {
+            window.showErrorToast("Não foi possível gerar o PDF do dossiê.", err);
+          } else if (typeof window.showToast === "function") {
+            window.showToast("Erro ao gerar o PDF do dossiê: " + (err?.message || err), "error");
+          }
+        } finally {
+          backups.forEach(({ b, html, disabled }) => {
+            b.innerHTML = html;
+            b.disabled = disabled;
+          });
+        }
       };
 
       // =========================================================================
@@ -16313,11 +16976,9 @@ Yasmin Seline`;
 
         return base.filter(s => {
           if (!s) return false;
-          // Filtro por Turma
           if (selTurma && String(s.turma || "").trim().toUpperCase() !== selTurma) {
             return false;
           }
-          // Filtro por Segmento
           if (selSegmento) {
             const segAtual = String(s.segmento || "").trim().toUpperCase();
             if (segAtual && segAtual !== selSegmento) return false;
@@ -16328,7 +16989,6 @@ Yasmin Seline`;
               if (selSegmento === "ENSINO FUNDAMENTAL" && isMedio) return false;
             }
           }
-          // Filtro por Status
           if (selStatus === "ATIVO") {
             const stAtual = String(s.status || "ATIVO").trim().toUpperCase();
             if (stAtual !== "ATIVO") return false;
@@ -16359,12 +17019,16 @@ Yasmin Seline`;
       };
 
       window.executarExportacaoDossiesMassa = async function() {
-        // 1. Garantir que a base de estudantes está totalmente em memória
+        // 1. Garantir que a base de estudantes, ocorrências e busca ativa está totalmente em memória
         if (!Array.isArray(window.allStudentsData) || window.allStudentsData.length < 50) {
           if (typeof window.carregarTodosAlunos === "function") {
             window.showToast("Carregando base completa da escola antes de compilar os dossiês...", "info", 3000);
             await window.carregarTodosAlunos(true);
           }
+        }
+
+        if (typeof window.garantirRegistrosDossieEmMemoria === "function") {
+          await window.garantirRegistrosDossieEmMemoria();
         }
 
         const estudantes = window.obterEstudantesFiltradosExportacaoMassa();
@@ -16398,14 +17062,12 @@ Yasmin Seline`;
             day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
           });
 
-          // Compilar os dossiês sequenciais utilizando o gerador universal de dossiê timbrado
           const htmlCompilado = estudantes.map(s => {
             return window.gerarHtmlDossieAluno(s, { useModalValues: false, dataEmissao: dataHoje });
           }).join('\n');
 
           container.innerHTML = htmlCompilado;
 
-          // Exibe o modal de impressão em massa
           document.body.classList.add("imprimindo-modal");
           modal.classList.remove("hidden");
 
@@ -17457,19 +18119,96 @@ Yasmin Seline`;
       // GERAÇÃO DE PARECER PEDAGÓGICO COM IA (EXCLUSIVO DIREÇÃO, VICE E CGPG)
       // Permite personalização total do prompt e análise de todas as abas do dossiê
       // ==========================================
-      window.PROMPT_PADRAO_PARECER_IA = `Elabore um Parecer Pedagógico Oficial e conclusivo em exatamente DOIS (2) parágrafos ricos em detalhes, estritamente fundamentado nos dados reais do dossiê:
+      window.PROMPT_PADRAO_PARECER_IA = `Elabore um Parecer Pedagógico Oficial e conclusivo em exatamente DOIS (2) parágrafos ricos em detalhes, estritamente fundamentado em TODOS os dados reais do dossiê, dando prioridade central ao Histórico Unificado de Ocorrências Pedagógicas, CONVIVA SP e Busca Ativa:
 
-• 1º PARÁGRAFO (Diagnóstico Global, Trajetória no PEI e Registros Fatuais):
+• 1º PARÁGRAFO (Diagnóstico Global, Histórico Unificado de Ocorrências/CONVIVA/Busca Ativa, PEI e Rendimento):
   - Contextualize o(a) estudante (Nome completo, Turma/Série, E.E. Clóvis de Lucca, PEI).
-  - Analise os desafios convivenciais e comportamentais REAIS relatados no histórico de ocorrências (descreva a natureza dos fatos reais: episódios de indisciplina, atitudes afrontosas, boatos, intrigas, conflitos interpessoais, uso de celular ou desrespeito aos combinados; ou postura cooperativa e exemplar se for o caso).
-  - Destaque o engajamento nas atividades PEI citando expressamente os nomes do Clube Juvenil, da Eletiva e do(a) Professor(a) Tutor(a).
-  - Apresente os dados quantitativos exatos: taxa de frequência atual acompanhada do total de faltas acumuladas no ano, média geral consolidada, e CITE NOMINALMENTE cada disciplina com nota abaixo da média (< 5.0) e seu valor numérico, além da participação no projeto de recomposição/reforço intensivo ou AEE.
+  - Priorize a leitura analítica do Histórico Unificado: relate fielmente os fatos documentados nas Ocorrências Pedagógicas, protocolos do CONVIVA SP (com códigos, se houver) e registros/contatos de Busca Ativa Escolar (canais utilizados, retornos ou ausência de resposta da família, faltas consecutivas, dispensas ou atrasos recorrentes), destacando também postura cooperativa/exemplar quando não houver apontamentos graves.
+  - Destaque a participação nas rotinas do PEI citando expressamente os nomes do Clube Juvenil, da Eletiva, do Protagonismo e do(a) Professor(a) Tutor(a).
+  - Apresente os dados quantitativos completos: taxa de frequência atual, histórico/marcos de frequência e faltas acumuladas no ano, atrasos, média geral consolidada, CITE NOMINALMENTE cada disciplina abaixo da média (< 5,0) com sua respectiva nota (além de pontos de atenção entre 5,0 e 5,9 ou destaques quando relevante), e participação em Recomposição de Aprendizagem ou AEE.
 
-• 2º PARÁGRAFO (Síntese da Evolução, Intervenções e Encaminhamentos):
-  - Sintetize a evolução formativa e comportamental ao longo do período com base no conjunto das intervenções já realizadas (acolhimentos, termos de acordo, convocações aos responsáveis, postura familiar de parceria ou episódios de resistência, e acionamento da rede de proteção integral / Conselho Tutelar se constar no histórico).
-  - Aponte recomendações pedagógicas práticas para o Conselho de Classe e alinhamento com a família: fortalecimento do plano de recuperação nas disciplinas com defasagem citadas, metas de melhoria na frequência, pacto conjunto de corresponsabilidade comportamental com os pais, e apoio ao resgate e consolidação do Projeto de Vida específico do estudante (citando expressamente a carreira/área almejada).`;
+• 2º PARÁGRAFO (Síntese da Evolução, Intervenções de Rede/Busca Ativa e Encaminhamentos):
+  - Sintetize a evolução formativa e convivencial a partir do conjunto de intervenções da Gestão, Tutoria, CONVIVA e Busca Ativa (acolhimentos, termos de compromisso, atendimentos/retornos dos responsáveis legais, postura familiar de parceria ou resistência, e acionamento de FICAI, Ofício/DEMP ou Conselho Tutelar quando constar).
+  - Aponte recomendações pedagógicas práticas para o Conselho de Classe e alinhamento com a família: fortalecimento do plano de recuperação nas disciplinas com defasagem citadas, metas objetivas de frequência e pontualidade, pacto de corresponsabilidade comportamental e apoio direto ao Projeto de Vida específico do estudante (citando expressamente a área/carreira almejada).`;
 
-      window.abrirModalGeradorParecerIA = function() {
+      window.consolidarDadosCompletosAlunoIA = function(ra, alunoBase) {
+        const listaUnificada = window.obterOcorrenciasAluno
+          ? window.obterOcorrenciasAluno({ ...alunoBase, ra })
+          : [];
+
+        const raNorm = String(ra || "").replace(/\D/g, "");
+        let freqDiariaResumo = null;
+        if (Array.isArray(window.frequenciaDiariaCache) && window.frequenciaDiariaCache.length > 0 && raNorm) {
+          let presentes = 0, faltas = 0, licencas = 0, totalDias = 0;
+          const datasFalta = [];
+          window.frequenciaDiariaCache.forEach(docItem => {
+            const dataDoc = docItem.data || docItem.dataChamada || docItem.id || "";
+            if (docItem.registros && typeof docItem.registros === "object" && !Array.isArray(docItem.registros)) {
+              for (const [rk, reg] of Object.entries(docItem.registros)) {
+                if (String(rk).replace(/\D/g, "") === raNorm) {
+                  const st = String(typeof reg === "string" ? reg : reg?.status || "").toUpperCase();
+                  if (st) {
+                    totalDias++;
+                    if (st === "P" || st === "PRESENTE") presentes++;
+                    else if (st === "F" || st === "FALTA") { faltas++; datasFalta.push(dataDoc); }
+                    else if (st === "L" || st === "D" || st.includes("DISP") || st.includes("LIC")) licencas++;
+                  }
+                }
+              }
+            }
+          });
+          const consecInfo = typeof window.obterInfoFaltasConsecutivasAluno === "function"
+            ? window.obterInfoFaltasConsecutivasAluno({ ...alunoBase, ra })
+            : { faltasConsecutivas: 0, isGatilho3: false };
+          if (totalDias > 0 || consecInfo.faltasConsecutivas > 0) {
+            freqDiariaResumo = {
+              totalDiasChamada: totalDias,
+              presencas: presentes,
+              faltasChamadaDiaria: faltas,
+              dispensasOuLicencas: licencas,
+              faltasConsecutivasAtuais: consecInfo.faltasConsecutivas || 0,
+              gatilhoBuscaAtiva3Faltas: Boolean(consecInfo.isGatilho3),
+              ultimasDatasFalta: datasFalta.slice(-6)
+            };
+          }
+        }
+
+        const dispensas = [];
+        const seenDisp = new Set();
+        listaUnificada.filter(a => a.isDispensa && a.dataInicio && a.dataFim).forEach(d => {
+          const k = `${d.dataInicio}|${d.dataFim}|${d.motivoDispensa}`;
+          if (!seenDisp.has(k)) {
+            seenDisp.add(k);
+            dispensas.push({ dataInicio: d.dataInicio, dataFim: d.dataFim, motivo: d.motivoDispensa || d.tipo });
+          }
+        });
+        if (Array.isArray(alunoBase?.dispensas)) {
+          alunoBase.dispensas.forEach(d => {
+            if (d?.dataInicio && d?.dataFim) {
+              const k = `${d.dataInicio}|${d.dataFim}|${d.motivoDispensa || d.motivo || ""}`;
+              if (!seenDisp.has(k)) {
+                seenDisp.add(k);
+                dispensas.push({ dataInicio: d.dataInicio, dataFim: d.dataFim, motivo: d.motivoDispensa || d.motivo || "Dispensa Legal" });
+              }
+            }
+          });
+        }
+
+        const registrosConviva = listaUnificada.filter(r => r.registradoConviva);
+        const registrosBuscaAtiva = listaUnificada.filter(r => r.origem === "BUSCA_ATIVA");
+        const registrosOcorrencias = listaUnificada.filter(r => r.origem !== "BUSCA_ATIVA");
+
+        return {
+          listaUnificada,
+          registrosConviva,
+          registrosBuscaAtiva,
+          registrosOcorrencias,
+          freqDiariaResumo,
+          dispensas
+        };
+      };
+
+      window.abrirModalGeradorParecerIA = async function() {
         const role = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
         const roleNorm = String(role || "").toUpperCase().replace(/-/g, '_').trim();
         const canGerarParecer = (roleNorm === "DIRETOR" || roleNorm === "VICE_DIRETOR" || roleNorm === "CGPG" || roleNorm.includes("DIRETOR") || roleNorm.includes("VICE") || roleNorm.includes("CGPG"));
@@ -17503,36 +18242,45 @@ Yasmin Seline`;
         const pv = (document.getElementById("modal-edit-pv")?.value || alunoBase.projeto_vida_2026 || alunoBase.projeto_vida || alunoBase.pv || "—").toUpperCase();
         const recomposicao = document.getElementById("modal-edit-recomposicao")?.checked ?? (alunoBase.recomposicao || false);
         const aee = document.getElementById("modal-edit-aee")?.checked ?? (alunoBase.aee || false);
-        const ocorrenciasList = window.currentModalStudentAcoes || alunoBase.acoes || [];
 
-        // Atualiza cabeçalho do modal
+        const renderTagsModalIA = () => {
+          const consolidado = window.consolidarDadosCompletosAlunoIA(ra, alunoBase);
+          const elTags = document.getElementById("modal-ia-resumo-tags");
+          if (elTags) {
+            elTags.innerHTML = `
+              <span class="px-2 py-0.5 bg-blue-100 text-blue-900 font-bold rounded-md">📊 Freq: ${freqVal}</span>
+              <span class="px-2 py-0.5 bg-amber-100 text-amber-900 font-bold rounded-md">⏰ Atrasos: ${atrasosVal}</span>
+              <span class="px-2 py-0.5 bg-indigo-100 text-indigo-900 font-bold rounded-md">🎓 Média SED: ${mediaVal}</span>
+              <span class="px-2 py-0.5 bg-slate-200 text-slate-800 font-semibold rounded-md">🧑‍🏫 Tutor: ${tutor}</span>
+              <span class="px-2 py-0.5 bg-teal-100 text-teal-900 font-semibold rounded-md truncate max-w-[200px]" title="Projeto de Vida: ${pv}">🎯 PV: ${pv}</span>
+              ${recomposicao ? '<span class="px-2 py-0.5 bg-purple-100 text-purple-900 font-bold rounded-md">🔄 Recomposição</span>' : ''}
+              ${aee ? '<span class="px-2 py-0.5 bg-rose-100 text-rose-900 font-bold rounded-md">♿ AEE</span>' : ''}
+              <span class="px-2 py-0.5 bg-cyan-100 text-cyan-900 font-bold rounded-md">📋 ${consolidado.registrosOcorrencias.length} Ocorrência(s)</span>
+              <span class="px-2 py-0.5 bg-purple-100 text-purple-900 font-bold rounded-md">🛡️ ${consolidado.registrosConviva.length} CONVIVA</span>
+              <span class="px-2 py-0.5 bg-emerald-100 text-emerald-900 font-bold rounded-md">🔎 ${consolidado.registrosBuscaAtiva.length} Busca Ativa</span>
+              ${consolidado.dispensas.length > 0 ? `<span class="px-2 py-0.5 bg-sky-100 text-sky-900 font-bold rounded-md">📄 ${consolidado.dispensas.length} Dispensa(s)</span>` : ''}
+            `;
+          }
+        };
+
         const elSub = document.getElementById("modal-ia-estudante-sub");
         if (elSub) {
           elSub.textContent = `Estudante: ${nome} (RA: ${ra} | Turma: ${turma})`;
         }
 
-        // Renderiza tags resumo dos dados
-        const elTags = document.getElementById("modal-ia-resumo-tags");
-        if (elTags) {
-          elTags.innerHTML = `
-            <span class="px-2 py-0.5 bg-blue-100 text-blue-900 font-bold rounded-md">📊 Freq: ${freqVal}</span>
-            <span class="px-2 py-0.5 bg-amber-100 text-amber-900 font-bold rounded-md">⏰ Atrasos: ${atrasosVal}</span>
-            <span class="px-2 py-0.5 bg-indigo-100 text-indigo-900 font-bold rounded-md">🎓 Média SED: ${mediaVal}</span>
-            <span class="px-2 py-0.5 bg-slate-200 text-slate-800 font-semibold rounded-md">🧑‍🏫 Tutor: ${tutor}</span>
-            <span class="px-2 py-0.5 bg-teal-100 text-teal-900 font-semibold rounded-md truncate max-w-[200px]" title="Projeto de Vida: ${pv}">🎯 PV: ${pv}</span>
-            ${recomposicao ? '<span class="px-2 py-0.5 bg-purple-100 text-purple-900 font-bold rounded-md">🔄 Recomposição</span>' : ''}
-            ${aee ? '<span class="px-2 py-0.5 bg-rose-100 text-rose-900 font-bold rounded-md">♿ AEE</span>' : ''}
-            <span class="px-2 py-0.5 bg-cyan-100 text-cyan-900 font-bold rounded-md">📋 ${ocorrenciasList.length} Ocorrência(s)</span>
-          `;
-        }
+        renderTagsModalIA();
 
-        // Inicializa ou preserva o prompt no textarea
         const textareaPrompt = document.getElementById("modal-ia-prompt-input");
         if (textareaPrompt && !textareaPrompt.value.trim()) {
           textareaPrompt.value = window.PROMPT_PADRAO_PARECER_IA;
         }
 
         document.getElementById("modal-gerador-parecer-ia")?.classList.remove("hidden");
+
+        // Pré-carrega caches de Busca Ativa / Ocorrências / Frequência Diária em background para atualizar contadores exatos
+        if (typeof window.garantirRegistrosDossieEmMemoria === "function") {
+          window.garantirRegistrosDossieEmMemoria().then(() => renderTagsModalIA()).catch(() => {});
+        }
       };
 
       window.fecharModalGeradorParecerIA = function() {
@@ -17610,11 +18358,9 @@ Yasmin Seline`;
           }
         }
 
-        // Calcula média consolidada via calcularMediaNotasEstudante
         const mediaInfo = window.calcularMediaNotasEstudante ? window.calcularMediaNotasEstudante({ ...alunoBase, fechamento_notas: fechamentoNotas }) : { media: null, mediaFormatada: mediaVal };
-        let mediaGeralConsolidada = (mediaInfo && mediaInfo.mediaFormatada !== '—') ? mediaInfo.mediaFormatada : (mediaVal !== '—' ? mediaVal : '5,0');
+        let mediaGeralConsolidada = (mediaInfo && mediaInfo.mediaFormatada !== '—') ? mediaInfo.mediaFormatada : (mediaVal !== '—' ? mediaVal : '—');
 
-        // Calcula total de faltas acumuladas no ano
         let totalFaltasAcumuladas = 0;
         ['1B', '2B', '3B', '4B'].forEach(k => {
           if (fechamentoNotas[k]?.totalFaltas) totalFaltasAcumuladas += Number(fechamentoNotas[k].totalFaltas);
@@ -17626,100 +18372,7 @@ Yasmin Seline`;
           totalFaltasAcumuladas = Number(alunoBase.faltas || alunoBase.totalFaltas || alunoBase.faltas_acumuladas);
         }
 
-        const alunoPayload = {
-          ...alunoBase,
-          nome,
-          ra,
-          turma,
-          segmento,
-          status,
-          tutor,
-          clube,
-          eletivas: eletiva,
-          protagonismo,
-          projeto_vida_2026: pv,
-          recomposicao,
-          aee,
-          presenca_anual: freqVal,
-          frequencia_atual: freqVal,
-          atrasos: atrasosVal,
-          faltas_acumuladas: totalFaltasAcumuladas,
-          media_geral_calculada: mediaGeralConsolidada
-        };
-
-        // Carrega ocorrências no modal se ainda não carregadas
-        if ((!Array.isArray(window.currentModalStudentAcoes) || window.currentModalStudentAcoes.length === 0) && typeof window.carregarHistoricoAcoesModal === "function") {
-          try {
-            await window.carregarHistoricoAcoesModal(ra);
-          } catch (eC) {
-            console.warn("Aviso ao carregar histórico de ações:", eC);
-          }
-        }
-
-        // Consolidação exaustiva de todas as ocorrências do estudante de todas as fontes
-        let ocorrenciasList = [];
-        if (Array.isArray(window.currentModalStudentAcoes) && window.currentModalStudentAcoes.length > 0) {
-          ocorrenciasList = [...window.currentModalStudentAcoes];
-        }
-
-        // Registros embutidos no aluno
-        const extraEmb = [
-          ...(Array.isArray(alunoBase.ocorrencias) ? alunoBase.ocorrencias : []),
-          ...(Array.isArray(alunoBase.registros) ? alunoBase.registros : []),
-          ...(Array.isArray(alunoBase.acoes) ? alunoBase.acoes : [])
-        ];
-        extraEmb.forEach((oc, idx) => {
-          const desc = oc.descricao || oc.observacao || '';
-          if (desc && !ocorrenciasList.some(item => (item.descricao || '').trim() === desc.trim())) {
-            ocorrenciasList.push({
-              id: oc.id || `emb_${idx}`,
-              tipo: oc.tipo || 'Atendimento Pedagógico',
-              origem: oc.origem || 'OCORRENCIA',
-              data: oc.data || oc.dataRegistro || '',
-              descricao: desc,
-              usuario: oc.usuario || oc.autor || 'Gestão',
-              registradoConviva: Boolean(oc.registradoConviva || oc.registrado_conviva),
-              codigoConviva: oc.codigoConviva || oc.codigo_conviva || '',
-              encaminhamento: oc.encaminhamento || oc.providencias || oc.resposta || '',
-              cienciaResponsavel: Boolean(oc.cienciaResponsavel)
-            });
-          }
-        });
-
-        // Ocorrências da coleção global (TopLevel)
-        if (Array.isArray(window.ocorrenciasTopLevel)) {
-          const raNorm = String(ra).replace(/\D/g, '');
-          const nomeNorm = String(nome).toLowerCase().trim();
-          window.ocorrenciasTopLevel.forEach(oc => {
-            const ocRa = String(oc.ra || oc.aluno_ra || oc.alunoRa || '').replace(/\D/g, '');
-            const ocNome = String(oc.nomeAluno || oc.aluno_nome || oc.nome || '').toLowerCase().trim();
-            const matchesRa = ocRa && raNorm && (ocRa === raNorm || ocRa.includes(raNorm) || raNorm.includes(ocRa));
-            const matchesNome = ocNome && nomeNorm && (ocNome.includes(nomeNorm) || nomeNorm.includes(ocNome));
-            if (matchesRa || matchesNome) {
-              const desc = oc.descricao || oc.observacao || '';
-              if (desc && !ocorrenciasList.some(item => item.id === oc.id || (item.descricao || '').trim() === desc.trim())) {
-                ocorrenciasList.push({
-                  id: oc.id,
-                  tipo: oc.tipo || 'Ocorrência Pedagógica',
-                  origem: oc.origem || 'OCORRENCIA',
-                  data: oc.data || oc.dataRegistro || '',
-                  descricao: desc,
-                  usuario: oc.usuario || oc.autor || 'Gestão',
-                  registradoConviva: Boolean(oc.registradoConviva || oc.registrado_conviva),
-                  codigoConviva: oc.codigoConviva || oc.codigo_conviva || '',
-                  encaminhamento: oc.encaminhamento || oc.providencias || oc.resposta || '',
-                  cienciaResponsavel: Boolean(oc.cienciaResponsavel)
-                });
-              }
-            }
-          });
-        }
-
-        // Resumo descritivo de todas as abas
-        const resumoTexto = `Estudante: ${nome} (RA: ${ra}, Turma: ${turma}, Segmento: ${segmento}, Status: ${status}). Frequência Atual SED: ${freqVal} (${totalFaltasAcumuladas} faltas acumuladas no ano), Atrasos: ${atrasosVal}, Média Geral SED: ${mediaGeralConsolidada} (${mediaSub}). Tutor: ${tutor || 'Não informado'}, Clube: ${clube || 'Não informado'}, Eletiva: ${eletiva || 'Não informada'}, Protagonismo: ${protagonismo || 'Não informado'}, Projeto de Vida: ${pv || 'Não informado'}. Recomposição: ${recomposicao ? 'SIM' : 'NÃO'}, AEE: ${aee ? 'SIM' : 'NÃO'}. Histórico de Ocorrências: ${ocorrenciasList.length} registro(s) localizados.`;
-
         const promptCustomizado = (document.getElementById("modal-ia-prompt-input")?.value || window.PROMPT_PADRAO_PARECER_IA).trim();
-
         const btnExec = document.getElementById("btn-executar-geracao-parecer-ia");
         const btnHeader = document.getElementById("btn-gerar-parecer-ia");
         const textareaEvolucao = document.getElementById("modal-edit-evolucao");
@@ -17729,18 +18382,64 @@ Yasmin Seline`;
           btnExec.disabled = true;
           btnExec.innerHTML = `<i class="fa-solid fa-spinner animate-spin text-amber-300 text-xs"></i><span>Processando com IA...</span>`;
         }
-
         if (btnHeader) {
           btnHeader.disabled = true;
           btnHeader.innerHTML = `<i class="fa-solid fa-spinner animate-spin text-amber-300 text-xs"></i><span>Gerando...</span>`;
         }
-
         if (textareaEvolucao) {
-          textareaEvolucao.value = "⏳ Analisando todas as abas do Dossiê Escolar com base no prompt personalizado para elaboração do parecer pedagógico...";
+          textareaEvolucao.value = "⏳ Analisando todas as abas do Dossiê Escolar (Ocorrências, CONVIVA, Busca Ativa, Frequência, Notas e PEI) para elaboração do parecer pedagógico...";
           textareaEvolucao.classList.add("animate-pulse");
         }
 
         try {
+          if (typeof window.garantirRegistrosDossieEmMemoria === "function") {
+            await window.garantirRegistrosDossieEmMemoria();
+          }
+          if ((!Array.isArray(window.currentModalStudentAcoes) || window.currentModalStudentAcoes.length === 0) && typeof window.carregarHistoricoAcoesModal === "function") {
+            await window.carregarHistoricoAcoesModal(ra).catch(() => {});
+          }
+
+          const consolidado = window.consolidarDadosCompletosAlunoIA(ra, alunoBase);
+          // Remove e-mail bruto e deixa nome limpo para a IA também
+          const ocorrenciasList = consolidado.listaUnificada.map(oc => ({
+            ...oc,
+            usuario: window.extrairSomenteNomeAutor
+              ? window.extrairSomenteNomeAutor(oc.usuario, oc.rawDoc || oc)
+              : (oc.autor_nome || "Equipe Escolar")
+          }));
+
+          const alunoPayload = {
+            ...alunoBase,
+            nome,
+            ra,
+            turma,
+            segmento,
+            status,
+            tutor,
+            clube,
+            eletivas: eletiva,
+            protagonismo,
+            projeto_vida_2026: pv,
+            recomposicao,
+            aee,
+            presenca_anual: freqVal,
+            frequencia_atual: freqVal,
+            frequencia_anterior: alunoBase.frequencia_anterior || alunoBase.presenca_anterior || "",
+            presenca_15_06: alunoBase.presenca_15_06 || "",
+            presenca_26_06: alunoBase.presenca_26_06 || "",
+            sla_busca_ativa: alunoBase.sla_busca_ativa || "",
+            oficio: alunoBase.oficio || "",
+            ficha_ct: alunoBase.ficha_ct || "",
+            reincidente: Boolean(alunoBase.reincidente),
+            acoes_2025: alunoBase.acoes_2025 || "",
+            acoes_2026: alunoBase.acoes_2026 || "",
+            atrasos: Math.max(parseInt(String(atrasosVal).replace(/\D/g, ""), 10) || 0, ocorrenciasList.filter(a => a.isAtraso && !a.isDispensa).length),
+            faltas_acumuladas: totalFaltasAcumuladas,
+            media_geral_calculada: mediaGeralConsolidada
+          };
+
+          const resumoTexto = `Estudante: ${nome} (RA: ${ra}, Turma: ${turma}, Segmento: ${segmento}, Status: ${status}). Frequência Atual SED: ${freqVal} (${totalFaltasAcumuladas} faltas acumuladas no ano), Atrasos: ${alunoPayload.atrasos}, Média Geral SED: ${mediaGeralConsolidada} (${mediaSub}). Tutor: ${tutor || 'Não informado'}, Clube: ${clube || 'Não informado'}, Eletiva: ${eletiva || 'Não informada'}, Protagonismo: ${protagonismo || 'Não informado'}, Projeto de Vida: ${pv || 'Não informado'}. Recomposição: ${recomposicao ? 'SIM' : 'NÃO'}, AEE: ${aee ? 'SIM' : 'NÃO'}. Histórico Unificado: ${ocorrenciasList.length} registro(s) totais (${consolidado.registrosOcorrencias.length} Ocorrências Pedagógicas, ${consolidado.registrosConviva.length} CONVIVA SP, ${consolidado.registrosBuscaAtiva.length} Busca Ativa Escolar, ${consolidado.dispensas.length} Dispensa(s)).`;
+
           const res = await fetch('/api/ai/parecer-pedagogico', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -17748,6 +18447,9 @@ Yasmin Seline`;
               aluno: alunoPayload,
               fechamentoNotas: fechamentoNotas,
               ocorrencias: ocorrenciasList,
+              buscaAtivaRegistros: consolidado.registrosBuscaAtiva,
+              frequenciaDiariaResumo: consolidado.freqDiariaResumo,
+              dispensas: consolidado.dispensas,
               resumoDossieTexto: resumoTexto,
               promptPersonalizado: promptCustomizado
             })
@@ -18013,6 +18715,9 @@ Yasmin Seline`;
       // Função para atualizar os gráficos e cards do Dashboard BI em memória (ZERO LEITURAS FIRESTORE)
       function atualizarDashboardGraficos() {
         try {
+          const elDash = document.getElementById("content-dashboard");
+          if (!elDash) return;
+
           // 1. Renderização pela Memória Global: usar dados existentes se já carregados
           const listaAlunos = (Array.isArray(window.allStudentsData) && (window.allStudentsData || []).length > 0) 
             ? window.allStudentsData 
@@ -21406,6 +22111,12 @@ Yasmin Seline`;
 
       window.excluirAlunoDefinitivo = async function(ra) {
         if (!ra) return;
+        if (typeof window.obterRoleAtual === "function") window.obterRoleAtual();
+        const realRole = window.realUserRole || "PROFESSOR";
+        if (!["DIRETOR", "VICE_DIRETOR", "SECRETARIA"].includes(realRole)) {
+          window.showToast?.("Acesso negado: o seu cargo real não possui permissão para excluir estudantes.", "error", 4000);
+          return;
+        }
         const confirmacao = confirm(`Tem certeza que deseja excluir DEFINITIVAMENTE o aluno de RA "${ra}"? Esta ação não poderá ser desfeita!`);
         if (!confirmacao) return;
 
@@ -21561,7 +22272,7 @@ Yasmin Seline`;
 
       }
 
-      // Lógica de Autenticação Real e Mock (Login)
+      // Lógica de Autenticação Validada pelo Servidor (MongoDB + Token Assinado)
       loginForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const emailDigitado = (emailInput.value || "").trim().toLowerCase();
@@ -21579,87 +22290,22 @@ Yasmin Seline`;
         try {
           let usuarioEncontrado = null;
 
-          // 1. Verificação nas Credenciais Mock da Equipe
-          if (MOCK_AUTH_USERS[emailDigitado]) {
-            if (passwordDigitada === "clovis2026" || passwordDigitada.length > 0) {
-              usuarioEncontrado = { ...MOCK_AUTH_USERS[emailDigitado] };
+          try {
+            const userCred = await signInWithEmailAndPassword(auth, emailDigitado, passwordDigitada);
+            if (userCred && userCred.user) {
+              const rawRole = userCred.user.cargo || userCred.user.nivelAcesso || userCred.user.nivel || "PROFESSOR";
+              const roleNorm = window.normalizarUserRole(rawRole);
+              usuarioEncontrado = {
+                id: userCred.user.uid,
+                nome: userCred.user.displayName || emailDigitado,
+                email: userCred.user.email || emailDigitado,
+                nivelAcesso: roleNorm,
+                cargo: roleNorm,
+                acesso_total: roleNorm === "DIRETOR" || roleNorm === "VICE_DIRETOR"
+              };
             }
-          }
-
-          // 2. Consulta no Banco de Dados na coleção 'usuarios'
-          if (!usuarioEncontrado) {
-            const q = query(collection(db, "usuarios"), where("email", "==", emailDigitado));
-            const querySnap = await getDocs(q);
-
-            if (!querySnap.empty) {
-              querySnap.forEach(docSnap => {
-                const data = docSnap.data();
-                const senhaCadastrada = String(data.senha || "").trim();
-                const senhaValida = senhaCadastrada === passwordDigitada ||
-                  passwordDigitada === "Clovis@2026" ||
-                  passwordDigitada.toLowerCase() === "clovis@2026" ||
-                  passwordDigitada.toLowerCase() === "clovis2026";
-
-                if (data && senhaValida) {
-                  usuarioEncontrado = {
-                    id: docSnap.id,
-                    nome: data.nome || emailDigitado,
-                    email: data.email || emailDigitado,
-                    nivelAcesso: window.normalizarUserRole(data.nivel || data.cargo || data.nivelAcesso),
-                    cargo: window.normalizarUserRole(data.nivel || data.cargo || data.nivelAcesso),
-                    acesso_total: data.acesso_total ?? true
-                  };
-                }
-              });
-            }
-          }
-
-          // 3. Fallback de busca geral no Banco de Dados (case-insensitive)
-          if (!usuarioEncontrado) {
-            try {
-              const allUsersSnap = await getDocs(collection(db, "usuarios"));
-              allUsersSnap.forEach(docSnap => {
-                const data = docSnap.data();
-                const dbEmail = String(data.email || "").trim().toLowerCase();
-                const dbSenha = String(data.senha || "").trim();
-                const senhaValida = dbSenha === passwordDigitada ||
-                  passwordDigitada === "Clovis@2026" ||
-                  passwordDigitada.toLowerCase() === "clovis@2026" ||
-                  passwordDigitada.toLowerCase() === "clovis2026";
-
-                if (dbEmail === emailDigitado && senhaValida) {
-                  usuarioEncontrado = {
-                    id: docSnap.id,
-                    nome: data.nome || emailDigitado,
-                    email: data.email || emailDigitado,
-                    nivelAcesso: window.normalizarUserRole(data.nivel || data.cargo || data.nivelAcesso),
-                    cargo: window.normalizarUserRole(data.nivel || data.cargo || data.nivelAcesso),
-                    acesso_total: data.acesso_total ?? true
-                  };
-                }
-              });
-            } catch (errDb) {
-              console.warn("Consulta fallback usuários:", errDb);
-            }
-          }
-
-          // 4. Fallback Sistema Auth NATIVO
-          if (!usuarioEncontrado) {
-            try {
-              const userCred = await signInWithEmailAndPassword(auth, emailDigitado, passwordDigitada);
-              if (userCred && userCred.user) {
-                usuarioEncontrado = {
-                  id: userCred.user.uid,
-                  nome: userCred.user.displayName || emailDigitado,
-                  email: userCred.user.email || emailDigitado,
-                  nivelAcesso: "DIRETOR",
-                  cargo: "DIRETOR",
-                  acesso_total: true
-                };
-              }
-            } catch (authErr) {
-              console.log("Sistema Auth Fallback também não encontrou a conta.");
-            }
+          } catch (authErr) {
+            console.warn("Falha na autenticação do servidor:", authErr?.message || authErr);
           }
 
           if (!usuarioEncontrado) {
@@ -21669,10 +22315,16 @@ Yasmin Seline`;
             return;
           }
 
-          // Reset do simulador de cargo ao fazer novo login
+          window.realUserRole = usuarioEncontrado.nivelAcesso;
+
+          // Reset dos simuladores de cargo ao fazer novo login
           const simuladorCargoEl = document.getElementById("simulador-cargo");
           if (simuladorCargoEl) {
             simuladorCargoEl.value = usuarioEncontrado.nivelAcesso;
+          }
+          const mobileSimuladorCargoEl = document.getElementById("mobile-simulador-cargo");
+          if (mobileSimuladorCargoEl) {
+            mobileSimuladorCargoEl.value = usuarioEncontrado.nivelAcesso;
           }
 
           // Gerenciar preferência de lembrar e-mail
@@ -21707,6 +22359,8 @@ Yasmin Seline`;
             window.pararListenerMural();
           }
           localStorage.removeItem("usuarioLogado");
+          localStorage.removeItem("clovis_auth_token");
+          window.realUserRole = null;
           await signOut(auth).catch(() => {});
 
           const mainPanelEl = document.getElementById("mainPanel");
@@ -21733,7 +22387,8 @@ Yasmin Seline`;
       // Observador de Sessão e Proteção Obrigatória de Rotas
       function verificarSessaoInicial() {
         const usuarioSalvo = localStorage.getItem("usuarioLogado");
-        if (usuarioSalvo) {
+        const authToken = localStorage.getItem("clovis_auth_token");
+        if (usuarioSalvo && authToken) {
           try {
             const userObj = JSON.parse(usuarioSalvo);
             if (userObj && (userObj.email || userObj.nome)) {
@@ -21743,7 +22398,10 @@ Yasmin Seline`;
           } catch (e) {
             console.warn("Sessão local corrompida:", e);
             localStorage.removeItem("usuarioLogado");
+            localStorage.removeItem("clovis_auth_token");
           }
+        } else if (usuarioSalvo && !authToken) {
+          localStorage.removeItem("usuarioLogado");
         }
 
         // Redirecionamento obrigatório para a Tela de Login se não autenticado
@@ -21757,14 +22415,16 @@ Yasmin Seline`;
       onAuthStateChanged(auth, (user) => {
         const temSessaoLocal = verificarSessaoInicial();
         if (!temSessaoLocal) {
-          if (user) {
+          const authToken = localStorage.getItem("clovis_auth_token");
+          if (user && authToken) {
+            const roleNorm = window.normalizarUserRole(user.cargo || user.nivelAcesso || user.nivel || "PROFESSOR");
             const userObj = {
               id: user.uid,
               nome: user.displayName || user.email,
               email: user.email,
-              nivelAcesso: "DIRETOR",
-              cargo: "DIRETOR",
-              acesso_total: true
+              nivelAcesso: roleNorm,
+              cargo: roleNorm,
+              acesso_total: roleNorm === "DIRETOR" || roleNorm === "VICE_DIRETOR"
             };
             localStorage.setItem("usuarioLogado", JSON.stringify(userObj));
             efetuarLoginSucesso(userObj);
@@ -22426,6 +23086,443 @@ Yasmin Seline`;
         }
       };
 
+      function escapeHtmlSed(val) {
+        return String(val ?? "").replace(/[&<>"']/g, c => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;"
+        }[c]));
+      }
+
+      function normalizarTurmaComparacaoSed(t) {
+        return String(t || "")
+          .toUpperCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[ºª°\-_.]/g, " ")
+          .replace(/\b(ENSINO MEDIO|EM|EF|SERIE|ANO|TURMA|PEI|INTEGRAL|REGULAR)\b/g, " ")
+          .replace(/\s+/g, "")
+          .trim();
+      }
+
+      window.popularDatalistTutoresPei = function() {
+        const datalist = document.getElementById("datalist-tutores-pei");
+        if (!datalist) return;
+        const setTutores = new Set();
+        (window.allStudentsData || []).forEach(s => {
+          const t = String(s?.tutor_2026 || s?.tutor || "").trim().toUpperCase();
+          if (t && !["SEM TUTOR", "NAO INFORMADO", "NÃO INFORMADO", "-", "N/A"].includes(t)) {
+            setTutores.add(t);
+          }
+        });
+        (window.usuariosCache || []).forEach(u => {
+          const nome = String(u?.nome || "").trim().toUpperCase();
+          if (nome) setTutores.add(nome);
+        });
+        (window.professoresCache || []).forEach(p => {
+          const nome = String(p?.nome || p?.professor || "").trim().toUpperCase();
+          if (nome) setTutores.add(nome);
+        });
+
+        datalist.innerHTML = Array.from(setTutores)
+          .sort((a, b) => a.localeCompare(b, "pt-BR"))
+          .map(t => `<option value="${escapeHtmlSed(t)}"></option>`)
+          .join("");
+
+        const elRapidoTutor = document.getElementById("rapido-tutor");
+        if (elRapidoTutor && !elRapidoTutor.getAttribute("list")) {
+          elRapidoTutor.setAttribute("list", "datalist-tutores-pei");
+        }
+      };
+
+      window.abrirModalAtribuirTutorRapido = function(ra, turma = "", origem = "excel") {
+        const raLimpo = String(ra || "").replace(/\D/g, "").substring(0, 12);
+        const aluno = (window.allStudentsData || []).find(s => {
+          const sRa = String(s?.ra || "").trim();
+          const sRaLimpo = sRa.replace(/\D/g, "").substring(0, 12);
+          return sRa === String(ra || "").trim() || (raLimpo && sRaLimpo === raLimpo);
+        });
+
+        if (!aluno) {
+          window.showToast?.("Estudante não localizado na base local para atribuir tutor.", "warning", 4000);
+          return;
+        }
+
+        window.popularDatalistTutoresPei();
+
+        const elRa = document.getElementById("tutor-rapido-ra");
+        const elOrigem = document.getElementById("tutor-rapido-origem");
+        const elNome = document.getElementById("tutor-rapido-nome");
+        const elInfo = document.getElementById("tutor-rapido-info");
+        const elInput = document.getElementById("tutor-rapido-input");
+
+        if (elRa) elRa.value = String(aluno.ra || ra);
+        if (elOrigem) elOrigem.value = origem || "excel";
+        if (elNome) elNome.textContent = aluno.nome || "ESTUDANTE";
+        if (elInfo) elInfo.textContent = `RA: ${aluno.ra || ra} • Turma: ${aluno.turma || turma || "—"}`;
+        if (elInput) {
+          elInput.value = aluno.tutor_2026 || aluno.tutor || "";
+          setTimeout(() => elInput.focus(), 60);
+        }
+
+        const modal = document.getElementById("modal-atribuir-tutor-rapido");
+        if (modal) modal.classList.remove("hidden");
+      };
+
+      window.fecharModalAtribuirTutorRapido = function() {
+        const modal = document.getElementById("modal-atribuir-tutor-rapido");
+        if (modal) modal.classList.add("hidden");
+      };
+
+      (function bindFormAtribuirTutorRapido() {
+        const formTutor = document.getElementById("form-modal-atribuir-tutor-rapido");
+        if (!formTutor || formTutor.dataset.bound === "true") return;
+        formTutor.dataset.bound = "true";
+
+        formTutor.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const ra = (document.getElementById("tutor-rapido-ra")?.value || "").trim();
+          const origem = (document.getElementById("tutor-rapido-origem")?.value || "excel").trim();
+          const tutorVal = (document.getElementById("tutor-rapido-input")?.value || "").trim().toUpperCase();
+          const btnSalvar = document.getElementById("btn-salvar-tutor-rapido");
+
+          if (!ra || !tutorVal) {
+            window.showToast?.("Informe o nome do Tutor 2026 para salvar.", "warning", 3500);
+            return;
+          }
+
+          if (btnSalvar) {
+            btnSalvar.disabled = true;
+            btnSalvar.innerHTML = `<i class="fa-solid fa-spinner animate-spin text-xs"></i><span>Salvando...</span>`;
+          }
+
+          try {
+            // Regra AGENTS.md: nunca enviar id ou _id no payload
+            await updateDoc(doc(db, "alunos", ra), {
+              tutor_2026: tutorVal,
+              tutor: tutorVal
+            });
+
+            if (Array.isArray(window.allStudentsData)) {
+              const idx = window.allStudentsData.findIndex(s => String(s?.ra || "").trim() === ra);
+              if (idx !== -1) {
+                window.allStudentsData[idx].tutor_2026 = tutorVal;
+                window.allStudentsData[idx].tutor = tutorVal;
+              }
+            }
+
+            try {
+              if (window.smartCache && Array.isArray(window.allStudentsData)) {
+                window.smartCache.set("alunos_cache", window.allStudentsData);
+              }
+              localStorage.setItem("alunos_cache", JSON.stringify(window.allStudentsData || []));
+            } catch (_) {}
+
+            window.fecharModalAtribuirTutorRapido();
+            window.showToast?.(`Tutor 2026 "${tutorVal}" atribuído com sucesso!`, "success", 4000);
+
+            window.dispatchEvent(new CustomEvent("studentsdataupdated"));
+            if (typeof populateFilterSelects === "function") populateFilterSelects(window.allStudentsData || []);
+            if (typeof applyStudentFilters === "function") applyStudentFilters();
+            if (typeof renderBuscaAtiva === "function") renderBuscaAtiva();
+
+            if (origem === "pdf" && window._resultadoMultiTurmasFreqSed) {
+              window.renderizarResultadoFrequenciaSed(
+                window._resultadoMultiTurmasFreqSed,
+                window._turmaFrequenciaSedAtiva || "TODAS",
+                window._filtroStatusFrequenciaSed || "TODOS"
+              );
+            } else if (typeof window.atualizarDivergenciasExcelNaTela === "function") {
+              window.atualizarDivergenciasExcelNaTela();
+            }
+          } catch (err) {
+            console.error("Erro ao atribuir tutor:", err);
+            window.showToast?.("Erro ao salvar tutor no banco: " + (err?.message || err), "error", 5000);
+          } finally {
+            if (btnSalvar) {
+              btnSalvar.disabled = false;
+              btnSalvar.innerHTML = `<i class="fa-solid fa-user-check text-xs"></i><span>Salvar Tutor 2026</span>`;
+            }
+          }
+        });
+      })();
+
+      window.construirDivergenciasSedHtml = function({
+        origem = "pdf",
+        turmasAuditadas = [],
+        alunosSedLista = [],
+        rasPresentesNoArquivo = new Set(),
+        alunosNovos = [],
+        alunosTransferidosSed = []
+      }) {
+        const studentsSource = Array.isArray(window.allStudentsData) ? window.allStudentsData : [];
+        const dbByCleanRa = new Map();
+        studentsSource.forEach(s => {
+          if (s && s.ra) {
+            const clean = String(s.ra).replace(/\D/g, "").substring(0, 12);
+            if (clean) dbByCleanRa.set(clean, s);
+            dbByCleanRa.set(String(s.ra).trim(), s);
+          }
+        });
+
+        const isTutorValido = (s) => {
+          const t = String(s?.tutor_2026 || s?.tutor || "").trim().toUpperCase();
+          return Boolean(t) && !["SEM TUTOR", "NAO INFORMADO", "NÃO INFORMADO", "-", "N/A", "PENDENTE"].includes(t);
+        };
+
+        // 1. Ativos na SED sem cadastro no banco OU sem TUTOR 2026 atribuído
+        const pendentesCadastroOuTutor = [];
+        const seenPendenciaRa = new Set();
+
+        (alunosNovos || []).forEach(nv => {
+          const clean = String(nv.ra || "").replace(/\D/g, "").substring(0, 12);
+          const dbMatch = dbByCleanRa.get(clean) || dbByCleanRa.get(String(nv.ra || "").trim());
+          if (!dbMatch) {
+            if (!seenPendenciaRa.has(clean || nv.ra)) {
+              seenPendenciaRa.add(clean || nv.ra);
+              if (!window.novosAlunosSEDMap) window.novosAlunosSEDMap = {};
+              window.novosAlunosSEDMap[nv.ra] = nv;
+              pendentesCadastroOuTutor.push({
+                tipo: "SEM_CADASTRO",
+                ra: nv.ra,
+                raAction: nv.ra,
+                nome: nv.nome,
+                turma: nv.turma || "—",
+                motivo: "Ativo na SED, mas não cadastrado no banco"
+              });
+            }
+          } else if (!isTutorValido(dbMatch)) {
+            const raDb = String(dbMatch.ra || nv.ra);
+            if (!seenPendenciaRa.has(clean || raDb)) {
+              seenPendenciaRa.add(clean || raDb);
+              pendentesCadastroOuTutor.push({
+                tipo: "SEM_TUTOR",
+                ra: raDb,
+                raAction: raDb,
+                nome: dbMatch.nome || nv.nome,
+                turma: dbMatch.turma || nv.turma || "—",
+                motivo: "Sem TUTOR 2026 atribuído"
+              });
+            }
+          }
+        });
+
+        (alunosSedLista || []).forEach(a => {
+          const clean = String(a.raClean || a.ra || "").replace(/\D/g, "").substring(0, 12);
+          const dbMatch = dbByCleanRa.get(clean) || dbByCleanRa.get(String(a.ra || "").trim());
+          if (!dbMatch) {
+            const key = clean || String(a.ra || a.nome || "");
+            if (key && !seenPendenciaRa.has(key)) {
+              seenPendenciaRa.add(key);
+              if (!window.novosAlunosSEDMap) window.novosAlunosSEDMap = {};
+              const raKey = String(a.ra || clean);
+              window.novosAlunosSEDMap[raKey] = {
+                ra: raKey,
+                nome: a.nome || "ESTUDANTE",
+                turma: a.turma || a.turmaOrigem || "",
+                presenca: a.pctPresenca !== undefined ? `${a.pctPresenca}%` : (a.presenca || "0%"),
+                arquivo: origem === "pdf" ? "Relatório Diário SED (PDF)" : "Planilha Excel SED"
+              };
+              pendentesCadastroOuTutor.push({
+                tipo: "SEM_CADASTRO",
+                ra: raKey,
+                raAction: raKey,
+                nome: a.nome || "ESTUDANTE",
+                turma: a.turma || a.turmaOrigem || "—",
+                motivo: "Ativo na SED, mas não cadastrado no banco"
+              });
+            }
+          } else if (!isTutorValido(dbMatch)) {
+            const raDb = String(dbMatch.ra || clean);
+            const key = clean || raDb;
+            if (!seenPendenciaRa.has(key)) {
+              seenPendenciaRa.add(key);
+              pendentesCadastroOuTutor.push({
+                tipo: "SEM_TUTOR",
+                ra: raDb,
+                raAction: raDb,
+                nome: dbMatch.nome || a.nome || "ESTUDANTE",
+                turma: dbMatch.turma || a.turma || a.turmaOrigem || "—",
+                motivo: "Sem TUTOR 2026 atribuído"
+              });
+            }
+          }
+        });
+
+        // 2. Ativos no sistema que apareceram como Transferidos/Remanejados ou Não-Listados no relatório da SED
+        const ativosDivergentesStatus = [];
+        const seenDivRa = new Set();
+
+        (alunosTransferidosSed || []).forEach(tr => {
+          const clean = String(tr.raClean || tr.ra || "").replace(/\D/g, "").substring(0, 12);
+          const dbMatch = dbByCleanRa.get(clean) || dbByCleanRa.get(String(tr.ra || "").trim());
+          if (dbMatch && String(dbMatch.status || "ativo").toLowerCase().trim() === "ativo") {
+            const key = clean || String(dbMatch.ra);
+            if (!seenDivRa.has(key)) {
+              seenDivRa.add(key);
+              ativosDivergentesStatus.push({
+                ra: dbMatch.ra,
+                nome: dbMatch.nome || tr.nome,
+                turma: dbMatch.turma || tr.turma || "—",
+                motivo: `Consta como ATIVO no sistema, mas apareceu como ${tr.situacao || "Transferido/Remanejado"} na SED`
+              });
+            }
+          }
+        });
+
+        const turmasNormSet = new Set();
+        (turmasAuditadas || []).forEach(t => {
+          const exact = String(t || "").toUpperCase().trim();
+          const comp = normalizarTurmaComparacaoSed(t);
+          if (exact) turmasNormSet.add(exact);
+          if (comp) turmasNormSet.add(comp);
+        });
+
+        const rasSet = rasPresentesNoArquivo instanceof Set ? rasPresentesNoArquivo : new Set(rasPresentesNoArquivo || []);
+
+        if (turmasNormSet.size > 0) {
+          studentsSource.forEach(s => {
+            if (!s || !s.ra) return;
+            if (String(s.status || "ativo").toLowerCase().trim() !== "ativo") return;
+            const sTurmaExact = String(s.turma || "").toUpperCase().trim();
+            const sTurmaComp = normalizarTurmaComparacaoSed(s.turma);
+            if (!turmasNormSet.has(sTurmaExact) && (!sTurmaComp || !turmasNormSet.has(sTurmaComp))) return;
+
+            const cleanS = String(s.ra).replace(/\D/g, "").substring(0, 12);
+            if (!rasSet.has(cleanS) && !rasSet.has(String(s.ra).trim()) && !seenDivRa.has(cleanS || s.ra)) {
+              seenDivRa.add(cleanS || s.ra);
+              ativosDivergentesStatus.push({
+                ra: s.ra,
+                nome: s.nome || "Estudante sem nome",
+                turma: s.turma || "—",
+                motivo: "Consta como ATIVO no sistema, mas não foi listado na turma da SED (possível transferência/remanejamento)"
+              });
+            }
+          });
+        }
+
+        const totalDivergencias = pendentesCadastroOuTutor.length + ativosDivergentesStatus.length;
+
+        return `
+          <div class="bg-amber-50/80 border-2 border-amber-300 rounded-2xl p-4 shadow-sm space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200 pb-3">
+              <div class="flex items-center gap-2.5">
+                <span class="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-2xs shrink-0">
+                  <i class="fa-solid fa-code-compare text-sm"></i>
+                </span>
+                <div>
+                  <h4 class="text-xs sm:text-sm font-black text-amber-950 uppercase tracking-wide">
+                    Divergências de Enturmação &amp; Tutoria PEI
+                  </h4>
+                  <p class="text-[11px] text-amber-800">
+                    Cruzamento automático entre a listagem oficial da SED e os registros ativos no banco escolar.
+                  </p>
+                </div>
+              </div>
+              <span class="px-3 py-1 rounded-full text-[11px] font-black uppercase ${totalDivergencias > 0 ? "bg-amber-200 text-amber-950 border border-amber-400" : "bg-emerald-100 text-emerald-800 border border-emerald-300"} self-start sm:self-center">
+                ${totalDivergencias > 0 ? `${totalDivergencias} divergência(s) encontrada(s)` : "Base 100% alinhada"}
+              </span>
+            </div>
+
+            ${totalDivergencias === 0 ? `
+              <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center gap-2">
+                <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                <span>Todos os estudantes da SED estão cadastrados com Tutor 2026 atribuído e sem divergências de transferência/enturmação.</span>
+              </div>
+            ` : `
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <!-- Bloco 1: Ativos na SED sem cadastro ou sem Tutor 2026 -->
+                <div class="bg-white rounded-xl border border-amber-200 p-3 space-y-2.5">
+                  <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <span class="text-[11px] font-black text-amber-900 uppercase flex items-center gap-1.5">
+                      <i class="fa-solid fa-user-tag text-amber-600"></i>
+                      <span>Ativos na SED sem Cadastro ou sem Tutor 2026</span>
+                    </span>
+                    <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-black text-[10px]">${pendentesCadastroOuTutor.length}</span>
+                  </div>
+                  ${pendentesCadastroOuTutor.length === 0 ? `
+                    <p class="text-[11px] text-emerald-700 font-semibold py-2"><i class="fa-solid fa-check mr-1"></i> Nenhuma pendência de cadastro ou tutoria neste lote.</p>
+                  ` : `
+                    <div class="max-h-64 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                      ${pendentesCadastroOuTutor.map(item => {
+                        const safeRaJs = String(item.raAction || item.ra).replace(/'/g, "\\'");
+                        const safeTurmaJs = String(item.turma || "").replace(/'/g, "\\'");
+                        const safeOrigemJs = String(origem || "pdf").replace(/'/g, "\\'");
+                        const onClickAction = item.tipo === "SEM_CADASTRO"
+                          ? `window.abrirModalCadastroRapido('${safeRaJs}')`
+                          : `window.abrirModalAtribuirTutorRapido('${safeRaJs}', '${safeTurmaJs}', '${safeOrigemJs}')`;
+                        return `
+                          <div class="p-2.5 rounded-lg border ${item.tipo === "SEM_CADASTRO" ? "border-amber-200 bg-amber-50/40" : "border-indigo-200 bg-indigo-50/30"} flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                            <div class="min-w-0">
+                              <span class="font-extrabold text-slate-900 uppercase block truncate">${escapeHtmlSed(item.nome)}</span>
+                              <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                <span class="font-mono text-[10px] text-slate-600">RA: ${escapeHtmlSed(item.ra)}</span>
+                                <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-bold text-[10px]">${escapeHtmlSed(item.turma)}</span>
+                                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${item.tipo === "SEM_CADASTRO" ? "bg-amber-100 text-amber-900" : "bg-indigo-100 text-indigo-800"}">${escapeHtmlSed(item.motivo)}</span>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onclick="${onClickAction}"
+                              class="px-3 py-1.5 bg-indigo-700 hover:bg-indigo-800 text-white font-bold rounded-lg text-[11px] transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap shadow-2xs shrink-0"
+                            >
+                              <i class="fa-solid fa-user-plus text-[10px]"></i>
+                              <span>Cadastrar / Atribuir Tutor</span>
+                            </button>
+                          </div>
+                        `;
+                      }).join("")}
+                    </div>
+                  `}
+                </div>
+
+                <!-- Bloco 2: Ativos no sistema ausentes ou Transferidos/Remanejados na SED -->
+                <div class="bg-white rounded-xl border border-rose-200 p-3 space-y-2.5">
+                  <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <span class="text-[11px] font-black text-rose-900 uppercase flex items-center gap-1.5">
+                      <i class="fa-solid fa-right-left text-rose-600"></i>
+                      <span>Ativos no Sistema · Transferidos / Não-Listados na SED</span>
+                    </span>
+                    <span class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-900 font-black text-[10px]">${ativosDivergentesStatus.length}</span>
+                  </div>
+                  ${ativosDivergentesStatus.length === 0 ? `
+                    <p class="text-[11px] text-emerald-700 font-semibold py-2"><i class="fa-solid fa-check mr-1"></i> Nenhum aluno ativo ausente ou transferido detectado.</p>
+                  ` : `
+                    <div class="max-h-64 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                      ${ativosDivergentesStatus.map(item => {
+                        const safeRaJs = String(item.ra || "").replace(/'/g, "\\'");
+                        return `
+                          <div class="p-2.5 rounded-lg border border-rose-200 bg-rose-50/40 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                            <div class="min-w-0">
+                              <span class="font-extrabold text-slate-900 uppercase block truncate">${escapeHtmlSed(item.nome)}</span>
+                              <div class="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                <span class="font-mono text-[10px] text-slate-600">RA: ${escapeHtmlSed(item.ra)}</span>
+                                <span class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 font-bold text-[10px]">${escapeHtmlSed(item.turma)}</span>
+                              </div>
+                              <span class="text-[10px] text-rose-800 font-medium block mt-0.5">${escapeHtmlSed(item.motivo)}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onclick="window.abrirFichaAluno ? window.abrirFichaAluno('${safeRaJs}') : window.abrirModalFichaAluno?.('${safeRaJs}')"
+                              class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-[11px] transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap shadow-2xs shrink-0"
+                            >
+                              <i class="fa-solid fa-pen-to-square text-[10px]"></i>
+                              <span>Ver Ficha / Status</span>
+                            </button>
+                          </div>
+                        `;
+                      }).join("")}
+                    </div>
+                  `}
+                </div>
+              </div>
+            `}
+          </div>
+        `;
+      };
+
       window.renderizarResultadoFrequenciaSed = function(resultadoOuDados, turmaAtiva = "TODAS", filtroStatus = "TODOS") {
         const container = document.getElementById("container-resultado-auditoria-freq-sed");
         if (!container || !resultadoOuDados) return;
@@ -22776,6 +23873,37 @@ Yasmin Seline`;
               </table>
             </div>
           </div>
+
+          ${(() => {
+            const turmasEscopo = (turmaAtiva === "TODAS" && isMultiTurmas)
+              ? turmas
+              : (dadosExibicao ? [dadosExibicao] : turmas);
+            const turmasAuditadasPdf = new Set();
+            const rasPdf = new Set();
+            const transferidosPdf = [];
+            const alunosListaPdf = [];
+            turmasEscopo.forEach(t => {
+              if (t?.turmaNormalizada) turmasAuditadasPdf.add(t.turmaNormalizada);
+              (t?.alunos || []).forEach(a => {
+                if (a?.alunoCadastrado?.turma) turmasAuditadasPdf.add(a.alunoCadastrado.turma);
+                const clean = String(a.raClean || a.ra || "").replace(/\D/g, "").substring(0, 12);
+                if (clean) rasPdf.add(clean);
+                if (a.ra) rasPdf.add(String(a.ra).trim());
+                alunosListaPdf.push({ ...a, turmaOrigem: t?.turmaNormalizada || a.turmaOrigem });
+              });
+              (t?.alunosTransferidosRemanejados || []).forEach(tr => {
+                transferidosPdf.push({ ...tr, turma: tr.turma || t?.turmaNormalizada });
+              });
+            });
+            return window.construirDivergenciasSedHtml({
+              origem: "pdf",
+              turmasAuditadas: Array.from(turmasAuditadasPdf),
+              alunosSedLista: alunosListaPdf,
+              rasPresentesNoArquivo: rasPdf,
+              alunosNovos: [],
+              alunosTransferidosSed: transferidosPdf
+            });
+          })()}
         `;
       };
 
@@ -22799,9 +23927,13 @@ Yasmin Seline`;
             ? window.obterIdentificacaoUsuarioCompleta() 
             : null;
 
+          const authToken = localStorage.getItem("clovis_auth_token");
           const response = await fetch("/api/frequencia-sed/salvar-lote", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+            },
             body: JSON.stringify({
               turmas: turmas,
               usuarioEmissor: userIdent?.nome || "Secretaria Escolar"
@@ -22809,6 +23941,9 @@ Yasmin Seline`;
           });
 
           const resJson = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(resJson.error || `Erro HTTP ${response.status} ao gravar frequência no servidor.`);
+          }
 
           // Sincronização em memória e localStorage de TODOS os alunos de TODAS as turmas
           let totalAtualizadosMemoria = 0;
@@ -22851,14 +23986,14 @@ Yasmin Seline`;
           }
 
           const countSalvos = resJson.atualizadosCount || totalAtualizadosMemoria;
-          alert(`Sucesso! ${countSalvos} estudantes de ${turmas.length} turma(s) foram atualizados com as presenças diárias e aulas dadas da SED. A Busca Ativa foi recalculada automaticamente com as tendências (parou de faltar / continua faltando)!`);
-
           if (typeof window.showToast === "function") {
-            window.showToast(`${countSalvos} estudantes atualizados na Base Escolar e Busca Ativa!`, "success", 5000);
+            window.showToast(`Sucesso! ${countSalvos} estudantes de ${turmas.length} turma(s) atualizados na Base Escolar e Busca Ativa!`, "success", 6000);
           }
         } catch (err) {
           console.error("Erro ao salvar frequência na base:", err);
-          alert("Erro ao gravar frequência: " + (err.message || err));
+          if (typeof window.showToast === "function") {
+            window.showToast("Erro ao gravar frequência: " + (err.message || err), "error", 6000);
+          }
         } finally {
           if (btnSalvar) {
             btnSalvar.disabled = false;
@@ -23313,6 +24448,8 @@ Yasmin Seline`;
 
             const pendingUpdatesByRa = new Map();
             const alunosNovosMap = new Map();
+            const alunosSedExcelList = [];
+            const alunosTransferidosExcel = [];
             const rasNoExcel = new Set();
             const turmasPresentesNoExcel = new Set();
             const resumoArquivos = [];
@@ -23341,6 +24478,15 @@ Yasmin Seline`;
                     mensagem: "Planilha sem linhas de conteúdo"
                   });
                   continue;
+                }
+
+                // Tentar detectar turma no cabeçalho/nome do arquivo como fallback para alunos novos
+                let turmaCabecalhoArquivo = "";
+                const headerProbe = rows.slice(0, 6).map(r => Array.isArray(r) ? r.join(" ") : "").join(" ");
+                const mTurmaHeader = headerProbe.match(/([6-9]|[1-3])[ºª°]?\s*(?:ANO|S[EÉ]RIE)?\s*(?:EM)?\s*[A-Z]\b/i)
+                  || file.name.match(/([6-9]|[1-3])[ºª°]?\s*[A-Z]\b/i);
+                if (mTurmaHeader) {
+                  turmaCabecalhoArquivo = mTurmaHeader[0].toUpperCase().replace(/\s+/g, " ").trim();
                 }
 
                 const dataRows = rows.slice(1);
@@ -23373,9 +24519,41 @@ Yasmin Seline`;
                   // 3. Validações básicas de segurança
                   if (!nomeAluno || !raLimpo || raLimpo.length < 5) continue;
 
+                  // Detectar indicação explícita de transferência/remanejamento na linha Excel (exceto coluna do nome)
+                  const celulasStatus = row
+                    .filter((_, idx) => idx !== 2)
+                    .map(c => String(c ?? "").trim())
+                    .join(" ");
+                  const matchTransferencia = celulasStatus.match(/\b(TRANSFERID[OA]|REMANEJAD[OA]|ABANDONO|BAIXA|DESLIGAD[OA]|INATIVO)\b/i);
+
+                  if (matchTransferencia) {
+                    const matchedTransfer = studentsMapByRA.get(raLimpo);
+                    if (matchedTransfer?.turma) {
+                      const tNorm = String(matchedTransfer.turma).toUpperCase().trim();
+                      turmasPresentesNoExcel.add(tNorm);
+                      turmasArquivo.add(tNorm);
+                    }
+                    alunosTransferidosExcel.push({
+                      ra: matchedTransfer?.ra || raLimpo,
+                      raClean: raLimpo,
+                      nome: nomeAluno,
+                      turma: matchedTransfer?.turma || turmaCabecalhoArquivo || "",
+                      situacao: matchTransferencia[1].toUpperCase()
+                    });
+                    continue;
+                  }
+
                   rasNoExcel.add(raLimpo);
                   const presencaAnualFormatada = formatarPresencaVal(presencaRaw);
                   const matchedStudentData = studentsMapByRA.get(raLimpo);
+
+                  alunosSedExcelList.push({
+                    ra: matchedStudentData?.ra || raLimpo,
+                    raClean: raLimpo,
+                    nome: nomeAluno,
+                    turma: matchedStudentData?.turma || turmaCabecalhoArquivo || "",
+                    presenca: presencaAnualFormatada
+                  });
 
                   if (matchedStudentData) {
                     correspondentesArquivo++;
@@ -23448,6 +24626,7 @@ Yasmin Seline`;
                     alunosNovosMap.set(raLimpo, {
                       ra: raLimpo,
                       nome: nomeAluno,
+                      turma: turmaCabecalhoArquivo,
                       presenca: presencaAnualFormatada,
                       arquivo: file.name
                     });
@@ -23735,6 +24914,29 @@ Yasmin Seline`;
                 `;
               }
 
+              window._ultimoContextoDivergenciasExcel = {
+                origem: "excel",
+                turmasAuditadas: Array.from(turmasPresentesNoExcel),
+                alunosSedLista: alunosSedExcelList,
+                rasPresentesNoArquivo: Array.from(rasNoExcel),
+                alunosNovos,
+                alunosTransferidosSed: alunosTransferidosExcel
+              };
+
+              window.atualizarDivergenciasExcelNaTela = function() {
+                const slot = document.getElementById("divergencias-enturmacao-excel");
+                if (!slot || !window._ultimoContextoDivergenciasExcel || typeof window.construirDivergenciasSedHtml !== "function") return;
+                slot.innerHTML = window.construirDivergenciasSedHtml({
+                  ...window._ultimoContextoDivergenciasExcel,
+                  rasPresentesNoArquivo: new Set(window._ultimoContextoDivergenciasExcel.rasPresentesNoArquivo || [])
+                });
+              };
+
+              reportHtml += `<div id="divergencias-enturmacao-excel" class="pt-2">${window.construirDivergenciasSedHtml({
+                ...window._ultimoContextoDivergenciasExcel,
+                rasPresentesNoArquivo: new Set(window._ultimoContextoDivergenciasExcel.rasPresentesNoArquivo || [])
+              })}</div>`;
+
               reportHtml += `</div>`;
               resultadoFreq.innerHTML = reportHtml;
             }
@@ -23786,13 +24988,13 @@ Yasmin Seline`;
           const textoColadoVal = textoColar?.value?.trim();
 
           if (!file && !textoColadoVal) {
-            alert("Por favor, selecione um arquivo (.xlsx, .pdf ou .csv) ou cole o texto do fechamento de notas da SED.");
+            window.showToast?.("Por favor, selecione um arquivo (.xlsx, .pdf ou .csv) ou cole o texto do fechamento de notas da SED.", "warning", 4000);
             return;
           }
 
           const manager = window.fechamentoNotasManager;
           if (!manager) {
-            alert("Módulo gerenciador de fechamento de notas não carregado.");
+            window.showToast?.("Módulo gerenciador de fechamento de notas não carregado.", "error", 4000);
             return;
           }
 
@@ -23829,193 +25031,311 @@ Yasmin Seline`;
               throw new Error("Nenhum estudante ou nota foi identificado no arquivo fornecido. Verifique o formato do documento da SED.");
             }
 
-            // Realizar Pareamento Inteligente por Turma e Nome Completo (Sem RA)
+            // Pareamento Estrito por RA (prioritário) + Nome/Turma com proteção contra homônimos
             const studentsSource = window.allStudentsData || [];
             const vinculos = manager.vincularAlunosComBase(parsedResult, studentsSource);
-
-            const vinculados = vinculos.filter(v => v.alunoBase && v.alunoBase.ra);
-            const naoVinculados = vinculos.filter(v => !v.alunoBase || !v.alunoBase.ra);
-
             const meta = parsedResult.metadata;
-            let reportHtml = `
-              <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
-                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
-                  <div>
-                    <span class="text-[10px] font-extrabold uppercase text-indigo-700 block">${meta.tipoFechamento} &bull; Ano Letivo ${meta.anoLetivo}</span>
-                    <h4 class="text-sm font-black text-slate-900 uppercase mt-0.5">${meta.turmaOriginal}</h4>
-                    <span class="text-xs text-slate-500">${meta.disciplinasDetectadas.length} disciplinas &bull; Total Aulas: ${meta.totalAulasDadas || '—'}</span>
-                  </div>
-                  <div class="text-right">
-                    <span class="px-3 py-1 bg-indigo-100 text-indigo-900 font-extrabold text-xs rounded-full uppercase">
-                      ${meta.bimestreKey === 'FINAL' ? 'Fechamento Final (Conselho Anual)' : `${meta.bimestreKey} (${meta.bimestre}º Bimestre)`}
-                    </span>
-                  </div>
-                </div>
 
-                <!-- Estatísticas de Pareamento -->
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                  <div class="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
-                    <span class="text-[10px] font-bold text-slate-500 uppercase block">Estudantes no Arquivo</span>
-                    <span class="text-lg font-black text-slate-800">${vinculos.length}</span>
-                  </div>
-                  <div class="bg-white p-3 rounded-lg border border-emerald-200 shadow-2xs">
-                    <span class="text-[10px] font-bold text-emerald-700 uppercase block">Localizados no Sistema</span>
-                    <span class="text-lg font-black text-emerald-700">${vinculados.length}</span>
-                  </div>
-                  <div class="bg-white p-3 rounded-lg border ${(naoVinculados.length > 0 ? 'border-amber-300' : 'border-slate-200')} shadow-2xs">
-                    <span class="text-[10px] font-bold ${(naoVinculados.length > 0 ? 'text-amber-800' : 'text-slate-500')} uppercase block">Sem RA / Não Localizados</span>
-                    <span class="text-lg font-black ${(naoVinculados.length > 0 ? 'text-amber-800' : 'text-slate-700')}">${naoVinculados.length}</span>
-                  </div>
-                </div>
+            window._fechamentoVinculosAtual = vinculos;
+            window._fechamentoMetaAtual = meta;
 
-                <!-- Lista de Pré-visualização -->
-                <div class="space-y-2">
-                  <div class="flex items-center justify-between">
-                    <span class="text-xs font-bold text-slate-700 uppercase">Estudantes Prontos para Gravação (${vinculados.length}):</span>
-                    <span class="text-[11px] text-slate-400">Cruzamento por Nome Completo e Turma</span>
-                  </div>
-                  <div class="max-h-48 overflow-y-auto space-y-1.5 custom-scrollbar pr-1 border border-slate-200 rounded-lg p-2 bg-white">
-                    ${vinculados.map(v => `
-                      <div class="flex items-center justify-between p-2 rounded bg-slate-50 hover:bg-slate-100 text-xs transition">
-                        <div class="flex items-center gap-2">
-                          <i class="fa-solid fa-circle-check text-emerald-600 text-xs"></i>
-                          <div>
-                            <span class="font-bold text-slate-800 block">${v.alunoParsed.nome}</span>
-                            <span class="text-[10px] text-slate-500 font-mono">RA: ${v.alunoBase.ra} &bull; Turma Sistema: ${v.alunoBase.turma || '—'}</span>
-                          </div>
-                        </div>
-                        <div class="text-right">
-                          <span class="font-black text-blue-900">Média: ${v.alunoParsed.mediaGeral !== null ? v.alunoParsed.mediaGeral : '—'}</span>
-                          <span class="text-[10px] text-slate-400 block">${v.alunoParsed.totalFaltas} faltas &bull; ${v.alunoParsed.frequenciaBimestre}</span>
-                        </div>
-                      </div>
-                    `).join('')}
-                  </div>
-                </div>
-            `;
+            const renderizarPainelPreviaFechamento = () => {
+              const lista = window._fechamentoVinculosAtual || [];
+              const vinculados = lista.filter(v => !v.ambiguo && v.alunoBase && v.alunoBase.ra);
+              const ambiguos = lista
+                .map((v, idx) => ({ v, idx }))
+                .filter(item => item.v.ambiguo === true);
+              const naoVinculados = lista.filter(v => !v.ambiguo && (!v.alunoBase || !v.alunoBase.ra));
+              const totalRaEstrito = vinculados.filter(v => v.metodoVinculo === "ra_estrito").length;
 
-            if (naoVinculados.length > 0) {
-              reportHtml += `
-                <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs space-y-2">
-                  <div class="flex items-center gap-2 font-bold text-amber-900">
-                    <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
-                    <span>${naoVinculados.length} estudante(s) do arquivo não foram encontrados no banco da turma:</span>
-                  </div>
-                  <div class="max-h-24 overflow-y-auto space-y-1 custom-scrollbar text-[11px] text-amber-800">
-                    ${naoVinculados.map(nv => `
-                      <div>&bull; <strong>${nv.alunoParsed.nome}</strong> (Situação: ${nv.alunoParsed.situacao})</div>
-                    `).join('')}
-                  </div>
-                  <p class="text-[10px] text-amber-700">Verifique se o nome no cadastro possui grafia idêntica ou se o aluno já foi matriculado.</p>
-                </div>
-              `;
-            }
-
-            reportHtml += `
-                <!-- Botões de Ação -->
-                <div class="flex items-center gap-3 pt-2">
-                  <button id="btn-confirmar-salvar-fechamento" type="button" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-lg uppercase tracking-wider shadow-sm transition flex items-center gap-2 cursor-pointer">
-                    <i class="fa-solid fa-cloud-arrow-up"></i>
-                    <span>Confirmar e Gravar ${vinculados.length} Alunos no Banco de Dados</span>
-                  </button>
-                  <button id="btn-cancelar-fechamento" type="button" class="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-lg uppercase transition cursor-pointer">
-                    Cancelar
-                  </button>
-                </div>
-              </div>
-            `;
-
-            resultadoFechamento.innerHTML = reportHtml;
-
-            const btnConfirmar = document.getElementById("btn-confirmar-salvar-fechamento");
-            const btnCancelar = document.getElementById("btn-cancelar-fechamento");
-
-            if (btnCancelar) {
-              btnCancelar.addEventListener("click", () => {
-                resultadoFechamento.innerHTML = "";
-                if (fileFechamentoInput) fileFechamentoInput.value = "";
-                if (textoColar) textoColar.value = "";
-              });
-            }
-
-            if (btnConfirmar) {
-              btnConfirmar.addEventListener("click", async () => {
-                btnConfirmar.disabled = true;
-                btnConfirmar.innerHTML = `<i class="fa-solid fa-bolt text-amber-300 animate-pulse"></i> Gravando Notas no Banco de Dados...`;
-
-                const totalEstudantes = vinculados.filter(v => v.alunoBase).length;
-
-                // Exibir barra de progresso visual de alta performance
-                resultadoFechamento.innerHTML = `
-                  <div class="p-4 bg-indigo-50 border border-indigo-200 rounded-xl space-y-3 animate-fadeIn">
-                    <div class="flex items-center justify-between text-xs font-bold text-indigo-900">
-                      <span class="flex items-center gap-2">
-                        <i class="fa-solid fa-bolt text-indigo-600 animate-pulse"></i>
-                        <span>Gravando Notas no Banco de Dados (Lotes Paralelos Otimizados)...</span>
+              let reportHtml = `
+                <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
+                  <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+                    <div>
+                      <span class="text-[10px] font-extrabold uppercase text-indigo-700 block">${escapeHtmlSed(meta.tipoFechamento)} &bull; Ano Letivo ${escapeHtmlSed(meta.anoLetivo)}</span>
+                      <h4 class="text-sm font-black text-slate-900 uppercase mt-0.5">${escapeHtmlSed(meta.turmaOriginal)}</h4>
+                      <span class="text-xs text-slate-500">${meta.disciplinasDetectadas.length} disciplinas &bull; Total Aulas: ${meta.totalAulasDadas || '—'}</span>
+                    </div>
+                    <div class="text-right">
+                      <span class="px-3 py-1 bg-indigo-100 text-indigo-900 font-extrabold text-xs rounded-full uppercase">
+                        ${meta.bimestreKey === 'FINAL' ? 'Fechamento Final (Conselho Anual)' : `${meta.bimestreKey} (${meta.bimestre}º Bimestre)`}
                       </span>
-                      <span id="fechamento-progress-text" class="font-mono text-indigo-700 font-bold">15%</span>
                     </div>
-                    <div class="w-full bg-indigo-200/80 rounded-full h-3 overflow-hidden shadow-inner">
-                      <div id="fechamento-progress-bar" class="bg-indigo-600 h-3 rounded-full transition-all duration-300 ease-out" style="width: 15%"></div>
+                  </div>
+
+                  <!-- Estatísticas de Pareamento -->
+                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div class="bg-white p-3 rounded-lg border border-slate-200 shadow-2xs">
+                      <span class="text-[10px] font-bold text-slate-500 uppercase block">Estudantes no Arquivo</span>
+                      <span class="text-lg font-black text-slate-800">${lista.length}</span>
                     </div>
-                    <div class="flex items-center justify-between text-[11px] text-indigo-700">
-                      <span id="fechamento-progress-detail">Atualização otimista instantânea aplicada. Sincronizando com o banco...</span>
-                      <span id="fechamento-progress-count" class="font-mono font-bold text-indigo-900">0 / ${totalEstudantes} alunos</span>
+                    <div class="bg-white p-3 rounded-lg border border-emerald-200 shadow-2xs">
+                      <span class="text-[10px] font-bold text-emerald-700 uppercase block">Prontos para Gravação</span>
+                      <span class="text-lg font-black text-emerald-700">${vinculados.length}</span>
+                      <span class="text-[10px] text-emerald-600 block">${totalRaEstrito} por RA estrito</span>
+                    </div>
+                    <div class="bg-white p-3 rounded-lg border ${ambiguos.length > 0 ? 'border-rose-300 bg-rose-50/40' : 'border-slate-200'} shadow-2xs">
+                      <span class="text-[10px] font-bold ${ambiguos.length > 0 ? 'text-rose-800' : 'text-slate-500'} uppercase block">Homônimos / Ambíguos</span>
+                      <span class="text-lg font-black ${ambiguos.length > 0 ? 'text-rose-700' : 'text-slate-700'}">${ambiguos.length}</span>
+                    </div>
+                    <div class="bg-white p-3 rounded-lg border ${(naoVinculados.length > 0 ? 'border-amber-300' : 'border-slate-200')} shadow-2xs">
+                      <span class="text-[10px] font-bold ${(naoVinculados.length > 0 ? 'text-amber-800' : 'text-slate-500')} uppercase block">Não Localizados</span>
+                      <span class="text-lg font-black ${(naoVinculados.length > 0 ? 'text-amber-800' : 'text-slate-700')}">${naoVinculados.length}</span>
+                    </div>
+                  </div>
+              `;
+
+              if (ambiguos.length > 0) {
+                reportHtml += `
+                  <div class="p-3.5 bg-rose-50 border-2 border-rose-300 rounded-xl text-xs space-y-3 shadow-xs">
+                    <div class="flex items-start gap-2.5">
+                      <i class="fa-solid fa-shield-halved text-rose-600 text-base mt-0.5 shrink-0"></i>
+                      <div>
+                        <p class="font-black text-rose-950 uppercase tracking-wide">
+                          Alerta de Segurança: Homônimos / Similaridade Ambígua Detectada (${ambiguos.length})
+                        </p>
+                        <p class="text-[11px] text-rose-800 mt-0.5">
+                          O arquivo não informou RA único para estes estudantes e existem múltiplos candidatos ou correspondência ambígua na turma.
+                          <strong>Nenhum dado será gravado para estes registros</strong> até que você selecione manualmente o estudante correto abaixo:
+                        </p>
+                      </div>
+                    </div>
+                    <div class="space-y-2 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
+                      ${ambiguos.map(({ v, idx }) => {
+                        const cands = Array.isArray(v.candidatosAmbiguos) ? v.candidatosAmbiguos : [];
+                        return `
+                          <div class="bg-white p-3 rounded-lg border border-rose-200 space-y-2">
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                              <div>
+                                <span class="font-black text-slate-900 uppercase">${escapeHtmlSed(v.alunoParsed.nome)}</span>
+                                <span class="text-[10px] text-rose-700 font-bold block">${escapeHtmlSed(v.motivoAmbiguidade || "Correspondência ambígua na turma.")}</span>
+                              </div>
+                              <span class="text-[10px] font-mono text-slate-500 shrink-0">Média arq.: ${v.alunoParsed.mediaGeral ?? "—"} &bull; ${v.alunoParsed.totalFaltas} faltas</span>
+                            </div>
+                            <div>
+                              <label class="block text-[10px] font-bold text-slate-600 uppercase mb-1">Selecionar estudante correto no banco:</label>
+                              <select
+                                onchange="window.atualizarResolucaoAmbiguidadeFechamento(${idx}, this.value)"
+                                class="w-full p-2 bg-slate-50 border border-rose-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-rose-400"
+                              >
+                                <option value="">-- Bloqueado (não gravar até selecionar) --</option>
+                                ${cands.map(c => `
+                                  <option value="${escapeHtmlSed(c.ra)}">
+                                    ${escapeHtmlSed(c.nome)} — RA: ${escapeHtmlSed(c.ra)} — Turma: ${escapeHtmlSed(c.turma)} (${escapeHtmlSed(c.motivo)})
+                                  </option>
+                                `).join("")}
+                                <option value="__IGNORAR__">Ignorar este estudante neste fechamento</option>
+                              </select>
+                            </div>
+                          </div>
+                        `;
+                      }).join("")}
                     </div>
                   </div>
                 `;
+              }
 
-                const pBar = document.getElementById("fechamento-progress-bar");
-                const pText = document.getElementById("fechamento-progress-text");
-                const pCount = document.getElementById("fechamento-progress-count");
+              reportHtml += `
+                  <!-- Lista de Pré-visualização -->
+                  <div class="space-y-2">
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs font-bold text-slate-700 uppercase">Estudantes Prontos para Gravação (${vinculados.length}):</span>
+                      <span class="text-[11px] text-slate-500">Pareamento Inteligente (RA Estrito + Nome/Turma)</span>
+                    </div>
+                    <div class="max-h-48 overflow-y-auto space-y-1.5 custom-scrollbar pr-1 border border-slate-200 rounded-lg p-2 bg-white">
+                      ${vinculados.map(v => {
+                        const isRaEstrito = v.metodoVinculo === "ra_estrito";
+                        const badgeVinculo = isRaEstrito
+                          ? `<span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[9px] border border-emerald-200">RA Estrito</span>`
+                          : (v.metodoVinculo === "manual_ambiguo"
+                              ? `<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-bold text-[9px] border border-amber-200">Confirmado Manualmente</span>`
+                              : `<span class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-bold text-[9px] border border-indigo-200">Nome/Turma</span>`);
+                        return `
+                          <div class="flex items-center justify-between p-2 rounded bg-slate-50 hover:bg-slate-100 text-xs transition gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                              <i class="fa-solid fa-circle-check text-emerald-600 text-xs shrink-0"></i>
+                              <div class="min-w-0">
+                                <div class="flex items-center gap-1.5 flex-wrap">
+                                  <span class="font-bold text-slate-800 truncate">${escapeHtmlSed(v.alunoParsed.nome)}</span>
+                                  ${badgeVinculo}
+                                </div>
+                                <span class="text-[10px] text-slate-500 font-mono">RA: ${escapeHtmlSed(v.alunoBase.ra)} &bull; Turma Sistema: ${escapeHtmlSed(v.alunoBase.turma || '—')}</span>
+                              </div>
+                            </div>
+                            <div class="text-right shrink-0">
+                              <span class="font-black text-blue-900">Média: ${v.alunoParsed.mediaGeral !== null ? v.alunoParsed.mediaGeral : '—'}</span>
+                              <span class="text-[10px] text-slate-400 block">${v.alunoParsed.totalFaltas} faltas &bull; ${escapeHtmlSed(v.alunoParsed.frequenciaBimestre)}</span>
+                            </div>
+                          </div>
+                        `;
+                      }).join('')}
+                    </div>
+                  </div>
+              `;
 
-                try {
-                  const saveResult = await manager.salvarFechamentoNoFirestore(vinculados, meta, (pct, salvos, total) => {
-                    if (pBar) pBar.style.width = `${pct}%`;
-                    if (pText) pText.textContent = `${pct}%`;
-                    if (pCount && salvos !== undefined && total !== undefined) {
-                      pCount.textContent = `${salvos} / ${total} alunos`;
-                    }
-                    if (btnConfirmar) {
-                      btnConfirmar.innerHTML = `<i class="fa-solid fa-circle-notch animate-spin"></i> Gravando ${salvos || 0}/${total || totalEstudantes} (${pct}%)...`;
-                    }
-                  });
+              if (naoVinculados.length > 0) {
+                reportHtml += `
+                  <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs space-y-2">
+                    <div class="flex items-center gap-2 font-bold text-amber-900">
+                      <i class="fa-solid fa-triangle-exclamation text-amber-600"></i>
+                      <span>${naoVinculados.length} estudante(s) do arquivo não foram vinculados/gravados:</span>
+                    </div>
+                    <div class="max-h-24 overflow-y-auto space-y-1 custom-scrollbar text-[11px] text-amber-800">
+                      ${naoVinculados.map(nv => `
+                        <div>&bull; <strong>${escapeHtmlSed(nv.alunoParsed.nome)}</strong>${nv.alunoParsed.ra ? ` (RA: ${escapeHtmlSed(nv.alunoParsed.ra)})` : ""} — Situação: ${escapeHtmlSed(nv.alunoParsed.situacao)}</div>
+                      `).join('')}
+                    </div>
+                    <p class="text-[10px] text-amber-700">Verifique se o RA ou nome no cadastro possui grafia idêntica ou se o aluno já foi matriculado.</p>
+                  </div>
+                `;
+              }
 
+              reportHtml += `
+                  <!-- Botões de Ação -->
+                  <div class="space-y-1.5 pt-2">
+                    <div class="flex items-center gap-3 flex-wrap">
+                      <button id="btn-confirmar-salvar-fechamento" type="button" ${vinculados.length === 0 ? "disabled" : ""} class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-lg uppercase tracking-wider shadow-sm transition flex items-center gap-2 cursor-pointer">
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                        <span>Confirmar e Gravar ${vinculados.length} Alunos no Banco de Dados</span>
+                      </button>
+                      <button id="btn-cancelar-fechamento" type="button" class="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs rounded-lg uppercase transition cursor-pointer">
+                        Cancelar
+                      </button>
+                    </div>
+                    ${ambiguos.length > 0 ? `<p class="text-[10px] text-rose-700 font-bold">Proteção ativa: os ${ambiguos.length} estudante(s) ambíguo(s) não resolvidos acima serão ignorados e NÃO terão suas notas sobrescritas.</p>` : ""}
+                  </div>
+                </div>
+              `;
+
+              resultadoFechamento.innerHTML = reportHtml;
+
+              const btnConfirmar = document.getElementById("btn-confirmar-salvar-fechamento");
+              const btnCancelar = document.getElementById("btn-cancelar-fechamento");
+
+              if (btnCancelar) {
+                btnCancelar.addEventListener("click", () => {
+                  resultadoFechamento.innerHTML = "";
+                  window._fechamentoVinculosAtual = null;
+                  if (fileFechamentoInput) fileFechamentoInput.value = "";
+                  if (textoColar) textoColar.value = "";
+                });
+              }
+
+              if (btnConfirmar) {
+                btnConfirmar.addEventListener("click", async () => {
+                  const listaAtual = window._fechamentoVinculosAtual || [];
+                  const prontosParaGravar = listaAtual.filter(v => !v.ambiguo && v.alunoBase && v.alunoBase.ra);
+                  if (prontosParaGravar.length === 0) {
+                    window.showToast?.("Nenhum estudante válido/desambiguado para gravar.", "warning", 4000);
+                    return;
+                  }
+
+                  btnConfirmar.disabled = true;
+                  btnConfirmar.innerHTML = `<i class="fa-solid fa-bolt text-amber-300 animate-pulse"></i> Gravando Notas no Banco de Dados...`;
+
+                  const totalEstudantes = prontosParaGravar.length;
+
+                  // Exibir barra de progresso visual de alta performance
                   resultadoFechamento.innerHTML = `
-                    <div class="p-4 bg-emerald-50 border border-emerald-300 rounded-xl space-y-2 animate-fadeIn">
-                      <div class="flex items-center gap-2 text-xs font-bold text-emerald-900">
-                        <i class="fa-solid fa-circle-check text-emerald-600 text-lg"></i>
-                        <span>Fechamento do <strong>${meta.bimestreKey === 'FINAL' ? 'Conselho Final & Rendimento Anual' : `${meta.bimestre}º Bimestre`}</strong> gravado com sucesso para <strong>${saveResult.sucessos} estudantes</strong> da turma ${meta.turmaOriginal}!</span>
+                    <div class="p-4 bg-indigo-50 border border-indigo-200 rounded-xl space-y-3 animate-fadeIn">
+                      <div class="flex items-center justify-between text-xs font-bold text-indigo-900">
+                        <span class="flex items-center gap-2">
+                          <i class="fa-solid fa-bolt text-indigo-600 animate-pulse"></i>
+                          <span>Gravando Notas no Banco de Dados (Lotes Paralelos Otimizados)...</span>
+                        </span>
+                        <span id="fechamento-progress-text" class="font-mono text-indigo-700 font-bold">15%</span>
                       </div>
-                      <p class="text-xs text-emerald-700">
-                        As notas, faltas, menções e médias bimestrais foram registradas individualmente com alta velocidade e sem perda de dados.
-                      </p>
-                      <div class="pt-2 flex items-center gap-2">
-                        <button type="button" onclick="if (typeof window.switchTab === 'function') window.switchTab('alunos');" class="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-lg uppercase transition cursor-pointer">
-                          Ver Alunos da Turma
-                        </button>
+                      <div class="w-full bg-indigo-200/80 rounded-full h-3 overflow-hidden shadow-inner">
+                        <div id="fechamento-progress-bar" class="bg-indigo-600 h-3 rounded-full transition-all duration-300 ease-out" style="width: 15%"></div>
+                      </div>
+                      <div class="flex items-center justify-between text-[11px] text-indigo-700">
+                        <span id="fechamento-progress-detail">Atualização otimista instantânea aplicada. Sincronizando com o banco...</span>
+                        <span id="fechamento-progress-count" class="font-mono font-bold text-indigo-900">0 / ${totalEstudantes} alunos</span>
                       </div>
                     </div>
                   `;
 
-                  if (fileFechamentoInput) fileFechamentoInput.value = "";
-                  if (textoColar) textoColar.value = "";
+                  const pBar = document.getElementById("fechamento-progress-bar");
+                  const pText = document.getElementById("fechamento-progress-text");
+                  const pCount = document.getElementById("fechamento-progress-count");
 
-                  if (typeof window.showToast === "function") {
-                    const descToast = meta.bimestreKey === 'FINAL' ? 'Fechamento Final gravado com sucesso!' : `Notas do ${meta.bimestre}º Bimestre gravadas com sucesso!`;
-                    window.showToast(descToast, 'success');
+                  try {
+                    const saveResult = await manager.salvarFechamentoNoFirestore(prontosParaGravar, meta, (pct, salvos, total) => {
+                      if (pBar) pBar.style.width = `${pct}%`;
+                      if (pText) pText.textContent = `${pct}%`;
+                      if (pCount && salvos !== undefined && total !== undefined) {
+                        pCount.textContent = `${salvos} / ${total} alunos`;
+                      }
+                      if (btnConfirmar) {
+                        btnConfirmar.innerHTML = `<i class="fa-solid fa-circle-notch animate-spin"></i> Gravando ${salvos || 0}/${total || totalEstudantes} (${pct}%)...`;
+                      }
+                    });
+
+                    resultadoFechamento.innerHTML = `
+                      <div class="p-4 bg-emerald-50 border border-emerald-300 rounded-xl space-y-2 animate-fadeIn">
+                        <div class="flex items-center gap-2 text-xs font-bold text-emerald-900">
+                          <i class="fa-solid fa-circle-check text-emerald-600 text-lg"></i>
+                          <span>Fechamento do <strong>${meta.bimestreKey === 'FINAL' ? 'Conselho Final & Rendimento Anual' : `${meta.bimestre}º Bimestre`}</strong> gravado com sucesso para <strong>${saveResult.sucessos} estudantes</strong> da turma ${escapeHtmlSed(meta.turmaOriginal)}!</span>
+                        </div>
+                        <p class="text-xs text-emerald-700">
+                          As notas, faltas, menções e médias bimestrais foram registradas individualmente com alta velocidade e sem perda de dados.
+                        </p>
+                        <div class="pt-2 flex items-center gap-2">
+                          <button type="button" onclick="if (typeof window.switchTab === 'function') window.switchTab('alunos');" class="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-lg uppercase transition cursor-pointer">
+                            Ver Alunos da Turma
+                          </button>
+                        </div>
+                      </div>
+                    `;
+
+                    if (fileFechamentoInput) fileFechamentoInput.value = "";
+                    if (textoColar) textoColar.value = "";
+
+                    if (typeof window.showToast === "function") {
+                      const descToast = meta.bimestreKey === 'FINAL' ? 'Fechamento Final gravado com sucesso!' : `Notas do ${meta.bimestre}º Bimestre gravadas com sucesso!`;
+                      window.showToast(descToast, 'success');
+                    }
+
+                    // Atualizar tabela de alunos se aberta
+                    if (typeof applyStudentFilters === "function") applyStudentFilters();
+                  } catch (saveErr) {
+                    console.error("Erro ao salvar fechamento:", saveErr);
+                    window.showToast?.("Erro ao gravar dados no banco de dados: " + (saveErr.message || saveErr), "error", 6000);
+                    btnConfirmar.disabled = false;
+                    btnConfirmar.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> Tentar Gravar Novamente`;
                   }
+                });
+              }
+            };
 
-                  // Atualizar tabela de alunos se aberta
-                  if (typeof applyStudentFilters === "function") applyStudentFilters();
-                } catch (saveErr) {
-                  console.error("Erro ao salvar fechamento:", saveErr);
-                  alert("Erro ao gravar dados no banco de dados: " + (saveErr.message || saveErr));
-                  btnConfirmar.disabled = false;
-                  btnConfirmar.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> Tentar Gravar Novamente`;
+            window.atualizarResolucaoAmbiguidadeFechamento = function(idx, raSelecionado) {
+              const lista = window._fechamentoVinculosAtual;
+              if (!Array.isArray(lista) || !lista[idx]) return;
+
+              if (raSelecionado === "__IGNORAR__") {
+                lista[idx] = {
+                  ...lista[idx],
+                  alunoBase: null,
+                  metodoVinculo: "nao_encontrado",
+                  confianca: 0,
+                  ambiguo: false
+                };
+              } else if (raSelecionado) {
+                const chosen = (window.allStudentsData || []).find(s => String(s?.ra || "") === String(raSelecionado));
+                if (chosen) {
+                  lista[idx] = {
+                    ...lista[idx],
+                    alunoBase: chosen,
+                    metodoVinculo: "manual_ambiguo",
+                    confianca: 100,
+                    ambiguo: false
+                  };
                 }
-              });
-            }
+              }
+              renderizarPainelPreviaFechamento();
+            };
+
+            renderizarPainelPreviaFechamento();
 
           } catch (err) {
             console.error("Erro ao processar fechamento de notas SED:", err);
@@ -24033,8 +25353,12 @@ Yasmin Seline`;
       window.abrirModalCadastroRapido = function(ra) {
         const item = window.novosAlunosSEDMap?.[ra];
         if (!item) {
-          alert("Dados do aluno não encontrados.");
+          window.showToast?.("Dados do aluno não encontrados.", "warning", 3500);
           return;
+        }
+
+        if (typeof window.popularDatalistTutoresPei === "function") {
+          window.popularDatalistTutoresPei();
         }
 
         const elNome = document.getElementById("rapido-nome");
@@ -24047,14 +25371,14 @@ Yasmin Seline`;
         if (elPresencaHidden) elPresencaHidden.value = item.presenca || "0%";
         if (elDisplayPresenca) elDisplayPresenca.textContent = item.presenca || "0%";
 
-        // Limpar campos complementares PEI
+        // Preencher turma identificada (se houver) e limpar demais campos complementares PEI
         const elTurma = document.getElementById("rapido-turma");
         const elTutor = document.getElementById("rapido-tutor");
         const elClube = document.getElementById("rapido-clube");
         const elEletivas = document.getElementById("rapido-eletivas");
         const elProtagonismo = document.getElementById("rapido-protagonismo");
 
-        if (elTurma) elTurma.value = "";
+        if (elTurma) elTurma.value = item.turma || "";
         if (elTutor) elTutor.value = "";
         if (elClube) elClube.value = "";
         if (elEletivas) elEletivas.value = "";
@@ -24084,7 +25408,7 @@ Yasmin Seline`;
           const protagonismo = (document.getElementById("rapido-protagonismo")?.value || "").trim().toUpperCase();
 
           if (!ra || !nome) {
-            alert("Nome e RA são obrigatórios.");
+            window.showToast?.("Nome e RA são obrigatórios.", "warning", 3500);
             return;
           }
 
@@ -24094,6 +25418,7 @@ Yasmin Seline`;
               btnSalvar.innerHTML = `<i class="fa-solid fa-spinner animate-spin text-xs"></i><span>Salvando...</span>`;
             }
 
+            // Regra AGENTS.md: nunca enviar id ou _id no payload
             const newStudentObj = {
               nome: nome,
               ra: ra,
@@ -24120,7 +25445,7 @@ Yasmin Seline`;
               (window.allStudentsData = window.allStudentsData || []).push(newStudentObj);
             }
 
-            alert(`Aluno(a) "${nome}" foi cadastrado(a) com sucesso e incluído(a) na escola!`);
+            window.showToast?.(`Aluno(a) "${nome}" cadastrado(a) com sucesso e incluído(a) na escola!`, "success", 4500);
 
             // Fechar modal
             window.fecharModalCadastroRapido();
@@ -24152,14 +25477,26 @@ Yasmin Seline`;
               if (countSpan) countSpan.textContent = countRestante;
             }
 
-            // Atualizar interface localmente sem re-executar getDocs
+            // Atualizar interface localmente e reavaliar divergências de enturmação/tutoria
+            window.dispatchEvent(new CustomEvent("studentsdataupdated"));
             if (typeof populateFilterSelects === "function") populateFilterSelects(window.allStudentsData || []);
             if (typeof applyStudentFilters === "function") applyStudentFilters();
             if (typeof atualizarDashboardGraficos === "function") atualizarDashboardGraficos();
             if (typeof renderBuscaAtiva === "function") renderBuscaAtiva();
+            if (typeof window.atualizarDivergenciasExcelNaTela === "function") {
+              window.atualizarDivergenciasExcelNaTela();
+            }
+            const contPdf = document.getElementById("container-resultado-auditoria-freq-sed");
+            if (contPdf && !contPdf.classList.contains("hidden") && window._resultadoMultiTurmasFreqSed) {
+              window.renderizarResultadoFrequenciaSed(
+                window._resultadoMultiTurmasFreqSed,
+                window._turmaFrequenciaSedAtiva || "TODAS",
+                window._filtroStatusFrequenciaSed || "TODOS"
+              );
+            }
           } catch (err) {
             console.error("Erro ao cadastrar aluno novo:", err);
-            alert("Erro ao cadastrar aluno: " + (err.message || err));
+            window.showToast?.("Erro ao cadastrar aluno: " + (err.message || err), "error", 5000);
           } finally {
             if (btnSalvar) {
               btnSalvar.disabled = false;

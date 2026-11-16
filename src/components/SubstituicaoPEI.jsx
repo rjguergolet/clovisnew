@@ -1,7 +1,24 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import MascoteSaraState from './MascoteSaraState';
 import { db, collection, onSnapshot, addDoc, updateDoc, doc, deleteDoc, setDoc, getDocs } from '../lib/database';
-import { isTeacherAtSchool, isRegularTeachingClass, normalizeTeacherName, extrairEMigrarDocentesDoHorario, isSameProfessor, getPeriodoOrder, getPeriodoRotulo, normalizeSubstituicoesPeriodos, normalizarDia } from '../utils';
+import {
+  isTeacherAtSchool,
+  isRegularTeachingClass,
+  isBlockingSlotForSubstitution,
+  isInstitutionalOrAtpcCommitment,
+  isRealProfessorName,
+  isRealSchoolTurma,
+  sortTurmasPEI,
+  normalizeHorarioItem,
+  normalizeTeacherName,
+  extrairEMigrarDocentesDoHorario,
+  isSameProfessor,
+  getPeriodoOrder,
+  getPeriodoRotulo,
+  normalizeSubstituicoesPeriodos,
+  normalizarDia,
+  matchUsuarioProfessor
+} from '../utils';
 import { registrarLogAuditoria } from '../modules/auditLogger';
 import { obterUsuarioAtivoCompleto } from '../modules/authHelper';
 
@@ -144,40 +161,28 @@ const getDataBadgeInfo = (dataStr) => {
   return null;
 };
 
-// Dados Iniciais Exemplo para Fallback
-const GERAR_SUBSTITUICOES_INICIAIS = () => {
-  const hoje = new Date().toISOString().split('T')[0];
-  return [
-    {
-      id: 'sub-init-1',
-      data: hoje,
-      professorAusente: 'Profª Maria Silva',
-      disciplina: 'Língua Portuguesa',
-      area: 'Linguagens (LGG)',
-      turma: '6º Ano A',
-      periodoId: 1,
-      motivo: 'Atestado Médico / Licença Saúde',
-      professorSubstituto: 'Profª Vanessa Rocha',
-      tipoSubstituto: 'Mesma Área (Linguagens (LGG))',
-      status: 'CONFIRMADA',
-      observacao: 'Aulas de Língua Portuguesa com apoio de leitura instrumental'
-    },
-    {
-      id: 'sub-init-2',
-      data: hoje,
-      professorAusente: 'Prof. Carlos Eduardo',
-      disciplina: 'Matemática',
-      area: 'Exatas (EXA)',
-      turma: '8º Ano A',
-      periodoId: 3,
-      motivo: 'Treinamento / Formação Pedagógica',
-      professorSubstituto: 'Profª Juliana Mendes',
-      tipoSubstituto: 'Mesma Área (Exatas (EXA))',
-      status: 'CONFIRMADA',
-      observacao: 'Atividade prática de recomposição em sala de aula'
-    }
-  ];
+const getSemanaIntervalo = (dataStr) => {
+  const clean = String(dataStr || getHojeLocalStr()).trim().split('T')[0];
+  const parts = clean.split('-').map(Number);
+  const d = parts.length === 3 && !parts.some(isNaN) ? new Date(parts[0], parts[1] - 1, parts[2]) : new Date();
+  const dayOfWeek = d.getDay();
+  const diffToMon = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const mon = new Date(d);
+  mon.setDate(d.getDate() + diffToMon);
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  const fmt = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  return { inicioSemana: fmt(mon), fimSemana: fmt(sun) };
 };
+
+const OPCOES_TURNO_DOCENTE = [
+  { value: 'INTEGRAL', label: 'Integral (Auto pela Grade)' },
+  { value: 'PEI_MANHA', label: 'PEI Manhã (1ª-9ª / 07h-16h)' },
+  { value: 'PEI_TARDE', label: 'PEI Tarde/Noite (6ª-14ª / 12h20-21h20)' },
+  { value: 'MANHA', label: 'Manhã (1ª-7ª / 07h-14h)' },
+  { value: 'TARDE', label: 'Tarde/Noite (8ª-14ª / 14h20-21h20)' },
+  { value: 'FOLGA', label: 'Folga / Afastado / Inativo' }
+];
 
 export default function SubstituicaoPEI() {
   const [substituicoes, setSubstituicoes] = useState(() => (Array.isArray(window.substituicoesCache) ? window.substituicoesCache : []));
@@ -202,12 +207,13 @@ export default function SubstituicaoPEI() {
 
   // State de Grade Horária Completa (para verificação de docentes ocupados em aula/atividade PEI)
   const [horariosEscola, setHorariosEscola] = useState([]);
+  const [cadastrosCustom, setCadastrosCustom] = useState({ turmas: [], professores: [], salas: [] });
 
   // Sub-abas de visualização: 'painel' | 'sugestao' | 'saldo' | 'relatorio' | 'docentes'
   const [subAba, setSubAba] = useState('painel');
 
   // Filtros
-  const [filtroData, setFiltroData] = useState(() => new Date().toISOString().split('T')[0]);
+  const [filtroData, setFiltroData] = useState(() => getHojeLocalStr());
   const [filtroTurma, setFiltroTurma] = useState('TODAS');
   const [filtroStatus, setFiltroStatus] = useState('TODOS');
   const [termoBusca, setTermoBusca] = useState('');
@@ -231,6 +237,24 @@ export default function SubstituicaoPEI() {
     return () => unsubscribe();
   }, []);
 
+  // Escutar Firestore doc 'config_escola/cadastros_base'
+  useEffect(() => {
+    const docRef = doc(db, 'config_escola', 'cadastros_base');
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const d = docSnap.data();
+        setCadastrosCustom({
+          turmas: Array.isArray(d.turmas) ? d.turmas.filter(isRealSchoolTurma) : [],
+          professores: Array.isArray(d.professores) ? d.professores.filter(isRealProfessorName) : [],
+          salas: Array.isArray(d.salas) ? d.salas : []
+        });
+      }
+    }, (err) => {
+      console.warn('Erro ao carregar cadastros_base em SubstituicaoPEI:', err);
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Escutar Firestore doc 'config_escola/indisponibilidade_professores'
   useEffect(() => {
     const docRef = doc(db, 'config_escola', 'indisponibilidade_professores');
@@ -249,54 +273,95 @@ export default function SubstituicaoPEI() {
     return () => unsubscribe();
   }, []);
 
-  // Carregar Grade Horária de 'horarios' com cache agressivo / evento local (Zero Reads)
+  // Lista de usuários do sistema para exibir vínculo Docente ↔ Usuário
+  const [usuariosSistema, setUsuariosSistema] = useState(() =>
+    Array.isArray(window?.usuariosCache) ? window.usuariosCache : []
+  );
+
   useEffect(() => {
-    const carregarHorariosCache = async () => {
-      if (window.gradeCache && Array.isArray(window.gradeCache) && window.gradeCache.length > 0) {
-        setHorariosEscola(window.gradeCache);
-        return;
-      }
+    const unsubUsers = onSnapshot(collection(db, 'usuarios'), (snap) => {
+      const lista = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setUsuariosSistema(lista);
+    }, () => {});
+    return () => { if (typeof unsubUsers === 'function') unsubUsers(); };
+  }, []);
+
+  // Sincronização em tempo real da Grade Horária 2026 ('horarios' + 'config_escola/grade_horarios_custom')
+  useEffect(() => {
+    const getDeletedIds = (extraDeleted = []) => {
+      const setIds = new Set(Array.isArray(extraDeleted) ? extraDeleted.map(String) : []);
+      try {
+        ['clovis_horarios_deleted_ids', 'clovis_deleted_horarios_ids'].forEach((k) => {
+          const raw = localStorage.getItem(k);
+          const arr = raw ? JSON.parse(raw) : [];
+          if (Array.isArray(arr)) arr.forEach((id) => setIds.add(String(id)));
+        });
+      } catch (e) {}
+      return setIds;
+    };
+
+    const aplicarGrade = (listaBruta, extraDeleted = []) => {
+      if (!Array.isArray(listaBruta)) return;
+      const deletedIds = getDeletedIds(extraDeleted);
+      const normalizada = listaBruta
+        .filter(item => item && (!item.id || !deletedIds.has(String(item.id))))
+        .map(normalizeHorarioItem);
+      setHorariosEscola(normalizada);
+      window.gradeCache = normalizada;
+      try {
+        localStorage.setItem('clovis_horarios_cache', JSON.stringify(normalizada));
+      } catch (e) {}
+    };
+
+    if (Array.isArray(window.gradeCache) && window.gradeCache.length > 0) {
+      aplicarGrade(window.gradeCache);
+    } else {
       const cached = localStorage.getItem('clovis_horarios_cache');
       if (cached) {
         try {
           const parsed = JSON.parse(cached);
-          setHorariosEscola(parsed);
-          window.gradeCache = parsed;
-          return;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            aplicarGrade(parsed);
+          }
         } catch (e) {}
       }
-      try {
-        const colRef = collection(db, 'horarios');
-        let snap;
-        try {
-          snap = await getDocs(colRef, { source: 'cache' });
-          if (!snap || snap.empty) throw new Error('Cache vazio');
-        } catch (cErr) {
-          snap = await getDocs(colRef, { source: 'server' });
-        }
-        const docs = [];
-        snap.forEach((docSnap) => {
-          docs.push({ id: docSnap.id, ...docSnap.data() });
-        });
-        if (docs.length > 0) {
-          setHorariosEscola(docs);
-          window.gradeCache = docs;
-          localStorage.setItem('clovis_horarios_cache', JSON.stringify(docs));
-        }
-      } catch (err) {
-        console.warn('Erro ao carregar horarios em SubstituicaoPEI:', err);
-      }
-    };
+    }
 
-    carregarHorariosCache();
+    let colHasDocs = false;
+    const unsubCol = onSnapshot(collection(db, 'horarios'), (snapshot) => {
+      const docs = [];
+      snapshot.forEach((docSnap) => {
+        docs.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      if (docs.length > 0) {
+        colHasDocs = true;
+        aplicarGrade(docs);
+      }
+    }, (err) => {
+      console.warn('Erro ao escutar collection horarios em SubstituicaoPEI:', err);
+    });
+
+    const unsubCustom = onSnapshot(doc(db, 'config_escola', 'grade_horarios_custom'), (docSnap) => {
+      if (!colHasDocs && docSnap.exists()) {
+        const data = docSnap.data() || {};
+        const lista = Array.isArray(data.grade) ? data.grade : (Array.isArray(data.slots) ? data.slots : []);
+        if (lista.length > 0) {
+          aplicarGrade(lista, data.deletedIds || []);
+        }
+      }
+    }, () => {});
 
     const handleHorariosUpdate = (e) => {
       if (e.detail && Array.isArray(e.detail)) {
-        setHorariosEscola(e.detail);
+        aplicarGrade(e.detail);
       }
     };
     window.addEventListener('clovis_horarios_updated', handleHorariosUpdate);
-    return () => window.removeEventListener('clovis_horarios_updated', handleHorariosUpdate);
+    return () => {
+      if (typeof unsubCol === 'function') unsubCol();
+      if (typeof unsubCustom === 'function') unsubCustom();
+      window.removeEventListener('clovis_horarios_updated', handleHorariosUpdate);
+    };
   }, []);
 
   // Modal Lançamento
@@ -306,11 +371,11 @@ export default function SubstituicaoPEI() {
 
   // Formulário de Substituição
   const [form, setForm] = useState({
-    data: new Date().toISOString().split('T')[0],
-    professorAusente: 'Profª Maria Silva',
-    disciplina: 'Língua Portuguesa',
-    area: 'Linguagens',
-    turma: '6º Ano A',
+    data: getHojeLocalStr(),
+    professorAusente: '',
+    disciplina: '',
+    area: 'Gestão/Outros (OUT)',
+    turma: '',
     periodoId: 1,
     motivo: 'Atestado Médico / Licença Saúde',
     professorSubstituto: '',
@@ -319,13 +384,30 @@ export default function SubstituicaoPEI() {
     observacao: ''
   });
 
-  // Role e Permissões
-  const [userRole] = useState(() => {
+  // Role e Permissões (reativo a alterações de perfil/simulador)
+  const [userRole, setUserRole] = useState(() => {
     if (typeof window !== 'undefined' && typeof window.obterRoleAtual === 'function') {
       return window.obterRoleAtual();
     }
     return window?.currentUserRole || 'DIRETOR';
   });
+
+  useEffect(() => {
+    const syncRole = () => {
+      const nextRole = (typeof window !== 'undefined' && typeof window.obterRoleAtual === 'function')
+        ? window.obterRoleAtual()
+        : (window?.currentUserRole || localStorage.getItem('usuario_cargo') || 'DIRETOR');
+      setUserRole(nextRole);
+    };
+    window.addEventListener('storage', syncRole);
+    window.addEventListener('taborrolechange', syncRole);
+    window.addEventListener('clovis_role_changed', syncRole);
+    return () => {
+      window.removeEventListener('storage', syncRole);
+      window.removeEventListener('taborrolechange', syncRole);
+      window.removeEventListener('clovis_role_changed', syncRole);
+    };
+  }, []);
 
   const roleNorm = String(userRole || 'PROFESSOR').toUpperCase().trim().replace(/-/g, '_');
   const temAcessoSubstituicao = ['DIRETOR', 'VICE_DIRETOR', 'VICE-DIRETOR', 'CGPG'].some(
@@ -387,28 +469,10 @@ export default function SubstituicaoPEI() {
         window.substituicoesHoje = docs.filter(s => (s.data_referencia || s.data) === hojeStr);
         localStorage.setItem('clovis_substituicoes_cache', JSON.stringify(docs));
       } else {
-        const cache = localStorage.getItem('clovis_substituicoes_cache');
-        if (cache) {
-          try {
-            const parsed = JSON.parse(cache);
-            setSubstituicoes(parsed);
-            window.substituicoesCache = parsed;
-            const hojeStr = new Date().toISOString().split('T')[0];
-            window.substituicoesHoje = parsed.filter(s => (s.data_referencia || s.data) === hojeStr);
-          } catch (e) {
-            const inis = GERAR_SUBSTITUICOES_INICIAIS();
-            setSubstituicoes(inis);
-            window.substituicoesCache = inis;
-            window.substituicoesHoje = inis;
-            localStorage.setItem('clovis_substituicoes_cache', JSON.stringify(inis));
-          }
-        } else {
-          const inis = GERAR_SUBSTITUICOES_INICIAIS();
-          setSubstituicoes(inis);
-          window.substituicoesCache = inis;
-          window.substituicoesHoje = inis;
-          localStorage.setItem('clovis_substituicoes_cache', JSON.stringify(inis));
-        }
+        setSubstituicoes([]);
+        window.substituicoesCache = [];
+        window.substituicoesHoje = [];
+        localStorage.removeItem('clovis_substituicoes_cache');
       }
     } catch (err) {
       console.warn('Erro ao conectar Firestore substituicoes_diarias, utilizando dados locais:', err);
@@ -417,21 +481,20 @@ export default function SubstituicaoPEI() {
       if (cache) {
         try {
           const parsed = JSON.parse(cache);
-          setSubstituicoes(parsed);
-          window.substituicoesCache = parsed;
-          const hojeStr = new Date().toISOString().split('T')[0];
-          window.substituicoesHoje = parsed.filter(s => (s.data_referencia || s.data) === hojeStr);
+          const validos = Array.isArray(parsed) ? parsed.filter(s => s && !String(s.id || '').startsWith('sub-init-')) : [];
+          setSubstituicoes(validos);
+          window.substituicoesCache = validos;
+          const hojeStr = getHojeLocalStr();
+          window.substituicoesHoje = validos.filter(s => (s.data_referencia || s.data) === hojeStr);
         } catch (e) {
-          const inis = GERAR_SUBSTITUICOES_INICIAIS();
-          setSubstituicoes(inis);
-          window.substituicoesCache = inis;
-          window.substituicoesHoje = inis;
+          setSubstituicoes([]);
+          window.substituicoesCache = [];
+          window.substituicoesHoje = [];
         }
       } else {
-        const inis = GERAR_SUBSTITUICOES_INICIAIS();
-        setSubstituicoes(inis);
-        window.substituicoesCache = inis;
-        window.substituicoesHoje = inis;
+        setSubstituicoes([]);
+        window.substituicoesCache = [];
+        window.substituicoesHoje = [];
       }
     } finally {
       setLoading(false);
@@ -542,19 +605,21 @@ export default function SubstituicaoPEI() {
       });
 
       if (docs.length > 0) {
-        setSubstituicoes(docs);
-        window.substituicoesCache = docs;
-        const hojeStr = new Date().toISOString().split('T')[0];
-        window.substituicoesHoje = docs.filter(s => (s.data_referencia || s.data) === hojeStr);
+        const validos = docs.filter(s => s && !String(s.id || '').startsWith('sub-init-'));
+        setSubstituicoes(validos);
+        window.substituicoesCache = validos;
+        const hojeStr = getHojeLocalStr();
+        window.substituicoesHoje = validos.filter(s => (s.data_referencia || s.data) === hojeStr);
         try {
-          localStorage.setItem('clovis_substituicoes_cache', JSON.stringify(docs));
+          localStorage.setItem('clovis_substituicoes_cache', JSON.stringify(validos));
         } catch (e) {}
       } else if (!snapshot.metadata || snapshot.metadata.fromCache === false) {
-        // Se vazio no servidor, usa dados iniciais
-        const inis = GERAR_SUBSTITUICOES_INICIAIS();
-        setSubstituicoes(inis);
-        window.substituicoesCache = inis;
-        window.substituicoesHoje = inis;
+        setSubstituicoes([]);
+        window.substituicoesCache = [];
+        window.substituicoesHoje = [];
+        try {
+          localStorage.removeItem('clovis_substituicoes_cache');
+        } catch (e) {}
       }
 
       setLoading(false);
@@ -601,6 +666,7 @@ export default function SubstituicaoPEI() {
     disciplina: '',
     area: 'Exatas (EXA)',
     tipo: 'EFETIVO',
+    turno: 'INTEGRAL',
     saldoAulas: 0
   });
 
@@ -609,10 +675,13 @@ export default function SubstituicaoPEI() {
     const docRef = doc(db, 'config_escola', 'cadastro_professores');
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists() && Array.isArray(docSnap.data().professores)) {
-        const profsComArea = docSnap.data().professores.map(p => ({
-          ...p,
-          area: normalizarArea(p.area)
-        }));
+        const profsComArea = docSnap.data().professores
+          .filter(p => p && isRealProfessorName(p.nome))
+          .map(p => ({
+            ...p,
+            area: normalizarArea(p.area),
+            turno: p.turno || 'INTEGRAL'
+          }));
         setCadastroProfessores(profsComArea);
         localStorage.setItem('clovis_cadastro_professores', JSON.stringify(profsComArea));
       }
@@ -633,10 +702,13 @@ export default function SubstituicaoPEI() {
 
     const handleTeachersUpdated = (e) => {
       if (e.detail && Array.isArray(e.detail)) {
-        const profsComArea = e.detail.map(p => ({
-          ...p,
-          area: normalizarArea(p.area)
-        }));
+        const profsComArea = e.detail
+          .filter(p => p && isRealProfessorName(p.nome))
+          .map(p => ({
+            ...p,
+            area: normalizarArea(p.area),
+            turno: p.turno || 'INTEGRAL'
+          }));
         setCadastroProfessores(profsComArea);
         localStorage.setItem('clovis_cadastro_professores', JSON.stringify(profsComArea));
       }
@@ -644,8 +716,9 @@ export default function SubstituicaoPEI() {
 
     const handleHorariosUpdated = (e) => {
       if (e.detail && Array.isArray(e.detail)) {
-        setHorariosEscola(e.detail);
-        localStorage.setItem('clovis_horarios_cache', JSON.stringify(e.detail));
+        const normalizada = e.detail.map(normalizeHorarioItem);
+        setHorariosEscola(normalizada);
+        localStorage.setItem('clovis_horarios_cache', JSON.stringify(normalizada));
       }
     };
 
@@ -660,12 +733,17 @@ export default function SubstituicaoPEI() {
   }, []);
 
   const salvarCadastroProfessores = async (novosProfs) => {
-    const profsFormatados = novosProfs.map(p => ({
-      ...p,
-      area: normalizarArea(p.area)
-    }));
+    const profsFormatados = (novosProfs || [])
+      .filter(p => p && isRealProfessorName(p.nome))
+      .map(p => ({
+        ...p,
+        nome: p.nome.trim(),
+        area: normalizarArea(p.area),
+        turno: p.turno || 'INTEGRAL'
+      }));
     setCadastroProfessores(profsFormatados);
     localStorage.setItem('clovis_cadastro_professores', JSON.stringify(profsFormatados));
+    window.dispatchEvent(new CustomEvent('clovis_teachers_updated', { detail: profsFormatados }));
     try {
       await setDoc(doc(db, 'config_escola', 'cadastro_professores'), {
         professores: profsFormatados,
@@ -696,7 +774,7 @@ export default function SubstituicaoPEI() {
   // Auto-migração ao carregar horários caso o cadastro esteja vazio ou defasado
   useEffect(() => {
     if (Array.isArray(horariosEscola) && horariosEscola.length > 0) {
-      const profsNaGrade = new Set(horariosEscola.map(h => h.professor?.trim()).filter(Boolean));
+      const profsNaGrade = new Set(horariosEscola.map(h => h.professor?.trim()).filter(isRealProfessorName));
       if (profsNaGrade.size > 0 && (!cadastroProfessores || cadastroProfessores.length === 0)) {
         handleMigrarDocentesDoHorario(true);
       }
@@ -705,20 +783,21 @@ export default function SubstituicaoPEI() {
 
   const handleAlterarAreaDocenteInline = (nomeProf, novaArea) => {
     const novosProfs = cadastroProfessores.map(p => {
-      if (p.nome === nomeProf) {
-        return { ...p, area: novaArea };
+      if (isSameProfessor(p.nome, nomeProf)) {
+        return { ...p, area: novaArea, turno: p.turno || 'INTEGRAL' };
       }
       return p;
     });
 
-    const existe = novosProfs.some(p => p.nome === nomeProf);
+    const existe = novosProfs.some(p => isSameProfessor(p.nome, nomeProf));
     if (!existe) {
-      const pUnificado = listaProfessoresUnificada.find(p => p.nome === nomeProf);
+      const pUnificado = listaProfessoresUnificada.find(p => isSameProfessor(p.nome, nomeProf));
       novosProfs.push({
         nome: nomeProf,
         disciplina: pUnificado?.disciplina || 'Geral',
         area: novaArea,
         tipo: pUnificado?.tipo || 'EFETIVO',
+        turno: pUnificado?.turno || 'INTEGRAL',
         saldoAulas: pUnificado?.saldoInicial || 0
       });
     }
@@ -731,20 +810,21 @@ export default function SubstituicaoPEI() {
 
   const handleAlterarTipoDocenteInline = (nomeProf, novoTipo) => {
     const novosProfs = cadastroProfessores.map(p => {
-      if (p.nome === nomeProf) {
-        return { ...p, tipo: novoTipo };
+      if (isSameProfessor(p.nome, nomeProf)) {
+        return { ...p, tipo: novoTipo, turno: p.turno || 'INTEGRAL' };
       }
       return p;
     });
 
-    const existe = novosProfs.some(p => p.nome === nomeProf);
+    const existe = novosProfs.some(p => isSameProfessor(p.nome, nomeProf));
     if (!existe) {
-      const pUnificado = listaProfessoresUnificada.find(p => p.nome === nomeProf);
+      const pUnificado = listaProfessoresUnificada.find(p => isSameProfessor(p.nome, nomeProf));
       novosProfs.push({
         nome: nomeProf,
         disciplina: pUnificado?.disciplina || 'Geral',
-        area: pUnificado?.area || 'Exatas (EXA)',
+        area: pUnificado?.area || 'Gestão/Outros (OUT)',
         tipo: novoTipo,
+        turno: pUnificado?.turno || 'INTEGRAL',
         saldoAulas: pUnificado?.saldoInicial || 0
       });
     }
@@ -755,11 +835,41 @@ export default function SubstituicaoPEI() {
     }
   };
 
+  const handleAlterarTurnoDocenteInline = (nomeProf, novoTurno) => {
+    const novosProfs = cadastroProfessores.map(p => {
+      if (isSameProfessor(p.nome, nomeProf)) {
+        return { ...p, turno: novoTurno };
+      }
+      return p;
+    });
+
+    const existe = novosProfs.some(p => isSameProfessor(p.nome, nomeProf));
+    if (!existe) {
+      const pUnificado = listaProfessoresUnificada.find(p => isSameProfessor(p.nome, nomeProf));
+      novosProfs.push({
+        nome: nomeProf,
+        disciplina: pUnificado?.disciplina || 'Geral',
+        area: pUnificado?.area || 'Gestão/Outros (OUT)',
+        tipo: pUnificado?.tipo || 'EFETIVO',
+        turno: novoTurno,
+        saldoAulas: pUnificado?.saldoInicial || 0
+      });
+    }
+
+    salvarCadastroProfessores(novosProfs);
+    if (typeof window.showToast === 'function') {
+      window.showToast(`Jornada/Turno de "${nomeProf}" alterada para ${novoTurno}!`, 'success');
+    }
+  };
+
   const handleAdicionarDocenteCorpo = (e) => {
     e.preventDefault();
-    if (!novoDocenteForm.nome.trim()) return;
+    if (!novoDocenteForm.nome.trim() || !isRealProfessorName(novoDocenteForm.nome)) {
+      showFeedback('Informe um nome válido para o docente.', 'warning');
+      return;
+    }
     const nome = novoDocenteForm.nome.trim();
-    if (cadastroProfessores.some(p => p.nome.toLowerCase() === nome.toLowerCase())) {
+    if (cadastroProfessores.some(p => isSameProfessor(p.nome, nome))) {
       showFeedback(`O docente "${nome}" já está cadastrado.`, 'warning');
       return;
     }
@@ -768,10 +878,11 @@ export default function SubstituicaoPEI() {
       disciplina: novoDocenteForm.disciplina.trim() || 'Geral',
       area: novoDocenteForm.area,
       tipo: novoDocenteForm.tipo,
+      turno: novoDocenteForm.turno || 'INTEGRAL',
       saldoAulas: Number(novoDocenteForm.saldoAulas || 0)
     };
     salvarCadastroProfessores([...cadastroProfessores, novo]);
-    setNovoDocenteForm({ nome: '', disciplina: '', area: 'Exatas (EXA)', tipo: 'EFETIVO', saldoAulas: 0 });
+    setNovoDocenteForm({ nome: '', disciplina: '', area: 'Exatas (EXA)', tipo: 'EFETIVO', turno: 'INTEGRAL', saldoAulas: 0 });
     showFeedback(`Docente "${nome}" cadastrado com sucesso!`, 'success');
   };
 
@@ -807,45 +918,124 @@ export default function SubstituicaoPEI() {
     return mapDays[dayNum] || 'segunda';
   };
 
+  // Lista dinâmica e ordenada das turmas reais da escola (Grade + Cadastros Base + Substituições)
+  const listaTurmasUnificada = useMemo(() => {
+    const set = new Set();
+    (horariosEscola || []).forEach(h => {
+      if (h?.turma && isRealSchoolTurma(h.turma)) set.add(h.turma.trim());
+    });
+    (cadastrosCustom?.turmas || []).forEach(t => {
+      if (t && isRealSchoolTurma(t)) set.add(String(t).trim());
+    });
+    (substituicoes || []).forEach(s => {
+      if (s?.turma && isRealSchoolTurma(s.turma)) set.add(String(s.turma).trim());
+    });
+    const list = sortTurmasPEI(Array.from(set));
+    return list.length > 0 ? list : TURMAS_PEI;
+  }, [horariosEscola, cadastrosCustom, substituicoes]);
+
   // Extrair lista unificada e dinâmica de professores a partir do cadastro do gestor e da grade horária oficial
   const listaProfessoresUnificada = useMemo(() => {
     const mapaProfs = {};
+
+    // Contar aulas de regência na grade oficial por docente (com deduplicação de slots dia+período)
+    const regenciaPorProf = {};
+    const slotsContados = new Set();
+    (horariosEscola || []).forEach(h => {
+      if (!h || !isRealProfessorName(h.professor) || !isRegularTeachingClass(h)) return;
+      const nome = h.professor.trim();
+      const keyNorm = normalizeTeacherName(nome);
+      const pOrder = getPeriodoOrder(h.periodoId);
+      const diaClean = normalizarDia(h.dia);
+      const slotKey = `${keyNorm}_${diaClean}_${pOrder}`;
+      if (diaClean && pOrder !== 999) {
+        if (slotsContados.has(slotKey)) return;
+        slotsContados.add(slotKey);
+      }
+      regenciaPorProf[keyNorm] = (regenciaPorProf[keyNorm] || 0) + 1;
+    });
 
     // 1. Usar a lista cadastrada e editada pelo gestor (cadastroProfessores)
     const baseProfs = Array.isArray(cadastroProfessores) ? cadastroProfessores : [];
 
     baseProfs.forEach(p => {
-      if (!p || !p.nome) return;
+      if (!p || !isRealProfessorName(p.nome)) return;
       const key = p.nome.trim();
+      const keyNorm = normalizeTeacherName(key);
       mapaProfs[key] = {
         nome: key,
         disciplina: p.disciplina || 'Geral',
         area: normalizarArea(p.area || encontrarAreaDisciplina(p.disciplina)),
         tipo: p.tipo || 'EFETIVO',
-        saldoInicial: p.saldoAulas || p.saldoInicial || 0
+        turno: p.turno || 'INTEGRAL',
+        saldoInicial: Number(p.saldoAulas ?? p.saldoInicial ?? 0),
+        aulasRegenciaGrade: regenciaPorProf[keyNorm] || 0
       };
     });
 
     // 2. Mesclar com professores presentes na grade horária oficial (caso ainda não constem)
-    horariosEscola.forEach(h => {
-      if (h.professor && h.professor.trim()) {
+    (horariosEscola || []).forEach(h => {
+      if (h?.professor && isRealProfessorName(h.professor)) {
         const nomeProf = h.professor.trim();
         const jaExiste = Object.keys(mapaProfs).some(k => isSameProfessor(k, nomeProf));
         if (!jaExiste) {
-          const areaFound = encontrarAreaDisciplina(h.disciplina || '');
+          const disc = isRegularTeachingClass(h) && h.disciplina ? h.disciplina : 'Geral';
+          const areaFound = encontrarAreaDisciplina(disc);
+          const keyNorm = normalizeTeacherName(nomeProf);
           mapaProfs[nomeProf] = {
             nome: nomeProf,
-            disciplina: h.disciplina || 'Geral',
+            disciplina: disc,
             area: areaFound,
             tipo: 'EFETIVO',
-            saldoInicial: 0
+            turno: 'INTEGRAL',
+            saldoInicial: 0,
+            aulasRegenciaGrade: regenciaPorProf[keyNorm] || 0
           };
         }
       }
     });
 
-    return Object.values(mapaProfs);
-  }, [cadastroProfessores, horariosEscola]);
+    // 3. Mesclar com cadastrosBase caso haja docentes cadastrados lá
+    (cadastrosCustom?.professores || []).forEach(nomeBase => {
+      if (!isRealProfessorName(nomeBase)) return;
+      const nomeProf = String(nomeBase).trim();
+      const jaExiste = Object.keys(mapaProfs).some(k => isSameProfessor(k, nomeProf));
+      if (!jaExiste) {
+        const keyNorm = normalizeTeacherName(nomeProf);
+        mapaProfs[nomeProf] = {
+          nome: nomeProf,
+          disciplina: 'Geral',
+          area: 'Gestão/Outros (OUT)',
+          tipo: 'EFETIVO',
+          turno: 'INTEGRAL',
+          saldoInicial: 0,
+          aulasRegenciaGrade: regenciaPorProf[keyNorm] || 0
+        };
+      }
+    });
+
+    return Object.values(mapaProfs).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  }, [cadastroProfessores, horariosEscola, cadastrosCustom]);
+
+  // Sincronizar docente ausente e turma padrão quando o catálogo carregar
+  useEffect(() => {
+    if (itemEdicao) return;
+    if (listaProfessoresUnificada.length > 0) {
+      const atualValido = form.professorAusente && listaProfessoresUnificada.some(p => isSameProfessor(p.nome, form.professorAusente));
+      if (!atualValido) {
+        const primeiroComAula = listaProfessoresUnificada.find(p => p.aulasRegenciaGrade > 0) || listaProfessoresUnificada[0];
+        setForm(prev => ({
+          ...prev,
+          professorAusente: primeiroComAula.nome,
+          disciplina: primeiroComAula.disciplina || 'Geral',
+          area: primeiroComAula.area || 'Gestão/Outros (OUT)'
+        }));
+      }
+    }
+    if (listaTurmasUnificada.length > 0 && (!form.turma || !listaTurmasUnificada.includes(form.turma))) {
+      setForm(prev => ({ ...prev, turma: listaTurmasUnificada[0] }));
+    }
+  }, [listaProfessoresUnificada, listaTurmasUnificada, itemEdicao]);
 
   // Helper para nome extenso do dia
   const MAPA_DIAS_EXTENSO = {
@@ -883,7 +1073,7 @@ export default function SubstituicaoPEI() {
   // Alocações em lote pré-selecionadas com os melhores substitutos para cada aula do dia
   const [alocacoesLote, setAlocacoesLote] = useState({});
 
-  // Helper para identificar a categoria de cargo do docente
+  // Helper para identificar a categoria de cargo do docente (Resolução SEDUC-SP PEI)
   const getTipoProfessorCategory = (prof) => {
     if (!prof) return 'EFETIVO';
     const tipo = (prof.tipo || prof.cargo || prof.vinculo || '').toUpperCase().trim();
@@ -899,34 +1089,41 @@ export default function SubstituicaoPEI() {
     if (tipo === 'CGPG' || tipo === 'CGPCA' || tipo === 'COORDENADOR' || nome.includes('cgpg') || nome.includes('cgpca') || nome.includes('coordenador')) {
       return 'CGPG';
     }
-    if (tipo === 'PAAC' || tipo === 'PAAC / EVENTUAL' || nome.includes('paac') || disc.includes('paac')) {
+    if (tipo === 'PAAC' || tipo === 'PAAC / EVENTUAL' || tipo === 'EVENTUAL' || nome.includes('paac') || disc.includes('paac')) {
       return 'PAAC';
     }
     return 'EFETIVO';
   };
 
-  // Função para calcular sugestões de substituto para qualquer aula/horário
-  const calcularSugestoesParaAula = (periodoId, disciplinaAula, areaAula) => {
+  // Motor PEI em conformidade com Lei Complementar nº 1.374/2022 e Resolução SEDUC nº 71/2023:
+  // - Teto semanal de 32 aulas efetivas (regência + substituições) calculado na semana-alvo (Seg-Dom)
+  // - ATPC / ATPCG / ATPCA / Formação / Alinhamento / Intervalo e Almoço Dirigido não somam regência, mas BLOQUEIAM o horário
+  // - Bloqueia docentes já marcados como ausentes na mesma data ou já alocados em outro período simultâneo
+  // - Prioridade estrita 1 a 8 com desempate por menor carga semanal
+  const calcularSugestoesParaAula = (periodoId, disciplinaAula, areaAula, options = {}) => {
     if (!form.professorAusente) return [];
 
+    const { extraCargaSemana = {}, extraSubsNoPeriodo = [] } = options || {};
     const profAusenteObj = listaProfessoresUnificada.find(p => isSameProfessor(p.nome, form.professorAusente)) || {
       area: areaAula || form.area,
       disciplina: disciplinaAula || form.disciplina
     };
     const disciplinaAlvo = (disciplinaAula || profAusenteObj.disciplina || form.disciplina || '').trim().toLowerCase();
     const areaAlvo = normalizarArea(areaAula || profAusenteObj.area || form.area);
-    const diaSemana = diaSemanaForm;
+    const diaSemana = normalizarDia(diaSemanaForm);
+    const formDataClean = String(form.data || getHojeLocalStr()).trim().split('T')[0];
+    const { inicioSemana, fimSemana } = getSemanaIntervalo(formDataClean);
 
-    // Contagem de carga horária semanal (regência de classe) do professor na grade oficial com deduplicação de slots
+    // 1. Contagem de carga horária semanal (APENAS regência de classe regular) na grade oficial
     const cargaSemanalProf = {};
     const slotsContadosCarga = new Set();
     horariosEscola.forEach(h => {
-      if (h.professor && isRegularTeachingClass(h)) {
+      if (h && isRealProfessorName(h.professor) && isRegularTeachingClass(h)) {
         const nome = h.professor.trim();
         const profKey = Object.keys(cargaSemanalProf).find(k => isSameProfessor(k, nome)) || nome;
         const pOrder = getPeriodoOrder(h.periodoId);
         const diaClean = normalizarDia(h.dia);
-        const slotKey = `${profKey.toLowerCase()}_${diaClean}_${pOrder}`;
+        const slotKey = `${normalizeTeacherName(profKey)}_${diaClean}_${pOrder}`;
         if (h.dia && h.periodoId) {
           if (!slotsContadosCarga.has(slotKey)) {
             slotsContadosCarga.add(slotKey);
@@ -938,37 +1135,77 @@ export default function SubstituicaoPEI() {
       }
     });
 
-    // Saldo de substituições confirmadas/aprovadas na base
-    const contagemSubst = {};
+    // 2. Créditos/débitos na semana-alvo (teto legal 32h) + saldo histórico acumulado (desempate/auditoria) + ausentes na data
+    const contagemSubstSemana = {};
+    const contagemSubstGeral = {};
+    const ausentesNaData = [];
+    const subsProcessadas = new Set();
+
     substituicoes.forEach(s => {
       if (!s) return;
       const st = String(s.status || 'CONFIRMADA').toUpperCase().trim();
-      const isStatusOk = st === 'CONFIRMADA' || st === 'APROVADA' || st === 'REALIZADA' || st === 'CONCLUIDA' || st === 'OK';
-      if (isStatusOk && isRegularTeachingClass(s.disciplina)) {
-        if (s.professorSubstituto) {
-          const keySub = Object.keys(contagemSubst).find(k => isSameProfessor(k, s.professorSubstituto)) || s.professorSubstituto.trim();
-          contagemSubst[keySub] = (contagemSubst[keySub] || 0) + 1;
+      if (st === 'CANCELADA') return;
+
+      const sData = String(s.data_referencia || s.data || '').trim().split('T')[0];
+      const profAus = (s.professor_ausente || s.professorAusente || '').trim();
+      const profSub = (s.professor_substituto || s.professorSubstituto || '').trim();
+
+      if (sData === formDataClean && profAus && (!itemEdicao || s.id !== itemEdicao.id)) {
+        if (!ausentesNaData.some(n => isSameProfessor(n, profAus))) {
+          ausentesNaData.push(profAus);
         }
-        if (s.professorAusente) {
-          const keyAus = Object.keys(contagemSubst).find(k => isSameProfessor(k, s.professorAusente)) || s.professorAusente.trim();
-          contagemSubst[keyAus] = (contagemSubst[keyAus] || 0) - 1;
+      }
+
+      const isStatusOk = st === 'CONFIRMADA' || st === 'APROVADA' || st === 'REALIZADA' || st === 'CONCLUIDA' || st === 'OK';
+      if (!isStatusOk || !isRegularTeachingClass(s.disciplina || s)) return;
+
+      const dedupKey = s.id || `${sData}_${getPeriodoOrder(s.periodoId)}_${s.turma}_${profAus}_${profSub}`;
+      if (subsProcessadas.has(dedupKey)) return;
+      subsProcessadas.add(dedupKey);
+
+      const naSemanaAlvo = Boolean(sData && sData >= inicioSemana && sData <= fimSemana);
+
+      if (profSub) {
+        const keySubG = Object.keys(contagemSubstGeral).find(k => isSameProfessor(k, profSub)) || profSub;
+        contagemSubstGeral[keySubG] = (contagemSubstGeral[keySubG] || 0) + 1;
+        if (naSemanaAlvo) {
+          const keySubS = Object.keys(contagemSubstSemana).find(k => isSameProfessor(k, profSub)) || profSub;
+          contagemSubstSemana[keySubS] = (contagemSubstSemana[keySubS] || 0) + 1;
+        }
+      }
+      if (profAus) {
+        const keyAusG = Object.keys(contagemSubstGeral).find(k => isSameProfessor(k, profAus)) || profAus;
+        contagemSubstGeral[keyAusG] = (contagemSubstGeral[keyAusG] || 0) - 1;
+        if (naSemanaAlvo) {
+          const keyAusS = Object.keys(contagemSubstSemana).find(k => isSameProfessor(k, profAus)) || profAus;
+          contagemSubstSemana[keyAusS] = (contagemSubstSemana[keyAusS] || 0) - 1;
         }
       }
     });
+
+    const getValorPorProf = (mapa, nomeProf) => {
+      const k = Object.keys(mapa).find(key => isSameProfessor(key, nomeProf));
+      return k ? mapa[k] : 0;
+    };
+
+    const pOrderAlvo = getPeriodoOrder(periodoId);
 
     return listaProfessoresUnificada
       .filter(p => !isSameProfessor(p.nome, form.professorAusente))
       .map(prof => {
         let score = 10000;
         let prioridade = 9;
-        let motivoPrioridade = '9ª Prioridade: Diretor';
+        let motivoPrioridade = '8ª Prioridade: Direção';
         let isIndisponivel = false;
         let motivoIndisponivel = '';
         let isOcupado = false;
         let motivoOcupado = '';
-        const aulasSemana = cargaSemanalProf[prof.nome] || 0;
+        const aulasSemana = getValorPorProf(cargaSemanalProf, prof.nome);
 
-        // 1. Validação Rígida de Permanência na Escola (Turnos, Folgas e Janelas)
+        // 1. Checagem se o candidato também está marcado como AUSENTE nesta data
+        const estaAusenteHoje = ausentesNaData.some(n => isSameProfessor(n, prof.nome));
+
+        // 2. Validação Rígida de Permanência na Escola (Turnos, Folgas e Indisponibilidade)
         const checagemEscola = isTeacherAtSchool(
           prof.nome,
           diaSemana,
@@ -978,57 +1215,75 @@ export default function SubstituicaoPEI() {
           listaProfessoresUnificada
         );
 
-        // 2. Verificar se o professor já possui aula/atividade PEI na grade oficial
+        // 3. Verificar se o professor tem aula OU compromisso PEI bloqueante (ATPCG/ATPCA/Formação/Alinhamento/Dirigido)
         const aulaAgendada = horariosEscola.find(
-          h => h.dia === diaSemana &&
-               getPeriodoOrder(h.periodoId) === getPeriodoOrder(periodoId) &&
+          h => normalizarDia(h.dia) === diaSemana &&
+               getPeriodoOrder(h.periodoId) === pOrderAlvo &&
                isSameProfessor(h.professor, prof.nome) &&
-               isRegularTeachingClass(h)
+               isBlockingSlotForSubstitution(h)
         );
 
-        // 3. Verificar se o professor já foi alocado para substituir outra aula no mesmo dia e período
-        const jaSubstituindoNoPeriodo = substituicoes.find(
-          s => s.data === form.data &&
-               getPeriodoOrder(s.periodoId) === getPeriodoOrder(periodoId) &&
-               s.status !== 'CANCELADA' &&
-               (!itemEdicao || s.id !== itemEdicao.id) &&
-               isSameProfessor(s.professorSubstituto, prof.nome)
+        // 4. Verificar se o professor já está substituindo outra aula no mesmo dia e período (DB + lote atual)
+        const jaSubstituindoNoPeriodo = substituicoes.find(s => {
+          const sData = String(s.data_referencia || s.data || '').trim().split('T')[0];
+          const sSub = s.professor_substituto || s.professorSubstituto;
+          return sData === formDataClean &&
+                 getPeriodoOrder(s.periodoId) === pOrderAlvo &&
+                 String(s.status || '').toUpperCase() !== 'CANCELADA' &&
+                 (!itemEdicao || s.id !== itemEdicao.id) &&
+                 isSameProfessor(sSub, prof.nome);
+        }) || (extraSubsNoPeriodo || []).find(s =>
+          getPeriodoOrder(s.periodoId) === pOrderAlvo && isSameProfessor(s.substituto, prof.nome)
         );
 
-        if (!checagemEscola.atSchool) {
+        if (estaAusenteHoje) {
           isIndisponivel = true;
-          motivoIndisponivel = checagemEscola.reason || 'Indisponibilidade Docente Registrada';
+          motivoIndisponivel = 'Docente registrado como ausente nesta data';
+          score = -999999;
+          prioridade = 99;
+          motivoPrioridade = '⛔ INDISPONÍVEL (Ausente nesta data)';
+        } else if (!checagemEscola.atSchool) {
+          isIndisponivel = true;
+          motivoIndisponivel = checagemEscola.reason || 'Fora do horário/turno na unidade';
           score = -999999;
           prioridade = 99;
           motivoPrioridade = `⛔ INDISPONÍVEL (${motivoIndisponivel})`;
         } else if (aulaAgendada) {
           isOcupado = true;
-          motivoOcupado = `${aulaAgendada.disciplina || 'Aula'} (${aulaAgendada.turma || 'PEI'})`;
+          const isCompromissoAtpc = isInstitutionalOrAtpcCommitment(aulaAgendada);
+          motivoOcupado = isCompromissoAtpc
+            ? `${aulaAgendada.disciplina || aulaAgendada.turma || 'ATPC/Formação'}`
+            : `${aulaAgendada.disciplina || 'Aula'} (${aulaAgendada.turma || 'PEI'})`;
           score = -888888;
           prioridade = 98;
-          motivoPrioridade = `⚠️ OCUPADO(A) EM AULA: ${motivoOcupado}`;
+          motivoPrioridade = isCompromissoAtpc
+            ? `⚠️ OCUPADO(A) (ATPC/Formação): ${motivoOcupado}`
+            : `⚠️ OCUPADO(A) EM AULA: ${motivoOcupado}`;
         } else if (jaSubstituindoNoPeriodo) {
           isOcupado = true;
-          motivoOcupado = `Substituindo em ${jaSubstituindoNoPeriodo.turma || 'PEI'} (${jaSubstituindoNoPeriodo.disciplina || 'Subst.'})`;
+          const turmaAloc = jaSubstituindoNoPeriodo.turma || 'PEI';
+          motivoOcupado = `Substituindo em ${turmaAloc}`;
           score = -888888;
           prioridade = 98;
-          motivoPrioridade = `⚠️ OCUPADO(A): Substituindo em ${jaSubstituindoNoPeriodo.turma || 'PEI'}`;
+          motivoPrioridade = `⚠️ OCUPADO(A): Substituindo em ${turmaAloc}`;
         } else {
-          // Determinar Ordem Estrita de Substituição PEI (1 a 8) conforme Diretrizes da Escola:
+          // Ordem Estrita de Substituição PEI (1 a 8) — LC 1.374/2022 + Res. SEDUC 71/2023:
           // 1 - Mesma matéria
-          // 2 - Mesma área
-          // 3 - paac da área
-          // 4 - Qualquer matéria
-          // 5 - qualquer área
-          // 6 - CGPG
-          // 7 - Vice direção
-          // 8 - direção
+          // 2 - Mesma área (Efetivo)
+          // 3 - PAAC da área
+          // 4 - Qualquer matéria (Efetivo)
+          // 5 - Qualquer área (PAAC / Outros)
+          // 6 - CGPG / CGPCA
+          // 7 - Vice-direção
+          // 8 - Direção
           const category = getTipoProfessorCategory(prof);
           const profDiscNorm = (prof.disciplina || '').trim().toLowerCase();
-          const mesmaDisciplina = profDiscNorm && disciplinaAlvo && (
-            profDiscNorm === disciplinaAlvo ||
-            profDiscNorm.includes(disciplinaAlvo) ||
-            disciplinaAlvo.includes(profDiscNorm)
+          const mesmaDisciplina = Boolean(
+            profDiscNorm &&
+            profDiscNorm !== 'geral' &&
+            disciplinaAlvo &&
+            disciplinaAlvo !== 'geral' &&
+            (profDiscNorm === disciplinaAlvo || profDiscNorm.includes(disciplinaAlvo) || disciplinaAlvo.includes(profDiscNorm))
           );
 
           const profAreaNorm = normalizarArea(prof.area);
@@ -1064,21 +1319,22 @@ export default function SubstituicaoPEI() {
           }
         }
 
-        // Saldo real consolidado de substituições confirmadas
-        const creditosFirmes = (contagemSubst[prof.nome] || 0);
-        const saldoInicial = (prof.saldoInicial || 0);
-        const saldoReal = saldoInicial + creditosFirmes;
-        const totalAulasSemana = aulasSemana + saldoReal;
+        // Carga horária efetiva na semana-alvo (segunda a domingo da data selecionada)
+        const netSemanaAlvo = getValorPorProf(contagemSubstSemana, prof.nome);
+        const extraBatch = getValorPorProf(extraCargaSemana, prof.nome);
+        const creditosHistoricos = getValorPorProf(contagemSubstGeral, prof.nome);
+        const saldoInicial = Number(prof.saldoInicial || 0);
+        const saldoReal = saldoInicial + creditosHistoricos;
+        const totalAulasSemana = Math.max(0, aulasSemana + netSemanaAlvo + extraBatch);
         const atingiuTeto32 = totalAulasSemana >= 32 || aulasSemana >= 32;
 
         if (atingiuTeto32 && !isIndisponivel && !isOcupado) {
           isIndisponivel = true;
-          motivoIndisponivel = `Atingiu o teto de 32h semanais (${totalAulasSemana}h totais)`;
+          motivoIndisponivel = `Teto semanal de 32 aulas atingido (${totalAulasSemana}h/sem · LC 1.374/2022)`;
           score = -777777;
           prioridade = 97;
-          motivoPrioridade = `⛔ TETO ATINGIDO (32h+): ${totalAulasSemana}h na semana`;
-        } else {
-          // Score: prioridade 1 a 8 no topo; no empate quem está com menos aulas aquela semana tem maior pontuação
+          motivoPrioridade = `⛔ TETO 32h ATINGIDO: ${totalAulasSemana}h na semana`;
+        } else if (!isIndisponivel && !isOcupado) {
           score = 1000000 - (prioridade * 100000) - (totalAulasSemana * 1000) - (saldoReal * 10);
         }
 
@@ -1105,7 +1361,7 @@ export default function SubstituicaoPEI() {
         if (a.prioridade !== b.prioridade) {
           return a.prioridade - b.prioridade;
         }
-        // 2. Critério de Desempate: quem está com menos aulas aquela semana entra primeiro!
+        // 2. Critério de Desempate: menor carga horária na semana-alvo entra primeiro
         if (a.totalAulasSemana !== b.totalAulasSemana) {
           return a.totalAulasSemana - b.totalAulasSemana;
         }
@@ -1115,7 +1371,7 @@ export default function SubstituicaoPEI() {
         if (a.saldoReal !== b.saldoReal) {
           return a.saldoReal - b.saldoReal;
         }
-        return a.nome.localeCompare(b.nome);
+        return a.nome.localeCompare(b.nome, 'pt-BR');
       });
   };
 
@@ -1124,6 +1380,7 @@ export default function SubstituicaoPEI() {
     return calcularSugestoesParaAula(form.periodoId, form.disciplina, form.area);
   }, [form.professorAusente, form.disciplina, form.area, form.data, form.periodoId, substituicoes, indisponibilidadeProfs, horariosEscola, listaProfessoresUnificada]);
 
+  // Alocação sequencial em lote respeitando teto de 32h e evitando conflito no mesmo período
   useEffect(() => {
     if (!aulasDoProfessorAusente || aulasDoProfessorAusente.length === 0) {
       setAlocacoesLote({});
@@ -1131,13 +1388,21 @@ export default function SubstituicaoPEI() {
     }
 
     const novasAlocacoes = {};
+    const extraCargaSemana = {};
+    const extraSubsNoPeriodo = [];
+
     aulasDoProfessorAusente.forEach((aula) => {
       const sugs = calcularSugestoesParaAula(
         aula.periodoId,
         aula.disciplina,
-        encontrarAreaDisciplina(aula.disciplina)
+        encontrarAreaDisciplina(aula.disciplina),
+        { extraCargaSemana, extraSubsNoPeriodo }
       );
       const melhorOpcao = sugs.find(s => !s.isIndisponivel && !s.isOcupado);
+      if (melhorOpcao) {
+        extraCargaSemana[melhorOpcao.nome] = (extraCargaSemana[melhorOpcao.nome] || 0) + 1;
+        extraSubsNoPeriodo.push({ periodoId: aula.periodoId, substituto: melhorOpcao.nome, turma: aula.turma });
+      }
       novasAlocacoes[aula.periodoId] = {
         professorSubstituto: melhorOpcao ? melhorOpcao.nome : '',
         tipoSubstituto: melhorOpcao ? melhorOpcao.motivoPrioridade : 'Sugestão Automática PEI',
@@ -1145,11 +1410,27 @@ export default function SubstituicaoPEI() {
       };
     });
     setAlocacoesLote(novasAlocacoes);
-  }, [aulasDoProfessorAusente, form.professorAusente, form.data, diaSemanaForm]);
+  }, [aulasDoProfessorAusente, form.professorAusente, form.data, diaSemanaForm, substituicoes, indisponibilidadeProfs, listaProfessoresUnificada]);
+
+  // Helper para calcular carga incremental das outras aulas do mesmo lote (excluindo o período atual)
+  const getBatchOptionsParaPeriodo = (periodoIdAtual) => {
+    const extraCargaSemana = {};
+    const extraSubsNoPeriodo = [];
+    Object.entries(alocacoesLote || {}).forEach(([pid, aloc]) => {
+      if (String(pid) === String(periodoIdAtual)) return;
+      if (aloc && aloc.professorSubstituto) {
+        extraCargaSemana[aloc.professorSubstituto] = (extraCargaSemana[aloc.professorSubstituto] || 0) + 1;
+        if (getPeriodoOrder(pid) === getPeriodoOrder(periodoIdAtual)) {
+          extraSubsNoPeriodo.push({ periodoId: pid, substituto: aloc.professorSubstituto });
+        }
+      }
+    });
+    return { extraCargaSemana, extraSubsNoPeriodo };
+  };
 
   // Atualizar alocação de aula em lote individualmente
   const handleMudarSubstitutoLote = (periodoId, nomeSubstituto, disciplinaAula, areaAula) => {
-    const sugs = calcularSugestoesParaAula(periodoId, disciplinaAula, areaAula);
+    const sugs = calcularSugestoesParaAula(periodoId, disciplinaAula, areaAula, getBatchOptionsParaPeriodo(periodoId));
     const candObj = sugs.find(s => isSameProfessor(s.nome, nomeSubstituto) || s.nome === nomeSubstituto);
 
     setAlocacoesLote(prev => ({
@@ -1551,13 +1832,13 @@ export default function SubstituicaoPEI() {
   // Abrir Modal
   const handleAbrirModalNovo = () => {
     setItemEdicao(null);
-    const primeiroProf = listaProfessoresUnificada[0] || { nome: 'Profª Maria Silva', disciplina: 'Língua Portuguesa', area: 'Linguagens' };
+    const primeiroProf = listaProfessoresUnificada.find(p => p.aulasRegenciaGrade > 0) || listaProfessoresUnificada[0] || { nome: '', disciplina: 'Geral', area: 'Gestão/Outros (OUT)' };
     setForm({
-      data: filtroData || new Date().toISOString().split('T')[0],
+      data: filtroData || getHojeLocalStr(),
       professorAusente: primeiroProf.nome,
       disciplina: primeiroProf.disciplina,
       area: primeiroProf.area,
-      turma: '6º Ano A',
+      turma: listaTurmasUnificada[0] || '',
       periodoId: 1,
       motivo: MOTIVOS_AUSENCIA[0],
       professorSubstituto: '',
@@ -1571,11 +1852,11 @@ export default function SubstituicaoPEI() {
   const handleAbrirModalEdicao = (item) => {
     setItemEdicao(item);
     setForm({
-      data: item.data || new Date().toISOString().split('T')[0],
+      data: item.data || getHojeLocalStr(),
       professorAusente: item.professorAusente || '',
       disciplina: item.disciplina || '',
-      area: item.area || 'Linguagens',
-      turma: item.turma || '6º Ano A',
+      area: item.area || 'Gestão/Outros (OUT)',
+      turma: item.turma || listaTurmasUnificada[0] || '',
       periodoId: Number(item.periodoId || 1),
       motivo: item.motivo || MOTIVOS_AUSENCIA[0],
       professorSubstituto: item.professorSubstituto || '',
@@ -1670,59 +1951,48 @@ export default function SubstituicaoPEI() {
     return Object.values(mapa).sort((a, b) => b.totalAulas - a.totalAulas);
   }, [substituicoes]);
 
-  // Consolidado do Saldo de Aulas (Créditos x Débitos) de todos os Professores
+  // Consolidado do Saldo de Aulas (Créditos x Débitos) e Carga Semanal da Semana-Alvo
   const saldoDocentesConsolidado = useMemo(() => {
     const mapa = {};
+    const { inicioSemana, fimSemana } = getSemanaIntervalo(form.data || filtroData || getHojeLocalStr());
 
-    // Helper para buscar chave existente no mapa de forma tolerante
     const findMapaKey = (targetName) => {
       if (!targetName) return null;
       if (mapa[targetName]) return targetName;
       return Object.keys(mapa).find(k => isSameProfessor(k, targetName)) || null;
     };
 
-    // Iniciar com todos os professores da lista unificada
     listaProfessoresUnificada.forEach(p => {
-      const slotsUnicos = new Set();
-      const aulasRegenciaGrade = horariosEscola.filter(h => {
-        if (!h || !h.professor) return false;
-        if (!isSameProfessor(h.professor, p.nome) || !isRegularTeachingClass(h)) return false;
-
-        const pOrder = getPeriodoOrder(h.periodoId);
-        const diaClean = normalizarDia(h.dia);
-        const slotKey = `${diaClean}_${pOrder}`;
-        if (diaClean && pOrder !== 999) {
-          if (slotsUnicos.has(slotKey)) return false;
-          slotsUnicos.add(slotKey);
-        }
-        return true;
-      }).length;
-
+      const aulasRegenciaGrade = Number(p.aulasRegenciaGrade || 0);
       const inicial = Number(p.saldoInicial ?? p.saldoAulas ?? 0);
       mapa[p.nome] = {
         nome: p.nome,
         disciplina: p.disciplina,
         area: p.area,
         tipo: p.tipo,
+        turno: p.turno || 'INTEGRAL',
         aulasRegenciaGrade,
         saldoInicial: inicial,
         creditos: 0,
         debitos: 0,
+        creditosSemana: 0,
+        debitosSemana: 0,
         totalFinal: inicial,
-        cargaTotalSemana: aulasRegenciaGrade + inicial,
-        atingiuTeto32: (aulasRegenciaGrade + inicial) >= 32
+        cargaTotalSemana: aulasRegenciaGrade,
+        atingiuTeto32: aulasRegenciaGrade >= 32
       };
     });
 
-    // Computar substituições confirmadas ou aprovadas para aulas de regência válidas (com deduplicação estrita de substituição)
     const subsProcessadas = new Set();
     substituicoes.forEach(s => {
       if (!s) return;
       const st = String(s.status || 'CONFIRMADA').toUpperCase().trim();
       const isStatusOk = st === 'CONFIRMADA' || st === 'APROVADA' || st === 'REALIZADA' || st === 'CONCLUIDA' || st === 'OK';
+      const sData = String(s.data_referencia || s.data || '').trim().split('T')[0];
+      const naSemanaAlvo = Boolean(sData && sData >= inicioSemana && sData <= fimSemana);
 
-      if (isStatusOk && isRegularTeachingClass(s.disciplina)) {
-        const subKey = s.id || `${s.data}_${s.periodoId}_${s.turma}_${s.professorAusente}_${s.professorSubstituto}`;
+      if (isStatusOk && isRegularTeachingClass(s.disciplina || s)) {
+        const subKey = s.id || `${sData}_${s.periodoId}_${s.turma}_${s.professorAusente}_${s.professorSubstituto}`;
         if (subsProcessadas.has(subKey)) return;
         subsProcessadas.add(subKey);
 
@@ -1733,18 +2003,22 @@ export default function SubstituicaoPEI() {
             mapa[keySub] = {
               nome: nameSub,
               disciplina: s.disciplina || 'Geral',
-              area: s.area || 'Diversificada / PEI',
+              area: s.area || 'Gestão/Outros (OUT)',
               tipo: 'EFETIVO',
+              turno: 'INTEGRAL',
               aulasRegenciaGrade: 0,
               saldoInicial: 0,
               creditos: 0,
               debitos: 0,
+              creditosSemana: 0,
+              debitosSemana: 0,
               totalFinal: 0,
               cargaTotalSemana: 0,
               atingiuTeto32: false
             };
           }
           mapa[keySub].creditos += 1;
+          if (naSemanaAlvo) mapa[keySub].creditosSemana += 1;
         }
 
         if (s.professorAusente && s.professorAusente.trim()) {
@@ -1754,32 +2028,34 @@ export default function SubstituicaoPEI() {
             mapa[keyAus] = {
               nome: nameAus,
               disciplina: s.disciplina || 'Geral',
-              area: s.area || 'Diversificada / PEI',
+              area: s.area || 'Gestão/Outros (OUT)',
               tipo: 'EFETIVO',
+              turno: 'INTEGRAL',
               aulasRegenciaGrade: 0,
               saldoInicial: 0,
               creditos: 0,
               debitos: 0,
+              creditosSemana: 0,
+              debitosSemana: 0,
               totalFinal: 0,
               cargaTotalSemana: 0,
               atingiuTeto32: false
             };
           }
           mapa[keyAus].debitos += 1;
+          if (naSemanaAlvo) mapa[keyAus].debitosSemana += 1;
         }
       }
     });
 
-    // Calcular saldo final, carga total semanal (Saldo Somado) e flag de teto 32h
     Object.values(mapa).forEach(item => {
       item.totalFinal = item.saldoInicial + item.creditos - item.debitos;
-      // Saldo somado (Carga total semanal de aulas contando substituições)
-      item.cargaTotalSemana = item.aulasRegenciaGrade + item.totalFinal;
-      item.atingiuTeto32 = item.cargaTotalSemana >= 32;
+      item.cargaTotalSemana = Math.max(0, item.aulasRegenciaGrade + item.creditosSemana - item.debitosSemana);
+      item.atingiuTeto32 = item.cargaTotalSemana >= 32 || item.aulasRegenciaGrade >= 32;
     });
 
     return Object.values(mapa).sort((a, b) => b.cargaTotalSemana - a.cargaTotalSemana || b.totalFinal - a.totalFinal);
-  }, [listaProfessoresUnificada, substituicoes, horariosEscola]);
+  }, [listaProfessoresUnificada, substituicoes, horariosEscola, form.data, filtroData]);
 
   // Botão de Zerar Saldo (Ciclo de Fim de Semana)
   const handleZerarSaldoFimDeSemana = async () => {
@@ -1895,10 +2171,10 @@ export default function SubstituicaoPEI() {
           <div className="mt-6">
             <button
               type="button"
-              onClick={() => window.switchTab && window.switchTab('dashboard')}
+              onClick={() => window.switchTab && window.switchTab('inicio')}
               className="bg-slate-900 text-white font-semibold text-xs px-5 py-2.5 rounded-xl hover:bg-slate-800 transition-colors cursor-pointer"
             >
-              Voltar ao Dashboard
+              Voltar ao Início
             </button>
           </div>
         </div>
@@ -2062,7 +2338,7 @@ export default function SubstituicaoPEI() {
                     className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-700 cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500/30"
                   >
                     <option value="TODAS">Todas as Turmas</option>
-                    {TURMAS_PEI.map(t => <option key={t} value={t}>{t}</option>)}
+                    {listaTurmasUnificada.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
 
                   <select
@@ -2460,7 +2736,7 @@ export default function SubstituicaoPEI() {
                   {aulasDoProfessorAusente.length > 0 && (
                     <span className="text-[11px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-200/70 px-3 py-1 rounded-xl flex items-center gap-1.5 self-start sm:self-auto">
                       <i className="fa-solid fa-circle-check text-emerald-600"></i>
-                      <span>Motor PEI · 8 Critérios de Prioridade</span>
+                      <span>LC 1.374/2022 · Res. SEDUC 71/2023 · Teto 32 aulas/sem</span>
                     </span>
                   )}
                 </div>
@@ -2470,10 +2746,10 @@ export default function SubstituicaoPEI() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-semibold text-slate-800 flex items-center gap-1.5">
                       <i className="fa-solid fa-scale-balanced text-indigo-600"></i>
-                      Ordem de Prioridade PEI
+                      Ordem de Prioridade PEI (Legislação SEDUC-SP)
                     </span>
                     <span className="text-amber-800 bg-amber-50 border border-amber-200/70 px-2.5 py-0.5 rounded-lg font-medium">
-                      Desempate: menor carga semanal
+                      Teto: 32 aulas/sem · ATPC bloqueia · Desempate: menor carga
                     </span>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-1.5 font-medium text-center text-[11px]">
@@ -2521,7 +2797,7 @@ export default function SubstituicaoPEI() {
                             const listaP = (periodosAula && periodosAula.length > 0) ? periodosAula : PERIODOS_AULA;
                             const periodoObj = listaP.find(p => getPeriodoOrder(p.id ?? p.periodoId ?? p.rotulo) === getPeriodoOrder(aula.periodoId)) || { rotulo: getPeriodoRotulo(aula.periodoId), horario: '' };
                             const areaAula = encontrarAreaDisciplina(aula.disciplina);
-                            const sugestoes = calcularSugestoesParaAula(aula.periodoId, aula.disciplina, areaAula);
+                            const sugestoes = calcularSugestoesParaAula(aula.periodoId, aula.disciplina, areaAula, getBatchOptionsParaPeriodo(aula.periodoId));
                             const alocAtual = alocacoesLote[aula.periodoId] || { professorSubstituto: '', tipoSubstituto: '' };
                             const subsAtualObj = sugestoes.find(s => isSameProfessor(s.nome, alocAtual.professorSubstituto) || s.nome === alocAtual.professorSubstituto);
 
@@ -2555,9 +2831,10 @@ export default function SubstituicaoPEI() {
                                     <option value="">-- Selecione o Professor Substituto --</option>
                                     {sugestoes.map(p => {
                                       const isBlocked = p.isIndisponivel || p.isOcupado;
-                                      let rotulo = `${p.nome} (${p.disciplina}) — ${p.motivoPrioridade} [Carga: ${p.totalAulasSemana}h]`;
+                                      let rotulo = `${p.nome} (${p.disciplina}) — ${p.motivoPrioridade} [${p.totalAulasSemana}/32h]`;
                                       if (isBlocked) {
-                                        rotulo = `Bloqueado: ${p.nome} (${p.isIndisponivel ? 'Fora da Escola / Folga' : 'Em Aula: ' + p.motivoOcupado})`;
+                                        const motivoB = p.isIndisponivel ? (p.motivoIndisponivel || 'Indisponível') : (p.motivoPrioridade || ('Ocupado: ' + p.motivoOcupado));
+                                        rotulo = `Bloqueado: ${p.nome} (${motivoB})`;
                                       }
                                       return (
                                         <option key={p.nome} value={p.nome} disabled={isBlocked}>
@@ -2914,7 +3191,7 @@ export default function SubstituicaoPEI() {
                     <i className="fa-solid fa-user-plus text-indigo-600"></i>
                     Adicionar Novo Docente (Eventual / Contratado)
                   </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-6 gap-3">
                     <input
                       type="text"
                       value={novoDocenteForm.nome}
@@ -2943,8 +3220,18 @@ export default function SubstituicaoPEI() {
                       className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/30"
                     >
                       <option value="EFETIVO">Efetivo PEI</option>
+                      <option value="PAAC">PAAC / Eventual</option>
                       <option value="CATEGORIA_O">Categoria O</option>
-                      <option value="EVENTUAL">Eventual</option>
+                      <option value="CGPG">CGPG / CGPCA</option>
+                      <option value="VICE_DIRETOR">Vice-Diretor(a)</option>
+                      <option value="DIRETOR">Diretor(a)</option>
+                    </select>
+                    <select
+                      value={novoDocenteForm.turno || 'INTEGRAL'}
+                      onChange={(e) => setNovoDocenteForm({ ...novoDocenteForm, turno: e.target.value })}
+                      className="p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/30"
+                    >
+                      {OPCOES_TURNO_DOCENTE.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
                     <button
                       type="submit"
@@ -2963,7 +3250,7 @@ export default function SubstituicaoPEI() {
                     Corpo Docente PEI ({listaProfessoresUnificada.length} professores)
                   </h3>
                   <span className="text-[11px] text-slate-500">
-                    As áreas de conhecimento orientam a ordem de sugestão PEI.
+                    As áreas de conhecimento, vínculos e turnos orientam a ordem legal de substituição PEI.
                   </span>
                 </div>
 
@@ -2974,7 +3261,8 @@ export default function SubstituicaoPEI() {
                         <th className="p-3.5">Docente / Nome</th>
                         <th className="p-3.5">Disciplina</th>
                         <th className="p-3.5">Área de Conhecimento PEI</th>
-                        <th className="p-3.5 text-center">Aulas na Grade</th>
+                        <th className="p-3.5 text-center">Regência</th>
+                        <th className="p-3.5 text-center">Jornada / Turno</th>
                         <th className="p-3.5 text-center">Vínculo</th>
                         {podeEditar && <th className="p-3.5 text-center">Ações</th>}
                       </tr>
@@ -2982,19 +3270,34 @@ export default function SubstituicaoPEI() {
                     <tbody className="divide-y divide-slate-100 text-xs">
                       {listaProfessoresUnificada.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="p-8 text-center text-slate-400">
+                          <td colSpan={7} className="p-8 text-center text-slate-400">
                             Nenhum docente encontrado. Clique em "Migrar Docentes do Horário" para importar automaticamente.
                           </td>
                         </tr>
                       ) : (
                         listaProfessoresUnificada.map((docente) => {
                           const isConfirmingDoc = confirmDeleteDocenteNome === docente.nome;
+                          const usuarioVinc = (usuariosSistema || []).find((u) => {
+                            const m = matchUsuarioProfessor(u, listaProfessoresUnificada);
+                            return m && isSameProfessor(m.professorNome, docente.nome);
+                          });
                           return (
                             <tr key={docente.nome} className="hover:bg-slate-50/70 transition-colors">
                               <td className="p-3.5 font-semibold text-slate-900">
                                 <div className="flex items-center gap-2">
                                   <i className="fa-solid fa-user-tie text-slate-400"></i>
-                                  <span>{docente.nome}</span>
+                                  <div>
+                                    <div>{docente.nome}</div>
+                                    {usuarioVinc ? (
+                                      <div className="text-[10px] font-medium text-emerald-700">
+                                        Usuário: {usuarioVinc.email || usuarioVinc.nome}
+                                      </div>
+                                    ) : (
+                                      <div className="text-[10px] font-normal text-slate-400">
+                                        Sem usuário vinculado
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </td>
                               <td className="p-3.5 text-slate-700">{docente.disciplina}</td>
@@ -3014,7 +3317,28 @@ export default function SubstituicaoPEI() {
                                 )}
                               </td>
                               <td className="p-3.5 text-center font-semibold text-indigo-700 tabular-nums">
-                                {docente.aulasRegenciaGrade || 0}
+                                {docente.aulasRegenciaGrade || 0}h
+                              </td>
+                              <td className="p-3.5 text-center">
+                                {podeEditar ? (
+                                  <select
+                                    value={docente.turno || 'INTEGRAL'}
+                                    onChange={(e) => handleAlterarTurnoDocenteInline(docente.nome, e.target.value)}
+                                    className={`p-1.5 border rounded-lg text-xs font-medium focus:ring-2 focus:ring-indigo-500/30 outline-none cursor-pointer ${
+                                      docente.turno === 'FOLGA'
+                                        ? 'bg-rose-50 border-rose-200 text-rose-800'
+                                        : 'bg-white border-slate-200 text-slate-800'
+                                    }`}
+                                  >
+                                    {OPCOES_TURNO_DOCENTE.map(t => (
+                                      <option key={t.value} value={t.value}>{t.label}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px] font-medium">
+                                    {docente.turno || 'INTEGRAL'}
+                                  </span>
+                                )}
                               </td>
                               <td className="p-3.5 text-center">
                                 {podeEditar ? (
@@ -3025,6 +3349,7 @@ export default function SubstituicaoPEI() {
                                   >
                                     <option value="EFETIVO">Efetivo PEI (Regente)</option>
                                     <option value="PAAC">PAAC / Eventual / Apoio</option>
+                                    <option value="CATEGORIA_O">Categoria O</option>
                                     <option value="CGPG">CGPG / CGPCA</option>
                                     <option value="VICE_DIRETOR">Vice-Diretor(a)</option>
                                     <option value="DIRETOR">Diretor(a) Escolar</option>
@@ -3130,7 +3455,7 @@ export default function SubstituicaoPEI() {
                           className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900"
                           required
                         >
-                          {PERIODOS_AULA.map(p => (
+                          {(periodosAula && periodosAula.length > 0 ? periodosAula : PERIODOS_AULA).map(p => (
                             <option key={p.id} value={p.id}>
                               {p.rotulo} ({p.horario})
                             </option>
@@ -3174,7 +3499,7 @@ export default function SubstituicaoPEI() {
                           className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-900"
                           required
                         >
-                          {TURMAS_PEI.map(t => <option key={t} value={t}>{t}</option>)}
+                          {listaTurmasUnificada.map(t => <option key={t} value={t}>{t}</option>)}
                         </select>
                       </div>
                     </div>
@@ -3212,9 +3537,10 @@ export default function SubstituicaoPEI() {
                         <option value="">-- Selecione o Professor Substituto Apto --</option>
                         {sugestoesSubstitutos.map(p => {
                           const isBlocked = p.isIndisponivel || p.isOcupado;
-                          let rotulo = `${p.nome} (${p.disciplina}) — ${p.motivoPrioridade} [Carga: ${p.totalAulasSemana}h]`;
+                          let rotulo = `${p.nome} (${p.disciplina}) — ${p.motivoPrioridade} [${p.totalAulasSemana}/32h]`;
                           if (isBlocked) {
-                            rotulo = `Bloqueado: ${p.nome} (${p.isIndisponivel ? 'Fora da Escola / Folga' : 'Em Aula: ' + p.motivoOcupado})`;
+                            const motivoB = p.isIndisponivel ? (p.motivoIndisponivel || 'Indisponível') : (p.motivoPrioridade || ('Ocupado: ' + p.motivoOcupado));
+                            rotulo = `Bloqueado: ${p.nome} (${motivoB})`;
                           }
                           return (
                             <option key={p.nome} value={p.nome} disabled={isBlocked}>
@@ -3352,7 +3678,7 @@ export default function SubstituicaoPEI() {
                                 const listaP = (periodosAula && periodosAula.length > 0) ? periodosAula : PERIODOS_AULA;
                                 const periodoObj = listaP.find(p => getPeriodoOrder(p.id ?? p.periodoId ?? p.rotulo) === getPeriodoOrder(aula.periodoId)) || { rotulo: getPeriodoRotulo(aula.periodoId), horario: '' };
                                 const areaAula = encontrarAreaDisciplina(aula.disciplina);
-                                const sugestoes = calcularSugestoesParaAula(aula.periodoId, aula.disciplina, areaAula);
+                                const sugestoes = calcularSugestoesParaAula(aula.periodoId, aula.disciplina, areaAula, getBatchOptionsParaPeriodo(aula.periodoId));
                                 const alocAtual = alocacoesLote[aula.periodoId] || { professorSubstituto: '', tipoSubstituto: '' };
                                 const subsAtualObj = sugestoes.find(s => isSameProfessor(s.nome, alocAtual.professorSubstituto) || s.nome === alocAtual.professorSubstituto);
 
@@ -3387,16 +3713,17 @@ export default function SubstituicaoPEI() {
                                         <optgroup label="Sugestões Inteligentes (Livres)">
                                           {sugestoes.filter(p => !p.isIndisponivel && !p.isOcupado).map(p => (
                                             <option key={p.nome} value={p.nome}>
-                                              {p.nome} ({p.disciplina}) — {p.motivoPrioridade} [{p.totalAulasSemana}h]
+                                              {p.nome} ({p.disciplina}) — {p.motivoPrioridade} [{p.totalAulasSemana}/32h]
                                             </option>
                                           ))}
                                         </optgroup>
                                         <optgroup label="Todos os Professores da Escola">
                                           {sugestoes.map(p => {
                                             const isBlocked = p.isIndisponivel || p.isOcupado;
-                                            let rotulo = `${p.nome} (${p.disciplina}) — ${p.motivoPrioridade} [${p.totalAulasSemana}h]`;
+                                            let rotulo = `${p.nome} (${p.disciplina}) — ${p.motivoPrioridade} [${p.totalAulasSemana}/32h]`;
                                             if (isBlocked) {
-                                              rotulo = `Bloqueado: ${p.nome} (${p.isIndisponivel ? 'Fora da Escola / Folga' : 'Em Aula: ' + p.motivoOcupado})`;
+                                              const motivoB = p.isIndisponivel ? (p.motivoIndisponivel || 'Indisponível') : (p.motivoPrioridade || ('Ocupado: ' + p.motivoOcupado));
+                                              rotulo = `Bloqueado: ${p.nome} (${motivoB})`;
                                             }
                                             return (
                                               <option key={p.nome} value={p.nome} disabled={isBlocked}>

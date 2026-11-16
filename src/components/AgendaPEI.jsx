@@ -1101,9 +1101,9 @@ export default function AgendaPEI() {
 
   const logoSrc =
     logoFallbackIndex === 0
-      ? '/assets/logo-clovis.svg'
+      ? '/logo-clovis.svg'
       : logoFallbackIndex === 1
-      ? '/assets/aistudio/Logo_Clovis_df1054e5.jpeg'
+      ? '/assets/logo-clovis.svg'
       : null;
 
   return (

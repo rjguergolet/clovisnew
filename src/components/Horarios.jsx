@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { db, collection, getDocs, addDoc, updateDoc, setDoc, doc, deleteDoc, writeBatch, getDoc, onSnapshot } from '../lib/database';
-import { podeExcluir, OPCOES_AREAS_PEI, normalizarArea, encontrarAreaDisciplina, isRegularTeachingClass, extrairEMigrarDocentesDoHorario, isSameProfessor, normalizeTeacherName, getPeriodoOrder, getPeriodoRotulo, isTeacherAtSchool, normalizarDia } from '../utils';
+import { podeExcluir, OPCOES_AREAS_PEI, normalizarArea, encontrarAreaDisciplina, isRegularTeachingClass, isInstitutionalOrAtpcCommitment, isRealProfessorName, isRealSchoolTurma, sortTurmasPEI, normalizeHorarioItem, extrairEMigrarDocentesDoHorario, isSameProfessor, normalizeTeacherName, getPeriodoOrder, getPeriodoRotulo, isTeacherAtSchool, normalizarDia } from '../utils';
 import { registrarLogAuditoria } from '../modules/auditLogger';
 import { obterUsuarioAtivoCompleto } from '../modules/authHelper';
 
@@ -148,21 +148,21 @@ const GERAR_HORARIOS_INICIAIS = () => {
 };
 
 export default function Horarios() {
-  const [anoGrade, setAnoGrade] = useState(() => {
-    try {
-      return localStorage.getItem('clovis_ano_letivo') === '2027' ? '2027' : '2026';
-    } catch {
-      return '2026';
-    }
-  });
+  const anoGrade = '2026';
   const [horarios, setHorarios] = useState(() => {
     try {
-      if (localStorage.getItem('clovis_ano_letivo') === '2027') {
-        const c27 = localStorage.getItem('clovis_grade_horarios_2027');
-        return c27 ? JSON.parse(c27) : [];
+      if (Array.isArray(window.gradeCache) && window.gradeCache.length > 0) {
+        return window.gradeCache.map(normalizeHorarioItem);
+      }
+      const c26 = localStorage.getItem('clovis_horarios_cache');
+      if (c26) {
+        const parsed = JSON.parse(c26);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(normalizeHorarioItem);
+        }
       }
     } catch {}
-    return Array.isArray(window.gradeCache) ? window.gradeCache : [];
+    return [];
   });
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(null);
@@ -197,26 +197,17 @@ export default function Horarios() {
     });
   }, []);
 
-  const handleAlternarAnoGrade = useCallback((novoAno) => {
-    const anoVal = novoAno === '2027' ? '2027' : '2026';
-    setAnoGrade(anoVal);
+  // Garantir que o sistema opere sempre no ano letivo vigente (2026)
+  useEffect(() => {
     try {
-      localStorage.setItem('clovis_ano_letivo', anoVal);
+      if (localStorage.getItem('clovis_ano_letivo') !== '2026') {
+        localStorage.setItem('clovis_ano_letivo', '2026');
+      }
       if (typeof window !== 'undefined') {
-        window.anoLetivoAtual = anoVal;
-        window.dispatchEvent(new CustomEvent('clovis_ano_letivo_changed', { detail: anoVal }));
+        window.anoLetivoAtual = '2026';
+        window.dispatchEvent(new CustomEvent('clovis_ano_letivo_changed', { detail: '2026' }));
       }
     } catch {}
-    notificar(`Visualizando Grade Horária do Ano Letivo ${anoVal}!`, 'info');
-  }, [notificar]);
-
-  useEffect(() => {
-    const onAnoChanged = (e) => {
-      const val = e?.detail === '2027' ? '2027' : '2026';
-      setAnoGrade(prev => (prev !== val ? val : prev));
-    };
-    window.addEventListener('clovis_ano_letivo_changed', onAnoChanged);
-    return () => window.removeEventListener('clovis_ano_letivo_changed', onAnoChanged);
   }, []);
 
   // Modo de visualização: 'por_turma' | 'por_professor' | 'por_sala' | 'matriz_geral'
@@ -229,13 +220,13 @@ export default function Horarios() {
   // State de Controle de Ausência / Indisponibilidade de Professores (Matriz)
   const [indisponibilidadeProfs, setIndisponibilidadeProfs] = useState({});
   const [isAusenciaModalOpen, setIsAusenciaModalOpen] = useState(false);
-  const [profAusenciaSelecionado, setProfAusenciaSelecionado] = useState('Profª Maria Silva');
+  const [profAusenciaSelecionado, setProfAusenciaSelecionado] = useState('');
   const [motivoAusenciaInput, setMotivoAusenciaInput] = useState('Janela / Fora de Expediente');
 
-  // Filtros Selecionados
-  const [turmaSelecionada, setTurmaSelecionada] = useState('6º Ano A');
-  const [professorSelecionado, setProfessorSelecionado] = useState('Profª Maria Silva');
-  const [salaSelecionada, setSalaSelecionada] = useState('Sala 01 (6ºA)');
+  // Filtros Selecionados (sincronizados dinamicamente com a grade real carregada do banco)
+  const [turmaSelecionada, setTurmaSelecionada] = useState('');
+  const [professorSelecionado, setProfessorSelecionado] = useState('');
+  const [salaSelecionada, setSalaSelecionada] = useState('');
   const [termoBusca, setTermoBusca] = useState('');
 
   // Filtro de Otimização de Turnos & Indisponibilidade Docente
@@ -662,28 +653,11 @@ export default function Horarios() {
     r => roleUpper === r || roleUpper.startsWith(r)
   ) || (typeof window.ehDiretor === 'function' ? window.ehDiretor() : false);
 
-  // Helper centralizado de persistência da grade (2026 vigente ou 2027 planejamento)
-  const persistirGradeAtual = useCallback(async (novosHorarios, idsDeletadosExtras = [], targetAno = anoGrade) => {
-    setHorarios(novosHorarios);
+  // Helper centralizado de persistência da grade vigente (2026)
+  const persistirGradeAtual = useCallback(async (novosHorarios, idsDeletadosExtras = []) => {
+    const listaNormalizada = (novosHorarios || []).map(normalizeHorarioItem);
+    setHorarios(listaNormalizada);
 
-    if (targetAno === '2027') {
-      try {
-        localStorage.setItem('clovis_grade_horarios_2027', JSON.stringify(novosHorarios));
-      } catch (e) {}
-      try {
-        await setDoc(doc(db, 'config_escola', 'grade_horarios_2027'), {
-          anoLetivo: '2027',
-          grade: novosHorarios,
-          initialized: true,
-          atualizadoEm: new Date().toISOString()
-        }, { merge: true });
-      } catch (e) {
-        console.warn('Erro ao sincronizar grade 2027 no banco:', e);
-      }
-      return;
-    }
-
-    // Ano 2026 (vigente)
     let delArr = [];
     try {
       const delRaw = localStorage.getItem('clovis_horarios_deleted_ids');
@@ -701,16 +675,16 @@ export default function Horarios() {
 
     try {
       localStorage.setItem('clovis_horarios_deleted_ids', JSON.stringify(delArr));
-      localStorage.setItem('clovis_horarios_cache', JSON.stringify(novosHorarios));
+      localStorage.setItem('clovis_horarios_cache', JSON.stringify(listaNormalizada));
     } catch (e) {}
 
     if (typeof window !== 'undefined') {
-      window.gradeCache = novosHorarios;
+      window.gradeCache = listaNormalizada;
     }
 
     try {
       await setDoc(doc(db, 'config_escola', 'grade_horarios_custom'), {
-        grade: novosHorarios,
+        grade: listaNormalizada,
         deletedIds: delArr,
         initialized: true,
         atualizadoEm: new Date().toISOString()
@@ -718,44 +692,7 @@ export default function Horarios() {
     } catch (e) {
       console.warn('Erro ao sincronizar snapshot grade_horarios_custom:', e);
     }
-  }, [anoGrade]);
-
-  const handleDuplicarGradePara2027 = useCallback(async (alternarPara2027 = true) => {
-    try {
-      let base2026 = [];
-      if (anoGrade === '2026') {
-        base2026 = [...horarios];
-      } else {
-        const snap2026 = await getDocs(collection(db, 'horarios'));
-        snap2026.forEach(d => base2026.push({ id: d.id, ...d.data() }));
-        if (base2026.length === 0) {
-          const customSnap = await getDoc(doc(db, 'config_escola', 'grade_horarios_custom'));
-          if (customSnap.exists() && Array.isArray(customSnap.data()?.grade)) {
-            base2026 = customSnap.data().grade;
-          }
-        }
-        if (base2026.length === 0) {
-          const cached = localStorage.getItem('clovis_horarios_cache');
-          if (cached) base2026 = JSON.parse(cached);
-        }
-      }
-
-      const grade2027 = (base2026 || []).map((h, idx) => ({
-        ...h,
-        id: h.id ? `2027_${String(h.id).replace(/^2027_/, '')}` : `2027_aula_${Date.now()}_${idx}`,
-        anoLetivo: '2027'
-      }));
-
-      await persistirGradeAtual(grade2027, [], '2027');
-      notificar(`Sucesso! ${grade2027.length} aulas duplicadas para a Grade de Planejamento 2027.`, 'success', 5000);
-      if (alternarPara2027 && anoGrade !== '2027') {
-        handleAlternarAnoGrade('2027');
-      }
-    } catch (e) {
-      console.error('Erro ao duplicar grade para 2027:', e);
-      notificar('Grade 2027 salva em contingência local.', 'info');
-    }
-  }, [anoGrade, horarios, persistirGradeAtual, notificar, handleAlternarAnoGrade]);
+  }, []);
 
   // Handlers para o Modo Planilha (Edição Direta de Célula)
   const handleDraftChange = (id, field, value) => {
@@ -792,7 +729,7 @@ export default function Horarios() {
     };
 
     try {
-      if (anoGrade === '2026' && aula.id && !String(aula.id).startsWith('init-') && !String(aula.id).startsWith('local-')) {
+      if (aula.id && !String(aula.id).startsWith('init-') && !String(aula.id).startsWith('local-')) {
         const docRef = doc(db, 'horarios', aula.id);
         await setDoc(docRef, payload, { merge: true });
       }
@@ -820,17 +757,16 @@ export default function Horarios() {
       notificar('Acesso negado: Apenas a Direção e Coordenação CGPG possuem autorização para alterar a grade horária.', 'warning');
       return;
     }
-    const newId = anoGrade === '2027' ? `2027_horario-${Date.now()}` : `horario-${Date.now()}`;
+    const newId = `horario-${Date.now()}`;
     const safePeriodoId = isNaN(Number(periodoId)) ? periodoId : Number(periodoId);
     const userAtivo = obterUsuarioAtivoCompleto();
-    const { id: _omitId, ...novaAulaDbPayload } = {
-      id: newId,
-      dia: diaId,
+    const novaAulaDbPayload = {
+      dia: normalizarDia(diaId),
       periodoId: safePeriodoId,
-      turma: modoVisao === 'por_turma' ? turmaSelecionada : (listaTurmas[0] || '6º Ano A'),
-      professor: modoVisao === 'por_professor' ? professorSelecionado : (listaProfessores[0] || 'Profª Maria Silva'),
+      turma: modoVisao === 'por_turma' ? (turmaSelecionada || listaTurmas[0] || '') : (listaTurmas[0] || ''),
+      professor: modoVisao === 'por_professor' ? (professorSelecionado || listaProfessores[0] || '') : (listaProfessores[0] || ''),
       disciplina: 'Tutoria',
-      sala: modoVisao === 'por_sala' ? salaSelecionada : (listaSalas[0] || 'Sala 01 (6ºA)'),
+      sala: modoVisao === 'por_sala' ? (salaSelecionada || listaSalas[0] || 'Sala Regular') : (listaSalas[0] || 'Sala Regular'),
       observacao: '',
       contarSaldo: true,
       anoLetivo: anoGrade,
@@ -839,18 +775,16 @@ export default function Horarios() {
       editadoPorCargo: userAtivo.cargo,
       editadoEm: new Date().toISOString()
     };
-    const novaAula = { id: newId, ...novaAulaDbPayload };
 
     try {
-      if (anoGrade === '2026') {
-        const docRef = doc(db, 'horarios', newId);
-        await setDoc(docRef, novaAulaDbPayload);
-      }
+      const docRef = doc(db, 'horarios', newId);
+      await setDoc(docRef, novaAulaDbPayload);
+      const novaAula = { id: newId, ...novaAulaDbPayload };
       await persistirGradeAtual([...horarios, novaAula]);
       notificar(`Nova aula alocada na planilha (${anoGrade}) com sucesso!`, 'success');
     } catch (e) {
       console.error('Erro ao criar aula via planilha:', e);
-      setHorarios((prev) => [...prev, novaAula]);
+      setHorarios((prev) => [...prev, { id: newId, ...novaAulaDbPayload }]);
     }
   };
 
@@ -935,76 +869,34 @@ export default function Horarios() {
       localStorage.setItem('clovis_indisponibilidade_professores', JSON.stringify(novaMatriz));
     }
   };
-  // Carregamento em Tempo Real da Grade Horária via onSnapshot (2026 vigente ou 2027 planejamento)
+  // Carregamento em Tempo Real da Grade Horária via onSnapshot (2026 Vigente)
   useEffect(() => {
     setLoading(true);
     setErro(null);
 
-    if (anoGrade === '2027') {
-      try {
-        const c27 = localStorage.getItem('clovis_grade_horarios_2027');
-        if (c27) {
-          const parsed27 = JSON.parse(c27);
-          if (Array.isArray(parsed27)) {
-            setHorarios(parsed27);
-            setLoading(false);
-          }
-        }
-      } catch (e) {}
-
-      const doc2027Ref = doc(db, 'config_escola', 'grade_horarios_2027');
-      const unsub2027 = onSnapshot(doc2027Ref, (docSnap) => {
-        if (docSnap.exists() && Array.isArray(docSnap.data()?.grade)) {
-          const g27 = docSnap.data().grade;
-          setHorarios(g27);
+    const cachedGrade = (Array.isArray(window.gradeCache) && window.gradeCache.length > 0)
+      ? window.gradeCache
+      : (() => {
           try {
-            localStorage.setItem('clovis_grade_horarios_2027', JSON.stringify(g27));
-          } catch (e) {}
-        } else {
-          const c27 = localStorage.getItem('clovis_grade_horarios_2027');
-          if (c27) {
-            try { setHorarios(JSON.parse(c27)); } catch (e) { setHorarios([]); }
-          } else {
-            setHorarios([]);
-          }
-        }
-        setLoading(false);
-        setIsRealtimeConnected(true);
-        setErro(null);
-      }, (err) => {
-        console.warn('Erro ao carregar grade 2027:', err);
-        setLoading(false);
-        setIsRealtimeConnected(false);
-      });
-
-      return () => {
-        if (typeof unsub2027 === 'function') unsub2027();
-      };
-    }
-
-    // Modo 2026 (Grade Vigente)
-    const cachedGrade = window.gradeCache || (() => {
-      try {
-        const c = localStorage.getItem('clovis_horarios_cache');
-        return c ? JSON.parse(c) : null;
-      } catch (e) { return null; }
-    })();
+            const c = localStorage.getItem('clovis_horarios_cache');
+            const parsed = c ? JSON.parse(c) : null;
+            return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+          } catch (e) { return null; }
+        })();
 
     if (Array.isArray(cachedGrade) && cachedGrade.length > 0) {
-      setHorarios(cachedGrade);
+      setHorarios(cachedGrade.map(normalizeHorarioItem));
       setLoading(false);
     }
 
     const colRef = collection(db, 'horarios');
 
-    // Conecta o listener em tempo real exclusivamente enquanto o componente Horários estiver montado em 2026
     const unsubscribe = onSnapshot(colRef, async (snapshot) => {
       const docs = [];
       snapshot.forEach((docSnap) => {
-        docs.push({ id: docSnap.id, ...docSnap.data() });
+        docs.push(normalizeHorarioItem({ id: docSnap.id, ...docSnap.data() }));
       });
 
-      // Carregar lista consolidada de IDs deletados (localStorage + banco)
       let deletedIds = [];
       try {
         const delRaw = localStorage.getItem('clovis_horarios_deleted_ids');
@@ -1035,7 +927,9 @@ export default function Horarios() {
         } catch (e) {}
       } else if (!snapshot.metadata || snapshot.metadata.fromCache === false) {
         if (customData && (Array.isArray(customData.grade) || customData.initialized === true)) {
-          const gradeSalva = (Array.isArray(customData.grade) ? customData.grade : []).filter(d => !deletedIds.includes(d.id));
+          const gradeSalva = (Array.isArray(customData.grade) ? customData.grade : [])
+            .map(normalizeHorarioItem)
+            .filter(d => !deletedIds.includes(d.id));
           setHorarios(gradeSalva);
           window.gradeCache = gradeSalva;
           try {
@@ -1046,13 +940,12 @@ export default function Horarios() {
           return;
         }
 
-        // Fallback para cache local existente se houver
         const cachedLocal = localStorage.getItem('clovis_horarios_cache');
         if (cachedLocal) {
           try {
             const parsed = JSON.parse(cachedLocal);
-            if (Array.isArray(parsed)) {
-              const parsedFiltrados = parsed.filter(d => !deletedIds.includes(d.id));
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              const parsedFiltrados = parsed.map(normalizeHorarioItem).filter(d => !deletedIds.includes(d.id));
               setHorarios(parsedFiltrados);
               window.gradeCache = parsedFiltrados;
               setLoading(false);
@@ -1062,8 +955,7 @@ export default function Horarios() {
           } catch (e) {}
         }
 
-        // Se o banco estiver virgem (nunca inicializado), carrega grade inicial expurgando deletados
-        const inis = GERAR_HORARIOS_INICIAIS().filter(d => !deletedIds.includes(d.id));
+        const inis = GERAR_HORARIOS_INICIAIS().map(normalizeHorarioItem).filter(d => !deletedIds.includes(d.id));
         setHorarios(inis);
         window.gradeCache = inis;
         try {
@@ -1080,31 +972,18 @@ export default function Horarios() {
       setErro('Conexão offline - Exibindo horários locais.');
     });
 
-    // Cleanup: Desconecta o listener assim que o componente de Horários for fechado
     return () => {
       if (typeof unsubscribe === 'function') {
         unsubscribe();
       }
     };
-  }, [anoGrade]);
+  }, []);
 
   // Recarga manual da Grade Horária sob demanda
   const carregarGradeHorarios = useCallback(async (forceServer = false) => {
     setLoading(true);
     setErro(null);
     try {
-      if (anoGrade === '2027') {
-        const snap2027 = await getDoc(doc(db, 'config_escola', 'grade_horarios_2027'));
-        if (snap2027.exists() && Array.isArray(snap2027.data()?.grade)) {
-          const g27 = snap2027.data().grade;
-          setHorarios(g27);
-          localStorage.setItem('clovis_grade_horarios_2027', JSON.stringify(g27));
-        }
-        if (forceServer) notificar('Grade de planejamento 2027 atualizada do servidor!', 'success');
-        setIsRealtimeConnected(true);
-        return;
-      }
-
       let deletedIds = [];
       try {
         const delRaw = localStorage.getItem('clovis_horarios_deleted_ids');
@@ -1124,7 +1003,7 @@ export default function Horarios() {
       const docs = [];
       snapshot.forEach((docSnap) => {
         if (!deletedIds.includes(docSnap.id)) {
-          docs.push({ id: docSnap.id, ...docSnap.data() });
+          docs.push(normalizeHorarioItem({ id: docSnap.id, ...docSnap.data() }));
         }
       });
 
@@ -1135,14 +1014,16 @@ export default function Horarios() {
           localStorage.setItem('clovis_horarios_cache', JSON.stringify(docs));
         } catch (e) {}
       } else if (customSnap && customSnap.exists() && (Array.isArray(customSnap.data()?.grade) || customSnap.data()?.initialized)) {
-        const gSalva = (customSnap.data()?.grade || []).filter(d => !deletedIds.includes(d.id));
+        const gSalva = (customSnap.data()?.grade || [])
+          .map(normalizeHorarioItem)
+          .filter(d => !deletedIds.includes(d.id));
         setHorarios(gSalva);
         window.gradeCache = gSalva;
         localStorage.setItem('clovis_horarios_cache', JSON.stringify(gSalva));
       }
 
       if (forceServer) {
-        notificar('Grade horária atualizada com sucesso do servidor!', 'success');
+        notificar('Grade horária 2026 atualizada com sucesso do servidor!', 'success');
       }
       setIsRealtimeConnected(true);
     } catch (error) {
@@ -1151,7 +1032,7 @@ export default function Horarios() {
     } finally {
       setLoading(false);
     }
-  }, [anoGrade, notificar]);
+  }, [notificar]);
 
   useEffect(() => {
     window.carregarGradeHorarios = carregarGradeHorarios;
@@ -1159,7 +1040,7 @@ export default function Horarios() {
 
   // Função Global de Filtragem 100% Offline (Sem novas queries ao Firestore)
   window.filtrarGradeHorarios = function(filtros = {}) {
-    const base = window.gradeCache || horarios || [];
+    const base = (Array.isArray(window.gradeCache) && window.gradeCache.length > 0) ? window.gradeCache : (horarios || []);
     return base.filter(item => {
       if (filtros.professor && !isSameProfessor(item.professor, filtros.professor)) return false;
       if (filtros.turma && item.turma !== filtros.turma) return false;
@@ -1183,17 +1064,24 @@ export default function Horarios() {
 
   // Lista única de turmas, professores, salas e disciplinas para os seletores
   const listaTurmas = useMemo(() => {
-    const setT = new Set(cadastrosCustom.turmas || []);
-    horarios.forEach(h => h.turma && setT.add(h.turma));
-    return Array.from(setT).sort();
+    const setT = new Set();
+    (cadastrosCustom.turmas || []).forEach(t => {
+      const s = String(t || '').trim();
+      if (s && s !== '-' && s !== '?') setT.add(s);
+    });
+    horarios.forEach(h => {
+      const s = String(h.turma || '').trim();
+      if (s && s !== '-' && s !== '?') setT.add(s);
+    });
+    return sortTurmasPEI(Array.from(setT));
   }, [cadastrosCustom.turmas, horarios]);
 
   const listaProfessores = useMemo(() => {
     const setP = new Set();
-    (cadastroProfessores || []).forEach(p => p.nome && setP.add(p.nome));
-    (cadastrosCustom.professores || []).forEach(p => setP.add(p));
-    horarios.forEach(h => h.professor && setP.add(h.professor));
-    return Array.from(setP).sort();
+    (cadastroProfessores || []).forEach(p => isRealProfessorName(p?.nome) && setP.add(String(p.nome).trim()));
+    (cadastrosCustom.professores || []).forEach(p => isRealProfessorName(p) && setP.add(String(p).trim()));
+    horarios.forEach(h => isRealProfessorName(h?.professor) && setP.add(String(h.professor).trim()));
+    return Array.from(setP).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [cadastroProfessores, cadastrosCustom.professores, horarios]);
 
   const salvarCadastroProfessores = async (novosProfs) => {
@@ -1347,10 +1235,40 @@ export default function Horarios() {
   };
 
   const listaSalas = useMemo(() => {
-    const setS = new Set(cadastrosCustom.salas || []);
-    horarios.forEach(h => h.sala && setS.add(h.sala));
-    return Array.from(setS).sort();
+    const setS = new Set();
+    (cadastrosCustom.salas || []).forEach(s => {
+      const str = String(s || '').trim();
+      if (str && str !== '-' && str !== '?') setS.add(str);
+    });
+    horarios.forEach(h => {
+      const str = String(h.sala || '').trim();
+      if (str && str !== '-' && str !== '?') setS.add(str);
+    });
+    return Array.from(setS).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [cadastrosCustom.salas, horarios]);
+
+  // Auto-sincronizar filtros selecionados para garantir que nunca fiquem presos em placeholders inexistentes
+  useEffect(() => {
+    if (listaTurmas.length > 0 && (!turmaSelecionada || !listaTurmas.includes(turmaSelecionada))) {
+      const preferida = listaTurmas.find(isRealSchoolTurma) || listaTurmas[0];
+      setTurmaSelecionada(preferida);
+    }
+  }, [listaTurmas, turmaSelecionada]);
+
+  useEffect(() => {
+    if (listaProfessores.length > 0 && (!professorSelecionado || !listaProfessores.some(p => isSameProfessor(p, professorSelecionado)))) {
+      setProfessorSelecionado(listaProfessores[0]);
+    }
+    if (listaProfessores.length > 0 && (!profAusenciaSelecionado || !listaProfessores.some(p => isSameProfessor(p, profAusenciaSelecionado)))) {
+      setProfAusenciaSelecionado(listaProfessores[0]);
+    }
+  }, [listaProfessores, professorSelecionado, profAusenciaSelecionado]);
+
+  useEffect(() => {
+    if (listaSalas.length > 0 && (!salaSelecionada || !listaSalas.includes(salaSelecionada))) {
+      setSalaSelecionada(listaSalas[0]);
+    }
+  }, [listaSalas, salaSelecionada]);
 
   // Horário Atual do Relógio para destaque de Aula em Andamento
   const [agoraInfo, setAgoraInfo] = useState({ diaId: '', periodoId: null });
@@ -1536,15 +1454,15 @@ export default function Horarios() {
   const periodosToRender = useMemo(() => {
     if (!periodosAula || periodosAula.length === 0) return [];
 
-    // Modo Por Turma: Suprimir turnos sem aula (Manhã/Noturno para Ensino Médio, Tarde/Noturno para Fundamental)
+    // Modo Por Turma: Suprimir turnos sem aula (Manhã para Ensino Médio 8ª-14ª, Tarde/Noite para Fundamental 1ª-7ª)
     if (modoVisao === 'por_turma') {
       if (!suprimirTurnosOutros) return periodosAula;
 
       return periodosAula.filter((periodo) => {
         const pOrder = getPeriodoOrder(periodo.id);
         const isMorning = pOrder <= 7; // 1ª à 7ª aula + int1 + almoço
-        const isAfternoon = pOrder >= 8 && pOrder <= 12; // 8ª à 12ª aula + int2
-        const isNight = pOrder > 12; // Jantar + 13ª + 14ª aula
+        const isAfternoonEvening = pOrder >= 8; // 8ª à 14ª aula + int2 + jantar
+        const isJantarSlot = String(periodo.id).toLowerCase() === 'jantar';
 
         // Se houver aula agendada nesta turma neste período, NUNCA ocultar (preserva dados)
         const temAulaAgendada = horariosFiltrados.some(
@@ -1552,11 +1470,11 @@ export default function Horarios() {
         );
         if (temAulaAgendada) return true;
 
-        if (isEnsinoMedio && (isMorning || isNight)) {
-          return false; // Suprime horários da manhã e noite para Ensino Médio vespertino
+        if (isEnsinoMedio && (isMorning || isJantarSlot)) {
+          return false; // Suprime horários da manhã (e jantar vazio) para Ensino Médio (8ª a 14ª)
         }
-        if (isEnsinoFundamental && (isAfternoon || isNight)) {
-          return false; // Suprime horários da tarde e noite para Ensino Fundamental matutino
+        if (isEnsinoFundamental && isAfternoonEvening) {
+          return false; // Suprime horários da tarde/noite para Ensino Fundamental (1ª a 7ª)
         }
 
         return true;
@@ -1688,10 +1606,10 @@ export default function Horarios() {
     setForm({
       dia,
       periodoId: safePeriodoId,
-      turma: turmaSelecionada || '6º Ano A',
-      professor: professorSelecionado || 'Profª Maria Silva',
+      turma: turmaSelecionada || listaTurmas[0] || '',
+      professor: professorSelecionado || listaProfessores[0] || '',
       disciplina: 'Tutoria',
-      sala: salaSelecionada || 'Sala 01 (6ºA)',
+      sala: salaSelecionada || listaSalas[0] || 'Sala Regular',
       observacao: '',
       contarSaldo: true
     });
@@ -1702,12 +1620,12 @@ export default function Horarios() {
     setItemEdicao(item);
     const safePeriodoId = isNaN(Number(item.periodoId)) ? item.periodoId : Number(item.periodoId);
     setForm({
-      dia: item.dia || 'segunda',
+      dia: normalizarDia(item.dia) || 'segunda',
       periodoId: safePeriodoId,
-      turma: item.turma || '6º Ano A',
-      professor: item.professor || 'Profª Maria Silva',
+      turma: item.turma || listaTurmas[0] || '',
+      professor: item.professor || listaProfessores[0] || '',
       disciplina: item.disciplina || 'Língua Portuguesa',
-      sala: item.sala || 'Sala 01 (6ºA)',
+      sala: item.sala || listaSalas[0] || 'Sala Regular',
       observacao: '',
       contarSaldo: item.contarSaldo !== false && item.ativo !== false
     });
@@ -1745,38 +1663,34 @@ export default function Horarios() {
 
       let savedId = itemEdicao?.id || `local-${Date.now()}`;
 
-      if (anoGrade === '2026') {
-        if (itemEdicao?.id && !String(itemEdicao.id).startsWith('init-') && !String(itemEdicao.id).startsWith('local-')) {
-          const docRef = doc(db, 'horarios', itemEdicao.id);
-          await updateDoc(docRef, payload);
-          const auditPayload = {
-            modulo: 'Grade Horária',
-            acao: 'ATUALIZAR',
-            descricao: `Atualizada aula de ${payload.disciplina} (${payload.turma}) - ${payload.professor} (${payload.dia}, ${payload.periodoId}ª aula, sala ${payload.sala || 'Padrão'})`,
-            detalhes: { id: itemEdicao.id, payload }
-          };
-          if (typeof window.registrarLogAuditoria === 'function') {
-            window.registrarLogAuditoria(auditPayload);
-          } else {
-            registrarLogAuditoria(auditPayload);
-          }
+      if (itemEdicao?.id && !String(itemEdicao.id).startsWith('init-') && !String(itemEdicao.id).startsWith('local-')) {
+        const docRef = doc(db, 'horarios', itemEdicao.id);
+        await updateDoc(docRef, payload);
+        const auditPayload = {
+          modulo: 'Grade Horária',
+          acao: 'ATUALIZAR',
+          descricao: `Atualizada aula de ${payload.disciplina} (${payload.turma}) - ${payload.professor} (${payload.dia}, ${payload.periodoId}ª aula, sala ${payload.sala || 'Padrão'})`,
+          detalhes: { id: itemEdicao.id, payload }
+        };
+        if (typeof window.registrarLogAuditoria === 'function') {
+          window.registrarLogAuditoria(auditPayload);
         } else {
-          const docRef = await addDoc(collection(db, 'horarios'), payload);
-          savedId = docRef.id;
-          const auditPayload = {
-            modulo: 'Grade Horária',
-            acao: 'CRIAR',
-            descricao: `Criada nova aula de ${payload.disciplina} (${payload.turma}) - ${payload.professor} (${payload.dia}, ${payload.periodoId}ª aula, sala ${payload.sala || 'Padrão'})`,
-            detalhes: { id: savedId, payload }
-          };
-          if (typeof window.registrarLogAuditoria === 'function') {
-            window.registrarLogAuditoria(auditPayload);
-          } else {
-            registrarLogAuditoria(auditPayload);
-          }
+          registrarLogAuditoria(auditPayload);
         }
       } else {
-        savedId = itemEdicao?.id || `2027_${Date.now()}`;
+        const docRef = await addDoc(collection(db, 'horarios'), payload);
+        savedId = docRef.id;
+        const auditPayload = {
+          modulo: 'Grade Horária',
+          acao: 'CRIAR',
+          descricao: `Criada nova aula de ${payload.disciplina} (${payload.turma}) - ${payload.professor} (${payload.dia}, ${payload.periodoId}ª aula, sala ${payload.sala || 'Padrão'})`,
+          detalhes: { id: savedId, payload }
+        };
+        if (typeof window.registrarLogAuditoria === 'function') {
+          window.registrarLogAuditoria(auditPayload);
+        } else {
+          registrarLogAuditoria(auditPayload);
+        }
       }
 
       const novosHorarios = itemEdicao
@@ -2541,38 +2455,38 @@ export default function Horarios() {
       return null;
     }
 
-    // Horários Pedagógicos Coletivos
+    // Horários Pedagógicos Coletivos / Compromissos Institucionais (NÃO contam nas 32h de regência, mas bloqueiam substituição)
     if (upper.includes('ATPCG') || upper.includes('ATPCA') || upper === 'ATPC') {
       const disc = upper.includes('ATPCG') ? 'ATPCG' : upper.includes('ATPCA') ? 'ATPCA' : 'ATPC';
       return {
-        turma: 'Geral (Docentes)',
+        turma: 'ATPC',
         professor: teacherName || 'Prof. Não informado',
         disciplina: disc,
         sala: 'Sala dos Professores',
         observacao: '',
-        contarSaldo: true
+        contarSaldo: false
       };
     }
 
-    if (upper === 'TUTORIA' || upper === 'INT. DIRIGIDO' || upper === 'ESTUDO' || upper.includes('TUTORIA')) {
+    if (upper === 'TUTORIA' || upper === 'INT. DIRIGIDO' || upper.includes('DIRIGID') || upper === 'ESTUDO' || upper.includes('TUTORIA')) {
       return {
         turma: 'Atendimento',
         professor: teacherName || 'Prof. Não informado',
         disciplina: raw,
         sala: 'Acompanhamento',
         observacao: '',
-        contarSaldo: true
+        contarSaldo: !isInstitutionalOrAtpcCommitment(raw)
       };
     }
 
-    if (upper.includes('ELETIVAS') || upper.includes('CLUBES') || upper.includes('ALINHAMENTO')) {
+    if (upper.includes('ELETIVAS') || upper.includes('CLUBES') || upper.includes('ALINHAMENTO') || upper.includes('FORMAÇÃO') || upper.includes('FORMACAO') || upper.includes('REUNIÃO') || upper.includes('REUNIAO')) {
       return {
-        turma: 'Diversas Turmas',
+        turma: (upper.includes('ALINHAMENTO') || upper.includes('FORMAÇÃO') || upper.includes('FORMACAO')) ? 'ALINHAMENTO GERAL' : 'Diversas Turmas',
         professor: teacherName || 'Prof. Não informado',
         disciplina: raw,
         sala: 'Espaço Comum',
         observacao: '',
-        contarSaldo: true
+        contarSaldo: !isInstitutionalOrAtpcCommitment(raw)
       };
     }
 
@@ -2880,15 +2794,15 @@ export default function Horarios() {
       const novosProfsSet = new Set(cadastrosCustom.professores || []);
 
       csvPreviewItems.forEach(item => {
-        if (item.turma && item.turma !== '-') novasTurmasSet.add(item.turma);
-        if (item.sala && item.sala !== '-') novasSalasSet.add(item.sala);
-        if (item.professor && item.professor !== '-') novosProfsSet.add(item.professor);
+        if (isRealSchoolTurma(item.turma)) novasTurmasSet.add(item.turma);
+        if (item.sala && item.sala !== '-' && item.sala !== '?') novasSalasSet.add(item.sala);
+        if (isRealProfessorName(item.professor)) novosProfsSet.add(item.professor);
       });
 
       const baseAtualizada = {
-        turmas: Array.from(novasTurmasSet).sort(),
-        professores: Array.from(novosProfsSet).sort(),
-        salas: Array.from(novasSalasSet).sort()
+        turmas: sortTurmasPEI(Array.from(novasTurmasSet)),
+        professores: Array.from(novosProfsSet).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+        salas: Array.from(novasSalasSet).sort((a, b) => a.localeCompare(b, 'pt-BR'))
       };
       setCadastrosCustom(baseAtualizada);
       try {
@@ -3502,30 +3416,10 @@ export default function Horarios() {
             <div>
               <div className="flex flex-wrap items-center gap-2.5">
                 <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Grade Horária Escolar PEI</h1>
-                <div className="inline-flex rounded-xl bg-slate-100 border border-slate-200/70 p-0.5 text-xs font-medium">
-                  <button
-                    type="button"
-                    onClick={() => handleAlternarAnoGrade('2026')}
-                    className={`px-3 py-1 rounded-lg transition cursor-pointer ${
-                      anoGrade === '2026'
-                        ? 'bg-white text-slate-900 font-semibold shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Grade 2026 (Vigente)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleAlternarAnoGrade('2027')}
-                    className={`px-3 py-1 rounded-lg transition cursor-pointer ${
-                      anoGrade === '2027'
-                        ? 'bg-indigo-600 text-white font-semibold shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Grade 2027 (Planejamento)
-                  </button>
-                </div>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-50 text-indigo-800 border border-indigo-200/70 text-xs font-semibold tabular-nums">
+                  <i className="fa-solid fa-calendar-check text-indigo-600 text-[11px]"></i>
+                  <span>Grade 2026 (Vigente)</span>
+                </span>
                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border ${
                   isRealtimeConnected
                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200/70'
@@ -3536,7 +3430,7 @@ export default function Horarios() {
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium mt-1">
-                Escola Estadual Clóvis de Lucca &bull; Ano Letivo <span className="tabular-nums font-semibold text-slate-700">{anoGrade}</span> &bull; Matriz de Aulas por Turma, Professor e Sala
+                Escola Estadual Clóvis de Lucca &bull; Ano Letivo <span className="tabular-nums font-semibold text-slate-700">2026</span> &bull; Matriz de Aulas por Turma, Professor e Sala
               </p>
             </div>
           </div>
@@ -3646,24 +3540,6 @@ export default function Horarios() {
 
               <button
                 type="button"
-                onClick={() => {
-                  abrirConfirmacao({
-                    title: 'Preparar Grade do Ano Letivo 2027',
-                    message: 'Deseja criar/atualizar a cópia de planejamento para 2027 a partir da grade vigente de 2026?\n\nNenhuma aula atual de 2026 será alterada ou apagada.',
-                    confirmLabel: 'Duplicar para 2027',
-                    variant: 'info',
-                    onConfirm: () => handleDuplicarGradePara2027(true)
-                  });
-                }}
-                className="shrink-0 inline-flex items-center gap-1.5 bg-white hover:bg-purple-50/70 text-slate-700 hover:text-purple-700 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200/80 transition cursor-pointer"
-                title="Duplicar grade atual para planejamento do Ano Letivo 2027"
-              >
-                <i className="fa-solid fa-calendar-plus text-purple-600"></i>
-                <span>Preparar Grade 2027</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => setIsGerenciarModalOpen(true)}
                 className="shrink-0 inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold px-3 py-2 rounded-xl border border-slate-200/80 transition cursor-pointer"
                 title="Ferramentas de Gerenciamento da Grade (Upload CSV / Redefinição / Exclusão)"
@@ -3685,35 +3561,6 @@ export default function Horarios() {
           )}
         </div>
       </div>
-
-      {/* Banner Informativo do Modo Planejamento 2027 */}
-      {anoGrade === '2027' && (
-        <div className="bg-indigo-50/90 border border-indigo-200/70 border-l-4 border-l-indigo-600 text-slate-800 px-5 py-4 rounded-2xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs print:hidden">
-          <div className="flex items-start sm:items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0 tabular-nums">
-              2027
-            </div>
-            <div>
-              <p className="font-semibold text-sm text-slate-900">Modo de Planejamento: Grade Horária 2027</p>
-              <p className="text-slate-600 font-medium mt-0.5">
-                {horarios.length === 0
-                  ? 'A base de horários de 2027 ainda está vazia. Você pode duplicar a grade de 2026 com 1 clique ou alocar aulas manualmente sem afetar 2026.'
-                  : `Editando a base isolada de 2027 (${horarios.length} aula(s) planejadas). A grade vigente de 2026 permanece intacta.`}
-              </p>
-            </div>
-          </div>
-          {podeEditar && (
-            <button
-              type="button"
-              onClick={() => handleDuplicarGradePara2027(false)}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl transition cursor-pointer inline-flex items-center gap-2 shrink-0"
-            >
-              <i className="fa-solid fa-clone"></i>
-              <span>{horarios.length === 0 ? 'Importar Grade de 2026 para 2027' : 'Reimportar Base de 2026'}</span>
-            </button>
-          )}
-        </div>
-      )}
 
       {/* Alertas & Mensagens */}
       {erro && (
@@ -3902,7 +3749,7 @@ export default function Horarios() {
                   className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
                 />
                 <span>
-                  {isEnsinoMedio ? 'Suprimir Manhã (Exibir Tarde)' : isEnsinoFundamental ? 'Suprimir Tarde (Exibir Manhã)' : 'Suprimir Turno Inativo'}
+                  {isEnsinoMedio ? 'Suprimir Manhã (Exibir Tarde/Noite 8ª-14ª)' : isEnsinoFundamental ? 'Suprimir Tarde/Noite (Exibir Manhã 1ª-7ª)' : 'Suprimir Turno Inativo'}
                 </span>
               </label>
             </div>
@@ -4096,7 +3943,7 @@ export default function Horarios() {
           <div className="flex items-center gap-2">
             <i className="fa-solid fa-eye-slash text-indigo-600"></i>
             <span>
-              <strong className="font-semibold">Visão Otimizada:</strong> {isEnsinoMedio ? `Aulas da manhã ocultas para o Ensino Médio (${turmaSelecionada}).` : `Aulas da tarde ocultas para o Ensino Fundamental (${turmaSelecionada}).`}
+              <strong className="font-semibold">Visão Otimizada:</strong> {isEnsinoMedio ? `Exibindo horário integral do Ensino Médio (${turmaSelecionada} • 8ª à 14ª aula).` : `Exibindo horário integral do Ensino Fundamental (${turmaSelecionada} • 1ª à 7ª aula).`}
             </span>
           </div>
           <button
@@ -4199,7 +4046,7 @@ export default function Horarios() {
                           const isTargetCell = dragOverTarget?.dia === dia.id && getPeriodoOrder(dragOverTarget?.periodoId) === getPeriodoOrder(periodo.id);
 
                           const aulasNoSlot = horariosFiltrados.filter((h) => {
-                            if (h.dia !== dia.id) return false;
+                            if (normalizarDia(h.dia) !== dia.id) return false;
                             if (isIntervalo) {
                               return String(h.periodoId).toLowerCase().trim() === String(periodo.id).toLowerCase().trim();
                             }
@@ -4560,7 +4407,7 @@ export default function Horarios() {
               const isExpanded = !!diasExpandidosMobile[diaObj.id];
 
               // Total de aulas alocadas para este dia
-              const aulasDoDia = horariosFiltrados.filter(h => h.dia === diaObj.id);
+              const aulasDoDia = horariosFiltrados.filter(h => normalizarDia(h.dia) === diaObj.id);
               const totalAulasDia = aulasDoDia.length;
 
               return (
@@ -4627,7 +4474,7 @@ export default function Horarios() {
                         const isProximaAula = isHoje && infoAulaAtualMobile.proximoPeriodoId === periodo.id;
 
                         const aulasNoSlot = horariosFiltrados.filter((h) => {
-                          if (h.dia !== diaObj.id) return false;
+                          if (normalizarDia(h.dia) !== diaObj.id) return false;
                           if (isIntervalo) {
                             return String(h.periodoId).toLowerCase().trim() === String(periodo.id).toLowerCase().trim();
                           }
@@ -4911,9 +4758,9 @@ export default function Horarios() {
                                 <span className="px-2 py-0.5 bg-indigo-50 text-indigo-800 border border-indigo-200/60 rounded-md font-semibold text-[11px]">
                                   {rotuloP}
                                 </span>
-                                {slotObj && (
+                                {slotObj && (slotObj.horario || slotObj.inicio) && (
                                   <span className="text-[11px] text-slate-500 font-mono tabular-nums">
-                                    ({slotObj.inicio} - {slotObj.fim})
+                                    ({slotObj.horario || `${slotObj.inicio} - ${slotObj.fim}`})
                                   </span>
                                 )}
                               </div>
@@ -5049,7 +4896,7 @@ export default function Horarios() {
                     required
                   />
                   <datalist id="lista-turmas-datalist">
-                    {TURMAS_PADRAO.map(t => <option key={t} value={t} />)}
+                    {listaTurmas.map(t => <option key={t} value={t} />)}
                   </datalist>
                 </div>
 
@@ -5078,12 +4925,12 @@ export default function Horarios() {
                     list="lista-profs-datalist"
                     value={form.professor}
                     onChange={(e) => setForm({ ...form, professor: e.target.value })}
-                    placeholder="Ex: Profª Maria Silva"
+                    placeholder="Ex: ALINE"
                     className="w-full p-2.5 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition"
                     required
                   />
                   <datalist id="lista-profs-datalist">
-                    {PROFESSORES_PADRAO.map(p => <option key={p} value={p} />)}
+                    {listaProfessores.map(p => <option key={p} value={p} />)}
                   </datalist>
                 </div>
 
@@ -5095,12 +4942,12 @@ export default function Horarios() {
                     list="lista-salas-datalist"
                     value={form.sala}
                     onChange={(e) => setForm({ ...form, sala: e.target.value })}
-                    placeholder="Ex: Sala 01 (6ºA) ou Laboratório de Ciências"
+                    placeholder="Ex: Sala 01 ou Laboratório"
                     className="w-full p-2.5 bg-slate-50/80 border border-slate-200/80 rounded-xl text-xs font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition"
                     required
                   />
                   <datalist id="lista-salas-datalist">
-                    {SALAS_PADRAO.map(s => <option key={s} value={s} />)}
+                    {listaSalas.map(s => <option key={s} value={s} />)}
                   </datalist>
                 </div>
 
@@ -5921,9 +5768,11 @@ export default function Horarios() {
                           onChange={(e) => setNovoDocenteForm(prev => ({ ...prev, turno: e.target.value }))}
                           className="w-full p-2 bg-white border border-slate-200/80 rounded-xl font-medium text-xs text-slate-800 cursor-pointer outline-none focus:ring-2 focus:ring-indigo-500/20"
                         >
-                          <option value="INTEGRAL">INTEGRAL (1ª a 9ª aula)</option>
-                          <option value="MANHA">MANHÃ (1ª a 6ª aula)</option>
-                          <option value="TARDE">TARDE (7ª a 9ª aula)</option>
+                          <option value="INTEGRAL">INTEGRAL (Detecta turno pela grade)</option>
+                          <option value="PEI_MANHA">PEI MANHÃ / EF (1ª a 9ª aula)</option>
+                          <option value="PEI_TARDE">PEI TARDE / EM (6ª a 14ª aula)</option>
+                          <option value="MANHA">MANHÃ (1ª a 7ª aula)</option>
+                          <option value="TARDE">TARDE / NOITE (8ª a 14ª aula)</option>
                           <option value="FOLGA">FOLGA / OFF (Inativo)</option>
                         </select>
                       </div>
@@ -6125,9 +5974,11 @@ export default function Horarios() {
                                   onChange={(e) => handleAlterarTurnoDocenteInline(p, e.target.value)}
                                   className="w-full p-1.5 bg-white border border-slate-200/80 rounded-lg font-medium text-[11px] text-slate-800 cursor-pointer hover:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 outline-none"
                                 >
-                                  <option value="INTEGRAL">INTEGRAL (1ª-9ª)</option>
-                                  <option value="MANHA">MANHÃ (1ª-6ª)</option>
-                                  <option value="TARDE">TARDE (7ª-9ª)</option>
+                                  <option value="INTEGRAL">INTEGRAL (Grade)</option>
+                                  <option value="PEI_MANHA">PEI MANHÃ (1ª-9ª)</option>
+                                  <option value="PEI_TARDE">PEI TARDE/NOITE (6ª-14ª)</option>
+                                  <option value="MANHA">MANHÃ (1ª-7ª)</option>
+                                  <option value="TARDE">TARDE/NOITE (8ª-14ª)</option>
                                   <option value="FOLGA">FOLGA / OFF</option>
                                 </select>
                               </td>

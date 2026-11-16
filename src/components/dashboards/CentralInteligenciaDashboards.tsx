@@ -8,6 +8,11 @@ import {
   normalizarAlunos,
   unificarOcorrencias
 } from '../../modules/inteligenciaDataEngine';
+import {
+  extrairEMigrarDocentesDoHorario,
+  isRealProfessorName,
+  normalizeHorarioItem
+} from '../../utils';
 import MascoteSaraState from '../MascoteSaraState';
 import BuscaAtivaRapidaModal from './BuscaAtivaRapidaModal';
 import ChamadaDiariaConsolidacaoModal from './ChamadaDiariaConsolidacaoModal';
@@ -159,6 +164,7 @@ export default function CentralInteligenciaDashboards({
   const [horarios, setHorarios] = useState<any[]>([]);
   const [professores, setProfessores] = useState<any[]>([]);
   const [substituicoes, setSubstituicoes] = useState<any[]>([]);
+  const [usuarios, setUsuarios] = useState<any[]>([]);
   const [rotinaPdca, setRotinaPdca] = useState<any[]>([]);
   const [tarefas, setTarefas] = useState<any[]>([]);
   const [eventosAgenda, setEventosAgenda] = useState<any[]>([]);
@@ -205,12 +211,15 @@ export default function CentralInteligenciaDashboards({
         profsDb,
         subsDiariasDb,
         subsPeiDb,
+        usuariosDb,
         pdcaDb,
         tarefasDb,
         eventosDb,
         auditDb,
         capDoc,
-        indispDoc
+        indispDoc,
+        cadastroProfsDoc,
+        gradeCustomDoc
       ] = await Promise.all([
         alunosCache ? Promise.resolve(alunosCache) : safeGetDocs('alunos'),
         safeGetDocs('ocorrencias'),
@@ -220,12 +229,15 @@ export default function CentralInteligenciaDashboards({
         safeGetDocs('professores'),
         safeGetDocs('substituicoes_diarias'),
         safeGetDocs('substituicoes_pei'),
+        safeGetDocs('usuarios'),
         safeGetDocs('rotina_pdca'),
         safeGetDocs('tarefas'),
         safeGetDocs('eventos'),
         safeGetDocs('audit_logs'),
         safeGetDoc('configuracoes', 'capacidadesPEI'),
-        safeGetDoc('config_escola', 'indisponibilidade_professores')
+        safeGetDoc('config_escola', 'indisponibilidade_professores'),
+        safeGetDoc('config_escola', 'cadastro_professores'),
+        safeGetDoc('config_escola', 'grade_horarios_custom')
       ]);
 
       if (!alunosCache && Array.isArray(alunosDb) && alunosDb.length > 0) {
@@ -243,15 +255,63 @@ export default function CentralInteligenciaDashboards({
         }
       }
 
+      // Normalizar grade horária (respeitando deletedIds e fallback em config_escola/grade_horarios_custom)
+      const deletedIds = new Set<string>(
+        Array.isArray(gradeCustomDoc?.deletedIds) ? gradeCustomDoc.deletedIds.map(String) : []
+      );
+      try {
+        ['clovis_horarios_deleted_ids', 'clovis_deleted_horarios_ids'].forEach((k) => {
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr)) arr.forEach((id) => deletedIds.add(String(id)));
+          }
+        });
+      } catch {
+        // ignore
+      }
+
+      const rawGradeCustom = Array.isArray(gradeCustomDoc?.grade)
+        ? gradeCustomDoc.grade
+        : Array.isArray(gradeCustomDoc?.slots)
+          ? gradeCustomDoc.slots
+          : [];
+      const horariosBrutos = horariosDb.length > 0 ? horariosDb : rawGradeCustom;
+      const horariosNormalizados = (horariosBrutos || [])
+        .filter((h: any) => h && (!h.id || !deletedIds.has(String(h.id))))
+        .map(normalizeHorarioItem);
+
+      // Consolidar professores reais (priorizando config_escola/cadastro_professores para turno, tipo e área)
+      const profsCadastro = Array.isArray(cadastroProfsDoc?.professores)
+        ? cadastroProfsDoc.professores
+        : [];
+      const profsBase = profsCadastro.length > 0 ? profsCadastro : (profsDb || []);
+      const profsCombinados = profsBase.filter((p: any) =>
+        isRealProfessorName(p?.nome || p?.professor)
+      );
+      const professoresConsolidados = extrairEMigrarDocentesDoHorario(
+        horariosNormalizados,
+        profsCombinados
+      );
+
+      // Consolidar substituições (diarias + pei sem duplicidade)
+      const subsMap = new Map<string, any>();
+      [...(subsDiariasDb || []), ...(subsPeiDb || [])].forEach((s: any, idx: number) => {
+        if (!s) return;
+        const key = String(s.id || `${s.data || ''}-${s.periodoId || ''}-${s.turma || ''}-${idx}`);
+        if (!subsMap.has(key)) subsMap.set(key, s);
+      });
+
       setAlunosRaw(alunosDb);
       setOcorrenciasTop(ocDb);
       setBuscaAtivaDocs(baDb);
       (window as any).frequenciaDiariaCache = freqDiariaDb;
       window.dispatchEvent(new CustomEvent('frequenciadiariaupdated'));
       setFrequenciaDiariaDocs(freqDiariaDb);
-      setHorarios(horariosDb);
-      setProfessores(profsDb);
-      setSubstituicoes(subsDiariasDb.length > 0 ? subsDiariasDb : subsPeiDb);
+      setHorarios(horariosNormalizados);
+      setProfessores(professoresConsolidados);
+      setSubstituicoes(Array.from(subsMap.values()));
+      setUsuarios(usuariosDb);
       setRotinaPdca(pdcaDb);
       setTarefas(tarefasDb);
       setEventosAgenda(eventosDb);
@@ -594,6 +654,7 @@ export default function CentralInteligenciaDashboards({
           professores={professores}
           substituicoes={substituicoes}
           indisponibilidade={indisponibilidade}
+          usuarios={usuarios}
         />
       )}
 

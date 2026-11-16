@@ -372,14 +372,30 @@ export async function getDoc<T = any>(docRef: MongoDocRef): Promise<MongoDocumen
   }
 }
 
+function getBridgeAuthHeaders(): Record<string, string> {
+  if (typeof window === 'undefined') return { 'Content-Type': 'application/json' };
+  const token = localStorage.getItem('clovis_auth_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {})
+  };
+}
+
+function stripIdentityKeys(obj: any): any {
+  if (!obj || typeof obj !== 'object') return obj;
+  const { id: _ignoreId, _id: _ignoreUnderscoreId, ...clean } = obj;
+  return clean;
+}
+
 export async function setDoc(docRef: MongoDocRef, data: any, _options?: { merge?: boolean }): Promise<void> {
   const { collection: colName, id } = docRef;
   const url = `/api/db/${encodeURIComponent(colName)}/${encodeURIComponent(id)}`;
+  const cleanPayload = stripIdentityKeys(data);
 
   const res = await fetch(url, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...data, id, ...(colName === 'alunos' ? { ra: id } : {}) })
+    headers: getBridgeAuthHeaders(),
+    body: JSON.stringify({ ...cleanPayload, ...(colName === 'alunos' && !cleanPayload?.ra ? { ra: id } : {}) })
   });
 
   if (!res.ok) {
@@ -393,11 +409,12 @@ export async function setDoc(docRef: MongoDocRef, data: any, _options?: { merge?
 export async function addDoc(colRef: MongoCollectionRef, data: any): Promise<MongoDocRef> {
   const colName = colRef.collection;
   const url = `/api/db/${encodeURIComponent(colName)}`;
+  const cleanPayload = stripIdentityKeys(data);
 
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
+    headers: getBridgeAuthHeaders(),
+    body: JSON.stringify(cleanPayload)
   });
 
   if (!res.ok) {
@@ -426,7 +443,10 @@ export async function deleteDoc(docRef: MongoDocRef): Promise<void> {
   const { collection: colName, id } = docRef;
   const url = `/api/db/${encodeURIComponent(colName)}/${encodeURIComponent(id)}`;
 
-  const res = await fetch(url, { method: 'DELETE' });
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: getBridgeAuthHeaders()
+  });
   if (!res.ok) {
     const errJson = await res.json().catch(() => ({}));
     throw new Error(errJson.error || errJson.details || `Erro ao deletar documento de ${colName}/${id}`);
@@ -439,11 +459,11 @@ export function writeBatch(_db?: any) {
 
   return {
     set(docRef: MongoDocRef, data: any, _options?: any) {
-      operations.push({ type: 'set', collection: docRef.collection, id: docRef.id, data });
+      operations.push({ type: 'set', collection: docRef.collection, id: docRef.id, data: stripIdentityKeys(data) });
       return this;
     },
     update(docRef: MongoDocRef, data: any) {
-      operations.push({ type: 'update', collection: docRef.collection, id: docRef.id, data });
+      operations.push({ type: 'update', collection: docRef.collection, id: docRef.id, data: stripIdentityKeys(data) });
       return this;
     },
     delete(docRef: MongoDocRef) {
@@ -454,7 +474,7 @@ export function writeBatch(_db?: any) {
       if (operations.length === 0) return;
       const res = await fetch('/api/db/batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getBridgeAuthHeaders(),
         body: JSON.stringify({ operations })
       });
 
