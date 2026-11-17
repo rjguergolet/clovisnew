@@ -1,7 +1,23 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { db, collection, getDocs, addDoc, updateDoc, doc, setDoc } from '../lib/database';
+import { db, collection, getDocs, addDoc, updateDoc, doc } from '../lib/database';
 import { obterUsuarioAtivoCompleto, normalizarCargo } from '../modules/authHelper';
-import { normalizeTeacherName, isRegularTeachingClass, isAlunoAtivo, extrairPercentualFrequencia } from '../utils';
+import { normalizeTeacherName, isRegularTeachingClass, isAlunoAtivo } from '../utils';
+import {
+  parsePercentualSeguro,
+  construirIndiceFrequenciaDiaria,
+  normalizarRa,
+  toIsoDate
+} from '../modules/inteligenciaDataEngine';
+import {
+  verificarStatus,
+  calcularStatusPrazoTarefa,
+  getNormalizedFreqKey,
+  getNivelKey,
+  getCurrentUserEmail,
+  getDefaultAntecedencia,
+  NIVEIS_DEFINICOES,
+  DIAS_SEMANA_OPCOES
+} from './GestaoRotinaPDCA';
 import CentralPendenciasPerfil from './CentralPendenciasPerfil';
 
 declare global {
@@ -17,15 +33,20 @@ declare global {
     userRole?: string;
     cargoReal?: string;
     currentActiveTab?: string;
+    currentUserEmail?: string;
     switchTab?: (tabName: string) => void;
     abrirFichaAluno?: (ra: string) => void;
+    navegarEAbrirFichaAluno?: (ra: string) => void;
     allStudentsData?: any[];
     __clovisHomeCache?: any;
     usuariosCache?: any[];
     muralRecadosCache?: any[];
     rotinaEquipeCache?: any[];
+    tasksCache?: any[];
     eventosCache?: any[];
     gradeCache?: any[];
+    substituicoesCache?: any[];
+    frequenciaDiariaCache?: any[];
   }
 }
 
@@ -51,7 +72,12 @@ const PERIODOS_HORARIOS: Record<number, string> = {
   6: '12:20 - 13:10',
   7: '13:10 - 14:00',
   8: '14:20 - 15:10',
-  9: '15:10 - 16:00'
+  9: '15:10 - 16:00',
+  10: '16:10 - 17:00',
+  11: '17:00 - 17:50',
+  12: '17:50 - 18:40',
+  13: '19:40 - 20:30',
+  14: '20:30 - 21:20'
 };
 
 const getInitialHomeCache = () => {
@@ -108,7 +134,16 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
   const [revalidando, setRevalidando] = useState(false);
   const [usuarios, setUsuarios] = useState<any[]>(() => initialCache?.usuarios || (typeof window !== 'undefined' && Array.isArray((window as any).usuariosCache) ? (window as any).usuariosCache : []));
   const [recados, setRecados] = useState<any[]>(() => initialCache?.recados || (typeof window !== 'undefined' && Array.isArray((window as any).muralRecadosCache) ? (window as any).muralRecadosCache : []));
-  const [tarefas, setTarefas] = useState<any[]>(() => initialCache?.tarefas || (typeof window !== 'undefined' && Array.isArray((window as any).rotinaEquipeCache) ? (window as any).rotinaEquipeCache : []));
+  const [tarefas, setTarefas] = useState<any[]>(() => {
+    if (initialCache?.tarefas?.length) return initialCache.tarefas;
+    if (typeof window !== 'undefined' && Array.isArray((window as any).rotinaEquipeCache) && (window as any).rotinaEquipeCache.length > 0) {
+      return (window as any).rotinaEquipeCache;
+    }
+    if (typeof window !== 'undefined' && Array.isArray((window as any).tasksCache) && (window as any).tasksCache.length > 0) {
+      return (window as any).tasksCache;
+    }
+    return [];
+  });
   const [eventos, setEventos] = useState<any[]>(() => initialCache?.eventos || (typeof window !== 'undefined' && Array.isArray((window as any).eventosCache) ? (window as any).eventosCache : []));
   const [alunos, setAlunos] = useState<any[]>(() => {
     if (initialCache?.alunos?.length) return initialCache.alunos;
@@ -142,13 +177,31 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
     }
     return [];
   });
+  const [frequenciaDiaria, setFrequenciaDiaria] = useState<any[]>(() => {
+    if (initialCache?.frequenciaDiaria?.length) return initialCache.frequenciaDiaria;
+    if (typeof window !== 'undefined' && Array.isArray((window as any).frequenciaDiariaCache) && (window as any).frequenciaDiariaCache.length > 0) {
+      return (window as any).frequenciaDiariaCache;
+    }
+    return [];
+  });
+
+  // Filtros do Painel Executivo PDCA na Página Inicial
+  const [pdcaScopeView, setPdcaScopeView] = useState<'equipe' | 'minhas'>('equipe');
+  const [pdcaStatusFilter, setPdcaStatusFilter] = useState<'pendentes' | 'urgentes' | 'todas' | 'concluidas'>('pendentes');
+  const [pdcaTeamFilter, setPdcaTeamFilter] = useState<string>('TODOS');
 
   // Modais e Diálogos
   const [modalRecado, setModalRecado] = useState<any | null>(null);
   const [modalNovaTarefa, setModalNovaTarefa] = useState(false);
+  const [novaTarefaTitulo, setNovaTarefaTitulo] = useState('');
   const [novaTarefaDesc, setNovaTarefaDesc] = useState('');
+  const [novaTarefaFreq, setNovaTarefaFreq] = useState('Semanal');
   const [novaTarefaPrazo, setNovaTarefaPrazo] = useState('');
   const [novaTarefaAtribuir, setNovaTarefaAtribuir] = useState('');
+  const [novaTarefaDiaSemana, setNovaTarefaDiaSemana] = useState<number>(5);
+  const [novaTarefaDiaMes, setNovaTarefaDiaMes] = useState<number>(25);
+  const [novaTarefaHorarioLimite, setNovaTarefaHorarioLimite] = useState('');
+  const [novaTarefaAntecedencia, setNovaTarefaAntecedencia] = useState<number>(1);
 
   // Estados Específicos Secretaria - Registro de Atraso
   const [buscaAlunoAtraso, setBuscaAlunoAtraso] = useState('');
@@ -356,7 +409,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             id: `h-prof-${pNorm}`,
             nome: p,
             cargo: 'PROFESSOR',
-            email: `${pNorm.replace(/\s+/g, '.')}@professor.educacao.sp.gov.br`,
+            email: '',
             disciplina: h.disciplina || ''
           });
         }
@@ -392,7 +445,10 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
   const isProfessor = roleNorm === 'PROFESSOR';
   const isPAAC = roleNorm === 'PAAC' || roleNorm === 'PROFESSOR_PAAC';
   const isCoord = roleNorm === 'CGPG' || roleNorm === 'CGPCG';
-  const isDirecao = roleNorm === 'DIRETOR' || roleNorm === 'VICE_DIRETOR' || roleNorm.includes('VICE');
+  const isDiretorRole = roleNorm === 'DIRETOR';
+  const isViceRole = roleNorm === 'VICE_DIRETOR' || roleNorm.includes('VICE');
+  const isDirecao = isDiretorRole || isViceRole;
+  const isPdcaLeadership = isDirecao || isCoord;
   const isSecretaria = roleNorm === 'SECRETARIA';
 
   // Carregamento de Coleções com Cache Inteligente e Stale-While-Revalidate (SWR)
@@ -417,14 +473,15 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
     try {
       // 1. Consultas simultâneas protegidas
-      const [uSnap, rSnap, tSnap, eSnap, oSnap, hSnap, subSnap] = await Promise.all([
+      const [uSnap, rSnap, tSnap, eSnap, oSnap, hSnap, subSnap, fdSnap] = await Promise.all([
         getDocs(collection(db, 'usuarios')).catch(() => ({ docs: [], forEach: () => {} })),
         getDocs(collection(db, 'mural_recados')).catch(() => ({ docs: [], forEach: () => {} })),
         getDocs(collection(db, 'rotina_equipe')).catch(() => ({ docs: [], forEach: () => {} })),
         getDocs(collection(db, 'eventos')).catch(() => ({ docs: [], forEach: () => {} })),
         getDocs(collection(db, 'ocorrencias')).catch(() => ({ docs: [], forEach: () => {} })),
         getDocs(collection(db, 'horarios')).catch(() => ({ docs: [], forEach: () => {} })),
-        getDocs(collection(db, 'substituicoes_diarias')).catch(() => ({ docs: [], forEach: () => {} }))
+        getDocs(collection(db, 'substituicoes_diarias')).catch(() => ({ docs: [], forEach: () => {} })),
+        getDocs(collection(db, 'frequencia_diaria')).catch(() => ({ docs: [], forEach: () => {} }))
       ]);
 
       const listaU: any[] = [];
@@ -463,7 +520,10 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       const listaT: any[] = [];
       tSnap.forEach(d => listaT.push({ id: d.id, ...d.data() }));
       setTarefas(listaT);
-      if (typeof window !== 'undefined') (window as any).rotinaEquipeCache = listaT;
+      if (typeof window !== 'undefined') {
+        (window as any).rotinaEquipeCache = listaT;
+        (window as any).tasksCache = listaT;
+      }
 
       const listaE: any[] = [];
       eSnap.forEach(d => listaE.push({ id: d.id, ...d.data() }));
@@ -488,6 +548,11 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       subSnap.forEach(d => listaSub.push({ id: d.id, ...d.data() }));
       setSubstituicoes(listaSub);
       if (typeof window !== 'undefined') (window as any).substituicoesCache = listaSub;
+
+      const listaFreq: any[] = [];
+      fdSnap.forEach(d => listaFreq.push({ id: d.id, ...d.data() }));
+      setFrequenciaDiaria(listaFreq);
+      if (typeof window !== 'undefined') (window as any).frequenciaDiariaCache = listaFreq;
 
       // Alunos: prioriza memória e cache local antes de consultar Firestore
       let listaA: any[] = Array.isArray((window as any).allStudentsData) && (window as any).allStudentsData.length > 0
@@ -526,6 +591,8 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         eventos: listaE,
         ocorrencias: listaO,
         horarios: listaH,
+        substituicoes: listaSub,
+        frequenciaDiaria: listaFreq,
         alunos: listaA,
         timestamp: Date.now()
       };
@@ -539,6 +606,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             eventos: listaE,
             ocorrencias: listaO,
             horarios: listaH,
+            substituicoes: listaSub,
             timestamp: Date.now()
           }));
         } catch (e) {}
@@ -623,29 +691,165 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
   // Substituições PEI do Dia de Hoje
   const substituicoesHoje = useMemo(() => {
-    const hojeStr = new Date().toISOString().slice(0, 10);
+    const dt = new Date();
+    const hojeStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
     return substituicoes.filter(s => {
-      const d = String(s.data || '').slice(0, 10);
+      const d = toIsoDate(s.data);
       return !d || d === hojeStr;
     });
   }, [substituicoes]);
 
-  // Alunos Tutorados do Professor (Apenas estudantes ativos por padrão)
+  // Substituições designadas especificamente para o docente em visualização hoje
+  const substituicoesParaMimHoje = useMemo(() => {
+    const alvoNome = normalizeTeacherName(effectiveTeacher?.nome || effectiveUser?.nome || '');
+    if (!alvoNome) return [];
+    return substituicoesHoje.filter(s => {
+      const subNorm = normalizeTeacherName(s.professorSubstituto);
+      return subNorm && (subNorm === alvoNome || subNorm.includes(alvoNome) || alvoNome.includes(subNorm));
+    }).sort((a, b) => Number(a.periodoId || a.aulaNumero || 0) - Number(b.periodoId || b.aulaNumero || 0));
+  }, [substituicoesHoje, effectiveTeacher, effectiveUser]);
+
+  // Substituições ainda sem substituto definido hoje
+  const substituicoesPendentesHoje = useMemo(() => {
+    return substituicoesHoje.filter(s => {
+      const sub = String(s.professorSubstituto || '').trim().toUpperCase();
+      return !sub || sub === 'A DEFINIR' || sub === '-' || sub === 'SEM SUBSTITUTO' || sub === 'PENDENTE';
+    });
+  }, [substituicoesHoje]);
+
+  // Índice real de frequência diária e cálculos sem dados mockados
+  const indiceFrequenciaDiaria = useMemo(() => {
+    return construirIndiceFrequenciaDiaria(frequenciaDiaria);
+  }, [frequenciaDiaria]);
+
+  const getRealStudentFreq = useCallback((aluno: any): number | null => {
+    if (!aluno) return null;
+    const direct = parsePercentualSeguro(
+      aluno.presenca_anual ??
+      aluno.presenca ??
+      aluno.frequencia ??
+      aluno.freq_sed ??
+      aluno.sed_frequencia ??
+      aluno.frequenciaAnual
+    );
+    if (direct !== null) return direct;
+
+    const fn = aluno.fechamento_notas || aluno.fechamentos || aluno.notas;
+    if (fn && typeof fn === 'object') {
+      for (const bim of ['4B', '3B', '2B', '1B']) {
+        const bFreq = parsePercentualSeguro(fn[bim]?.frequencia);
+        if (bFreq !== null) return bFreq;
+      }
+    }
+
+    const daily = indiceFrequenciaDiaria.get(normalizarRa(aluno.ra));
+    if (daily && daily.percentual !== null) return daily.percentual;
+
+    return null;
+  }, [indiceFrequenciaDiaria]);
+
+  const getFaltasConsecutivas = useCallback((aluno: any): number => {
+    if (!aluno) return 0;
+    const daily = indiceFrequenciaDiaria.get(normalizarRa(aluno.ra));
+    return Math.max(Number(aluno.faltasConsecutivas || 0) || 0, daily?.faltasConsecutivas || 0);
+  }, [indiceFrequenciaDiaria]);
+
+  const alunosAtivos = useMemo(() => {
+    return alunos.filter(isAlunoAtivo);
+  }, [alunos]);
+
+  const presencaGeralStats = useMemo(() => {
+    let soma = 0;
+    let totalAvaliados = 0;
+    let emRisco = 0;
+    alunosAtivos.forEach(a => {
+      const f = getRealStudentFreq(a);
+      const fc = getFaltasConsecutivas(a);
+      if (f !== null) {
+        soma += f;
+        totalAvaliados++;
+      }
+      if ((f !== null && f < 75) || fc >= 3) {
+        emRisco++;
+      }
+    });
+    return {
+      media: totalAvaliados > 0 ? Math.round((soma / totalAvaliados) * 10) / 10 : null,
+      totalAvaliados,
+      emRisco
+    };
+  }, [alunosAtivos, getRealStudentFreq, getFaltasConsecutivas]);
+
+  const chamadaHojeStats = useMemo(() => {
+    const dt = new Date();
+    const hojeIso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    let presentes = 0;
+    let faltas = 0;
+    let justificadas = 0;
+    const turmasSet = new Set<string>();
+    const raStatus = new Map<string, string>();
+
+    const registrarItem = (raKey: string, stRaw: any, turma?: string) => {
+      const s = String(typeof stRaw === 'string' ? stRaw : stRaw?.status || '').trim().toUpperCase();
+      if (!s) return;
+      if (turma) turmasSet.add(turma);
+      raStatus.set(normalizarRa(raKey) || raKey, s);
+    };
+
+    frequenciaDiaria.forEach((docItem: any) => {
+      if (!docItem || typeof docItem !== 'object') return;
+      const docIso = toIsoDate(docItem.data || docItem.dataChamada || docItem.id);
+      if (docIso === hojeIso && docItem.registros && typeof docItem.registros === 'object' && !Array.isArray(docItem.registros)) {
+        Object.entries(docItem.registros).forEach(([raKey, reg]: [string, any]) => {
+          registrarItem(raKey, reg, docItem.turma || reg?.turma);
+        });
+      }
+      if (docItem.datas && typeof docItem.datas === 'object' && docItem.datas[hojeIso]) {
+        Object.entries(docItem.datas[hojeIso]).forEach(([raKey, val]: [string, any]) => {
+          registrarItem(raKey, val, docItem.turma);
+        });
+      }
+      if (docItem.ra && docIso === hojeIso && docItem.status) {
+        registrarItem(docItem.ra, docItem.status, docItem.turma);
+      }
+    });
+
+    raStatus.forEach(s => {
+      if (s === 'P' || s === 'PRESENTE' || s === 'ATRASADO' || s === 'A') presentes++;
+      else if (s === 'F' || s === 'FALTA' || s === 'AUSENTE') faltas++;
+      else if (s === 'J' || s === 'JUSTIFICADA' || s === 'LICENCA' || s === 'LICENÇA' || s === 'ATESTADO') justificadas++;
+    });
+
+    return {
+      registrosHoje: raStatus.size,
+      presentes,
+      faltas,
+      justificadas,
+      turmasComChamada: turmasSet.size
+    };
+  }, [frequenciaDiaria]);
+
+  // Alunos Tutorados do Professor (Apenas estudantes ativos por padrão, com métricas reais)
   const tutoradosDoProfessor = useMemo(() => {
     if (!effectiveTeacher?.nome) return [];
     const tNome = normalizeTeacherName(effectiveTeacher.nome);
-    return alunos.filter(a => {
-      if (!isAlunoAtivo(a)) return false;
-      const tutorA = normalizeTeacherName(a.tutor || a.tutorNome || a.nomeTutor || a.tutor_2026);
-      return tutorA && (tNome.includes(tutorA) || tutorA.includes(tNome));
-    });
-  }, [alunos, effectiveTeacher]);
+    return alunos
+      .filter(a => {
+        if (!isAlunoAtivo(a)) return false;
+        const tutorA = normalizeTeacherName(a.tutor || a.tutorNome || a.nomeTutor || a.tutor_2026);
+        return tutorA && (tNome.includes(tutorA) || tutorA.includes(tNome));
+      })
+      .map(a => ({
+        ...a,
+        _freqNum: getRealStudentFreq(a),
+        _faltasConsecutivas: getFaltasConsecutivas(a)
+      }));
+  }, [alunos, effectiveTeacher, getRealStudentFreq, getFaltasConsecutivas]);
 
   // Mensagens do Mural Direcionadas ao Usuário/Perfil
   const recadosDirecionados = useMemo(() => {
     return recados.filter(r => {
       if (r.arquivado) return false;
-      // Usar a lógica robusta existente
       if (typeof window.usuarioEAlvoDoRecado === 'function') {
         return window.usuarioEAlvoDoRecado(r, { ...effectiveUser, cargo: activeRole });
       }
@@ -653,24 +857,141 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
     });
   }, [recados, effectiveUser, activeRole]);
 
-  const canAccessRotinaPDCA = ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC'].includes(activeRole);
+  const canAccessRotinaPDCA = isPdcaLeadership || isPAAC;
 
-  // Tarefas Atribuídas ao Usuário/Perfil (NÃO mostrar as concluídas!)
-  const tarefasFiltradas = useMemo(() => {
+  // Motor PDCA Unificado (100% sincronizado com GestaoRotinaPDCA.jsx)
+  const tarefasEnriquecidas = useMemo(() => {
     if (!canAccessRotinaPDCA) return [];
-    const roleClean = activeRole.toUpperCase();
-    const nomeClean = (effectiveUser?.nome || '').toUpperCase();
-    return tarefas.filter(t => {
-      // REGRA: Em minhas tarefas não mostre as concluidas
-      if (t.concluido) return false;
 
-      const atrib = String(t.atribuirA || t.responsavel || 'TODA A EQUIPE').toUpperCase();
-      if (atrib === 'TODA A EQUIPE' || atrib === 'TODOS' || atrib === 'GERAL') return true;
-      if (atrib.includes(roleClean) || roleClean.includes(atrib)) return true;
-      if (nomeClean && (atrib.includes(nomeClean) || nomeClean.includes(atrib))) return true;
-      return false;
-    });
-  }, [tarefas, activeRole, effectiveUser, canAccessRotinaPDCA]);
+    const hierarquiaVisibilidade: Record<string, string[]> = {
+      DIRETOR: ['DIRETOR', 'VICE_DIRETOR', 'VICE-DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR', 'TODA A EQUIPE'],
+      VICE_DIRETOR: ['VICE_DIRETOR', 'VICE-DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR', 'TODA A EQUIPE'],
+      CGPG: ['CGPG', 'CGPCG', 'PAAC', 'PROFESSOR', 'TODA A EQUIPE'],
+      CGPCG: ['CGPG', 'CGPCG', 'PAAC', 'PROFESSOR', 'TODA A EQUIPE'],
+      PAAC: ['PAAC', 'TODA A EQUIPE'],
+      PROFESSOR_PAAC: ['PAAC', 'TODA A EQUIPE']
+    };
+
+    const allowedTargets = hierarquiaVisibilidade[roleNorm] || [roleNorm, 'TODA A EQUIPE'];
+    const nomeUpper = String(effectiveUser?.nome || '').toUpperCase().trim();
+    const emailLower = String(effectiveUser?.email || '').toLowerCase().trim();
+
+    const urgencyRank = (st: any) => {
+      if (!st || st.concluida) return 99;
+      if (st.atrasada) return 0;
+      if (st.nivelUrgencia === 'VENCE_HOJE') return 1;
+      if (st.emAlertaAmarelo) return 2;
+      if (st.diasRestantes !== null && st.diasRestantes !== undefined) return 3;
+      return 4;
+    };
+
+    return tarefas
+      .filter(t => {
+        if (!t) return false;
+        const atribRaw = String(t.atribuidoA || t.atribuirA || t.responsavel || 'TODA A EQUIPE').trim();
+        const atribUpper = atribRaw.toUpperCase();
+        const atribLower = atribRaw.toLowerCase();
+
+        const isAllTeam = atribUpper === 'TODA A EQUIPE' || atribUpper === 'TODOS' || atribUpper === 'GERAL';
+        const isAllowedRole = allowedTargets.some(al => atribUpper.includes(al) || al.includes(atribUpper));
+        const isDirectName = Boolean(nomeUpper && (atribUpper.includes(nomeUpper) || nomeUpper.includes(atribUpper)));
+        const isDirectEmail = Boolean(emailLower && atribLower.includes(emailLower));
+
+        return isAllTeam || isAllowedRole || isDirectName || isDirectEmail || isDiretorRole;
+      })
+      .map(t => {
+        const statusInfo = calcularStatusPrazoTarefa(t);
+        const freqKey = getNormalizedFreqKey(t);
+        const nivelKey = getNivelKey(t, usuarios);
+        const atribRaw = String(t.atribuidoA || t.atribuirA || t.responsavel || 'TODA A EQUIPE').trim();
+        const atribUpper = atribRaw.toUpperCase();
+        const atribLower = atribRaw.toLowerCase();
+
+        const isMine =
+          atribUpper === 'TODA A EQUIPE' ||
+          atribUpper === 'TODOS' ||
+          atribUpper === 'GERAL' ||
+          atribUpper.includes(roleNorm) ||
+          (roleNorm === 'CGPG' && atribUpper.includes('CGPCG')) ||
+          (roleNorm === 'PAAC' && atribUpper.includes('PAAC')) ||
+          (isViceRole && atribUpper.includes('VICE')) ||
+          Boolean(nomeUpper && (atribUpper.includes(nomeUpper) || nomeUpper.includes(atribUpper))) ||
+          Boolean(emailLower && atribLower.includes(emailLower));
+
+        return {
+          ...t,
+          _statusInfo: statusInfo,
+          _freqKey: freqKey,
+          _nivelKey: nivelKey,
+          _isMine: isMine
+        };
+      })
+      .sort((a, b) => {
+        const rA = urgencyRank(a._statusInfo);
+        const rB = urgencyRank(b._statusInfo);
+        if (rA !== rB) return rA - rB;
+        const dA = a._statusInfo?.diasRestantes ?? 999;
+        const dB = b._statusInfo?.diasRestantes ?? 999;
+        if (dA !== dB) return dA - dB;
+        return String(a.titulo || a.descricao || '').localeCompare(String(b.titulo || b.descricao || ''), 'pt-BR');
+      });
+  }, [tarefas, canAccessRotinaPDCA, roleNorm, isDiretorRole, isViceRole, effectiveUser, usuarios]);
+
+  // Tarefas pendentes direcionadas ao perfil atual (com renovação cíclica real via verificarStatus)
+  const tarefasFiltradas = useMemo(() => {
+    return tarefasEnriquecidas.filter(t => t._isMine && !t._statusInfo.concluida);
+  }, [tarefasEnriquecidas]);
+
+  // Tarefas urgentes (Atrasadas + Prestes a vencer / Vencem hoje em alerta amarelo)
+  const tarefasUrgentes = useMemo(() => {
+    return tarefasFiltradas.filter(t => t._statusInfo.atrasada || t._statusInfo.emAlertaAmarelo);
+  }, [tarefasFiltradas]);
+
+  // Estatísticas PDCA para Painel Executivo (Direção, Vice-Direção e CGPG)
+  const pdcaStats = useMemo(() => {
+    const calcBucket = (list: any[]) => {
+      const total = list.length;
+      const concluidas = list.filter(t => t._statusInfo.concluida).length;
+      const atrasadas = list.filter(t => !t._statusInfo.concluida && t._statusInfo.atrasada).length;
+      const emAlerta = list.filter(t => !t._statusInfo.concluida && !t._statusInfo.atrasada && t._statusInfo.emAlertaAmarelo).length;
+      const pendentes = total - concluidas;
+      const taxaConclusao = total > 0 ? Math.round((concluidas / total) * 100) : 0;
+      return { total, concluidas, pendentes, atrasadas, emAlerta, taxaConclusao };
+    };
+
+    const equipe = calcBucket(tarefasEnriquecidas);
+    const minhas = calcBucket(tarefasEnriquecidas.filter(t => t._isMine));
+
+    const porEquipe = NIVEIS_DEFINICOES.map((nivel: any) => {
+      const bucketTasks = tarefasEnriquecidas.filter(t => t._nivelKey === nivel.key);
+      return {
+        ...nivel,
+        ...calcBucket(bucketTasks)
+      };
+    }).filter((n: any) => n.total > 0);
+
+    return { equipe, minhas, porEquipe };
+  }, [tarefasEnriquecidas]);
+
+  const tarefasPainelExecutivo = useMemo(() => {
+    let base = pdcaScopeView === 'minhas'
+      ? tarefasEnriquecidas.filter(t => t._isMine)
+      : tarefasEnriquecidas;
+
+    if (pdcaTeamFilter !== 'TODOS') {
+      base = base.filter(t => t._nivelKey === pdcaTeamFilter);
+    }
+
+    if (pdcaStatusFilter === 'pendentes') {
+      base = base.filter(t => !t._statusInfo.concluida);
+    } else if (pdcaStatusFilter === 'urgentes') {
+      base = base.filter(t => !t._statusInfo.concluida && (t._statusInfo.atrasada || t._statusInfo.emAlertaAmarelo));
+    } else if (pdcaStatusFilter === 'concluidas') {
+      base = base.filter(t => t._statusInfo.concluida);
+    }
+
+    return base;
+  }, [tarefasEnriquecidas, pdcaScopeView, pdcaTeamFilter, pdcaStatusFilter]);
 
   // Agenda Escolar PEI: NÃO mostrar o que já passou em data
   const eventosFuturos = useMemo(() => {
@@ -701,17 +1022,19 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
   }, [ocorrencias]);
 
   const atrasosHoje = useMemo(() => {
-    const hojeStr = new Date().toISOString().slice(0, 10);
+    const dt = new Date();
+    const hojeStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
     return ocorrenciasAtrasos.filter(o => {
-      const dataStr = (o.data || o.criadoEm || '').slice(0, 10);
+      const dataStr = toIsoDate(o.data || o.criadoEm);
       return dataStr === hojeStr;
     });
   }, [ocorrenciasAtrasos]);
 
   const atrasosMes = useMemo(() => {
-    const mesAtual = new Date().toISOString().slice(0, 7);
+    const dt = new Date();
+    const mesAtual = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
     return ocorrenciasAtrasos.filter(o => {
-      const dataStr = (o.data || o.criadoEm || '').slice(0, 7);
+      const dataStr = toIsoDate(o.data || o.criadoEm).slice(0, 7);
       return dataStr === mesAtual;
     });
   }, [ocorrenciasAtrasos]);
@@ -728,22 +1051,32 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       .slice(0, 4);
   }, [atrasosMes]);
 
-  // Busca Ativa - Alunos Infrequentes (< 75%)
-  // REGRA CRÍTICA: Estudantes com presença >= 75% NUNCA devem aparecer como pendência de Busca Ativa / Infrequência!
+  // Busca Ativa - Alunos Infrequentes (< 75%) OU com 3+ faltas consecutivas (lista completa sem truncar contagem)
   const alunosBuscaAtiva = useMemo(() => {
-    return alunos.filter(a => {
-      const ativo = isAlunoAtivo(a);
-      if (filtroStatusBuscaAtiva === 'ATIVOS' && !ativo) return false;
-      if (filtroStatusBuscaAtiva === 'INATIVOS' && ativo) return false;
+    return alunos
+      .filter(a => {
+        const ativo = isAlunoAtivo(a);
+        if (filtroStatusBuscaAtiva === 'ATIVOS' && !ativo) return false;
+        if (filtroStatusBuscaAtiva === 'INATIVOS' && ativo) return false;
 
-      const p = extrairPercentualFrequencia(a);
-      // Estritamente menor que 75%
-      return p < 75;
-    }).slice(0, 10);
-  }, [alunos, filtroStatusBuscaAtiva]);
+        const freqNum = getRealStudentFreq(a);
+        const faltasSeq = getFaltasConsecutivas(a);
+        return (freqNum !== null && freqNum < 75) || faltasSeq >= 3;
+      })
+      .map(a => ({
+        ...a,
+        _freqNum: getRealStudentFreq(a),
+        _faltasConsecutivas: getFaltasConsecutivas(a)
+      }))
+      .sort((a, b) => {
+        if ((b._faltasConsecutivas || 0) !== (a._faltasConsecutivas || 0)) {
+          return (b._faltasConsecutivas || 0) - (a._faltasConsecutivas || 0);
+        }
+        return (a._freqNum ?? 999) - (b._freqNum ?? 999);
+      });
+  }, [alunos, filtroStatusBuscaAtiva, getRealStudentFreq, getFaltasConsecutivas]);
 
   // Notificações Pedagógicas Urgentes dos Professores direcionadas à Gestão (Direção, Vice, PAAC e CGPG)
-  // Por padrão NÃO notifica, só se o professor marcou mesmo o botão
   const notificacoesPedagogicasDirecao = useMemo(() => {
     return ocorrencias.filter(o => {
       if (!o) return false;
@@ -763,33 +1096,22 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       const cientes = Array.isArray(r.cientes) ? r.cientes : [];
       const userEmail = (effectiveUser?.email || currentUser?.email || '').toLowerCase();
       const userNome = (effectiveUser?.nome || currentUser?.nome || '').toUpperCase();
-      return !cientes.some((c: any) => 
-        (c.email && c.email.toLowerCase() === userEmail) || 
+      return !cientes.some((c: any) =>
+        (c.email && c.email.toLowerCase() === userEmail) ||
         (c.nome && c.nome.toUpperCase() === userNome)
       );
     });
   }, [recadosDirecionados, effectiveUser, currentUser, activeRole]);
 
-  // Tutorados do professor em alerta de frequência (< 75%)
-  // REGRA CRÍTICA: Só é considerado em risco se a frequência for estritamente MENOR que 75%.
-  // Estudantes com 75% ou mais NUNCA devem constar como pendência!
+  // Tutorados do professor em alerta de frequência (< 75%) ou 3+ faltas consecutivas
   const tutoradosEmRisco = useMemo(() => {
     return tutoradosDoProfessor.filter(aluno => {
       if (!isAlunoAtivo(aluno)) return false;
-      const freqNum = extrairPercentualFrequencia(aluno);
-      return freqNum < 75;
+      const f = aluno._freqNum;
+      const fc = aluno._faltasConsecutivas || 0;
+      return (f !== null && f < 75) || fc >= 3;
     });
   }, [tutoradosDoProfessor]);
-
-  // Tarefas da rotina com prazo vencido ou vencendo hoje
-  const tarefasUrgentes = useMemo(() => {
-    const hojeStr = new Date().toISOString().slice(0, 10);
-    return tarefasFiltradas.filter(t => {
-      if (!t.dataLimite) return false;
-      const dLim = String(t.dataLimite).slice(0, 10);
-      return dLim <= hojeStr;
-    });
-  }, [tarefasFiltradas]);
 
   // Estudantes com pendência no Mapão de Fechamento (1B, 2B ou 3B ausentes) - Apenas alunos ativos
   const alunosMapaoPendentes = useMemo(() => {
@@ -1099,43 +1421,128 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
   };
 
   const handleToggleTarefa = async (tarefaId: string, statusAtual: boolean) => {
+    const task = tarefas.find(t => t.id === tarefaId);
+    const isCurrentlyDone = task ? verificarStatus(task) : statusAtual;
+    const agora = new Date();
+    const hojeStr = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(agora.getDate()).padStart(2, '0')}`;
+    const nowIso = agora.toISOString();
+    const userEmail = getCurrentUserEmail();
+    const nomeUsuario = currentUser?.nome || effectiveUser?.nome || userEmail.split('@')[0];
+
+    // REGRA CRÍTICA: Sem campos id ou _id no payload
+    const patch = isCurrentlyDone
+      ? {
+          concluido: false,
+          concluidaPor: [],
+          concluidoPor: [],
+          concluidoPorNome: null,
+          ultimaDataConclusao: null,
+          ultimaConclusao: null,
+          atualizadoEm: nowIso,
+          atualizadoPor: `${activeRole} (${userEmail})`
+        }
+      : {
+          concluido: true,
+          concluidaPor: [userEmail.toLowerCase().trim()],
+          concluidoPor: [userEmail.toLowerCase().trim()],
+          concluidoPorNome: nomeUsuario,
+          ultimaDataConclusao: hojeStr,
+          ultimaConclusao: nowIso,
+          atualizadoEm: nowIso,
+          atualizadoPor: `${activeRole} (${userEmail})`
+        };
+
+    const prevList = [...tarefas];
+    const updatedList = prevList.map(t => (t.id === tarefaId ? { ...t, ...patch } : t));
+    setTarefas(updatedList);
+    if (typeof window !== 'undefined') {
+      (window as any).rotinaEquipeCache = updatedList;
+      (window as any).tasksCache = updatedList;
+    }
+
     try {
       const tRef = doc(db, 'rotina_equipe', tarefaId);
-      await updateDoc(tRef, { concluido: !statusAtual });
-      setTarefas(prev => prev.map(t => t.id === tarefaId ? { ...t, concluido: !statusAtual } : t));
+      await updateDoc(tRef, patch);
       if (typeof (window as any).showToast === 'function') {
-        (window as any).showToast(!statusAtual ? 'Tarefa marcada como concluída!' : 'Tarefa reaberta.', 'success');
+        (window as any).showToast(
+          isCurrentlyDone ? 'Tarefa reaberta como pendente.' : 'Tarefa concluída no ciclo vigente!',
+          isCurrentlyDone ? 'info' : 'success'
+        );
       }
     } catch (e) {
       console.error(e);
+      setTarefas(prevList);
+      if (typeof window !== 'undefined') {
+        (window as any).rotinaEquipeCache = prevList;
+        (window as any).tasksCache = prevList;
+      }
+      if (typeof (window as any).showToast === 'function') {
+        (window as any).showToast('Erro ao atualizar tarefa.', 'error');
+      }
     }
   };
 
   const handleSalvarNovaTarefa = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!novaTarefaDesc.trim()) return;
+    const tituloFinal = novaTarefaTitulo.trim() || novaTarefaDesc.trim();
+    if (!tituloFinal) return;
+
+    const freqNorm = getNormalizedFreqKey(novaTarefaFreq);
+    const isPontual = freqNorm === 'Ação Pontual (Prazo Fixo)';
+    const targetRole = novaTarefaAtribuir || activeRole;
 
     try {
+      // REGRA CRÍTICA: Sem campos id ou _id no payload enviado ao banco
       const payload = {
-        descricao: novaTarefaDesc.trim(),
-        dataLimite: novaTarefaPrazo || null,
-        atribuirA: novaTarefaAtribuir || activeRole,
+        titulo: tituloFinal,
+        descricao: novaTarefaDesc.trim() || tituloFinal,
+        frequencia: freqNorm,
+        regraRecorrencia: {
+          diaSemana: Number(novaTarefaDiaSemana ?? 5),
+          diaMes: Math.min(31, Math.max(1, Number(novaTarefaDiaMes ?? 25))),
+          mesNoBimestre: 2,
+          mesNoSemestre: 6,
+          mesAno: 11,
+          horarioLimite: novaTarefaHorarioLimite || '',
+          apenasDiasUteis: true,
+          diasAntecedencia: Math.max(0, Number(novaTarefaAntecedencia ?? getDefaultAntecedencia(freqNorm)))
+        },
+        atribuirA: targetRole,
+        atribuidoA: targetRole,
+        dataInicio: isPontual ? (novaTarefaPrazo || null) : null,
+        dataFim: isPontual ? (novaTarefaPrazo || null) : null,
+        dataLimite: isPontual ? (novaTarefaPrazo || null) : null,
         concluido: false,
-        criadoPor: currentUser.nome,
+        concluidaPor: [],
+        concluidoPor: [],
+        ultimaConclusao: null,
+        ultimaDataConclusao: null,
+        criadoPor: currentUser.nome || activeRole,
         criadoEm: new Date().toISOString()
       };
-      // REGRA: Sem campos id ou _id no payload enviado
-      await addDoc(collection(db, 'rotina_equipe'), payload);
+      const docRef = await addDoc(collection(db, 'rotina_equipe'), payload);
+      const updatedList = [...tarefas, { id: docRef.id, ...payload }];
+      setTarefas(updatedList);
+      if (typeof window !== 'undefined') {
+        (window as any).rotinaEquipeCache = updatedList;
+        (window as any).tasksCache = updatedList;
+      }
       setModalNovaTarefa(false);
+      setNovaTarefaTitulo('');
       setNovaTarefaDesc('');
+      setNovaTarefaFreq('Semanal');
       setNovaTarefaPrazo('');
       setNovaTarefaAtribuir('');
-      carregarDadosCompletos(true);
+      setNovaTarefaHorarioLimite('');
+      setNovaTarefaAntecedencia(1);
       if (typeof (window as any).showToast === 'function') {
-        (window as any).showToast('Tarefa criada com sucesso!', 'success');
+        (window as any).showToast('Tarefa PDCA criada e sincronizada com sucesso!', 'success');
       }
     } catch (err) {
       console.error(err);
+      if (typeof (window as any).showToast === 'function') {
+        (window as any).showToast('Erro ao criar tarefa.', 'error');
+      }
     }
   };
 
@@ -1221,6 +1628,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
     const hoje = new Date();
     const dataExtenso = hoje.toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+    const freqReal = getRealStudentFreq(alunoSelecionadoDoc);
 
     let titulo = '';
     let corpo = '';
@@ -1230,8 +1638,10 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       corpo = `Atestamos, para os devidos fins a pedido da parte interessada, que o(a) estudante ${alunoSelecionadoDoc.nome}, portador(a) do R.A. nº ${alunoSelecionadoDoc.ra}, encontra-se regularmente matriculado(a) e com frequência ativa no ano letivo de 2026, cursando a turma ${alunoSelecionadoDoc.turma}, no Regime de Turno Único do Programa Ensino Integral (PEI), nesta Unidade Escolar sob jurisdição da Diretoria de Ensino da Região Leste 4.`;
     } else if (tipoDocumento === 'frequencia') {
       titulo = 'DECLARAÇÃO DE ASSIDUIDADE E FREQUÊNCIA ESCOLAR';
-      const freq = alunoSelecionadoDoc.presenca_anual || '95%';
-      corpo = `Declaramos, para os devidos fins de comprovação perante órgãos públicos e benefícios sociais, que o(a) estudante ${alunoSelecionadoDoc.nome}, R.A. nº ${alunoSelecionadoDoc.ra}, devidamente matriculado(a) na turma ${alunoSelecionadoDoc.turma}, apresenta frequência regular apurada de ${freq} no corrente ano letivo, cumprindo satisfatoriamente os preceitos de assiduidade exigidos pela Lei Federal nº 9.394/96 (LDB).`;
+      const trechoFreq = freqReal !== null
+        ? `apresenta frequência apurada de ${freqReal.toFixed(1).replace('.', ',')}% no corrente ano letivo`
+        : 'mantém frequência escolar acompanhada nos registros oficiais de prontuário do corrente ano letivo';
+      corpo = `Declaramos, para os devidos fins de comprovação perante órgãos públicos e benefícios sociais, que o(a) estudante ${alunoSelecionadoDoc.nome}, R.A. nº ${alunoSelecionadoDoc.ra}, devidamente matriculado(a) na turma ${alunoSelecionadoDoc.turma}, ${trechoFreq}, nos termos da Lei Federal nº 9.394/96 (LDB).`;
     } else if (tipoDocumento === 'transferencia') {
       titulo = 'DECLARAÇÃO DE TRANSFERÊNCIA EM PROCESSO';
       corpo = `Declaramos que o(a) estudante ${alunoSelecionadoDoc.nome}, R.A. nº ${alunoSelecionadoDoc.ra}, turma ${alunoSelecionadoDoc.turma}, solicitou transferência desta Unidade Escolar nesta data, estando desvinculado(a) e com seu prontuário em processo de conferência para emissão do Histórico Escolar definitivo no prazo regulamentar de até 30 (trinta) dias.`;
@@ -1420,7 +1830,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       {/* 2. BARRA DE INDICADORES RÁPIDOS (BENTO KPIs) POR CARGO */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3.5 sm:gap-4">
         {/* Bloco 1 */}
-        {activeRole === 'SECRETARIA' ? (
+        {isSecretaria ? (
           <div
             onClick={() => onNavigate ? onNavigate('dash-pontualidade') : window.switchTab?.('dash-pontualidade')}
             className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-amber-300 transition-all cursor-pointer group"
@@ -1438,7 +1848,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             <span className="text-xs font-semibold text-slate-700 block mt-0.5">Atrasos Hoje</span>
             <span className="text-[11px] text-slate-500 mt-0.5 block">Entradas tardias computadas</span>
           </div>
-        ) : activeRole === 'PROFESSOR' || activeRole === 'PAAC' ? (
+        ) : isProfessor || isPAAC ? (
           <div
             onClick={() => onNavigate ? onNavigate('horarios') : window.switchTab?.('horarios')}
             className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-indigo-300 transition-all cursor-pointer group"
@@ -1454,13 +1864,15 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
               {aulasSemanaisAtivas.length}
             </div>
             <span className="text-xs font-semibold text-slate-700 block mt-0.5">Aulas Ativas na Semana</span>
-            <span className="text-[11px] text-slate-500 mt-0.5 block tabular-nums">{aulasHojeAtivas.length} ativas hoje ({aulasHoje.length} no total)</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block tabular-nums">
+              {aulasHojeAtivas.length} hoje{substituicoesParaMimHoje.length > 0 ? ` · +${substituicoesParaMimHoje.length} substituição(ões)` : ''}
+            </span>
           </div>
         ) : (
           <div
-            onClick={() => onNavigate ? onNavigate('dashboard') : window.switchTab?.('dashboard')}
+            onClick={() => onNavigate ? onNavigate('dash-evasao') : window.switchTab?.('dash-evasao')}
             className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-emerald-300 transition-all cursor-pointer group"
-            title="Clique para consultar métricas gerais de presença"
+            title="Clique para consultar métricas reais de frequência e evasão"
           >
             <div className="flex items-center justify-between gap-2">
               <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center text-sm shrink-0">
@@ -1468,16 +1880,22 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
               </div>
               <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-emerald-600 transition-colors"></i>
             </div>
-            <div className="text-2xl sm:text-3xl font-bold text-emerald-600 tabular-nums mt-3">
-              92.4%
+            <div className={`text-2xl sm:text-3xl font-bold tabular-nums mt-3 ${
+              presencaGeralStats.media === null ? 'text-slate-400' : presencaGeralStats.media < 75 ? 'text-rose-600' : 'text-emerald-600'
+            }`}>
+              {presencaGeralStats.media !== null ? `${presencaGeralStats.media.toFixed(1).replace('.', ',')}%` : '—'}
             </div>
-            <span className="text-xs font-semibold text-slate-700 block mt-0.5">Presença Geral</span>
-            <span className="text-[11px] text-slate-500 mt-0.5 block">Média anual acumulada</span>
+            <span className="text-xs font-semibold text-slate-700 block mt-0.5">Presença Geral (Real)</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block tabular-nums">
+              {presencaGeralStats.totalAvaliados > 0
+                ? `${presencaGeralStats.totalAvaliados} ativos apurados`
+                : 'Aguardando lançamento SED/diário'}
+            </span>
           </div>
         )}
 
         {/* Bloco 2 */}
-        {activeRole === 'SECRETARIA' ? (
+        {isSecretaria ? (
           <div
             onClick={() => onNavigate ? onNavigate('alunos') : window.switchTab?.('alunos')}
             className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-indigo-300 transition-all cursor-pointer group"
@@ -1490,12 +1908,12 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
               <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-indigo-600 transition-colors"></i>
             </div>
             <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums mt-3">
-              {alunos.filter(isAlunoAtivo).length || alunos.length || 746}
+              {alunosAtivos.length}
             </div>
-            <span className="text-xs font-semibold text-slate-700 block mt-0.5">Estudantes Matriculados</span>
-            <span className="text-[11px] text-slate-500 mt-0.5 block">Ativos no sistema PEI</span>
+            <span className="text-xs font-semibold text-slate-700 block mt-0.5">Estudantes Ativos</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block tabular-nums">{alunos.length} cadastrados no prontuário</span>
           </div>
-        ) : activeRole === 'PROFESSOR' || activeRole === 'PAAC' ? (
+        ) : isProfessor || isPAAC ? (
           <div
             onClick={() => {
               const el = document.getElementById('secao-tutorados-professor');
@@ -1515,7 +1933,9 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
               {tutoradosDoProfessor.length}
             </div>
             <span className="text-xs font-semibold text-slate-700 block mt-0.5">Estudantes Tutorados</span>
-            <span className="text-[11px] text-slate-500 mt-0.5 block">Sob seu acompanhamento</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block tabular-nums">
+              {tutoradosEmRisco.length > 0 ? `${tutoradosEmRisco.length} em alerta de frequência` : 'Sob seu acompanhamento'}
+            </span>
           </div>
         ) : (
           <div
@@ -1533,50 +1953,110 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
               {alunosBuscaAtiva.length}
             </div>
             <span className="text-xs font-semibold text-slate-700 block mt-0.5">Alunos em Busca Ativa</span>
-            <span className="text-[11px] text-slate-500 mt-0.5 block">Casos de risco de infrequência</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block">Freq. &lt;75% ou 3+ faltas seguidas</span>
           </div>
         )}
 
-        {/* Bloco 3: Ciência no Mural / Notificações Pedagógicas para Direção */}
-        <div
-          onClick={() => {
-            if (['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'PAAC'].includes(activeRole)) {
-              const el = document.getElementById('painel-notificacoes-pedagogicas') || document.getElementById('painel-ciencia-mural');
-              if (el) el.scrollIntoView({ behavior: 'smooth' });
-              else if (onNavigate) onNavigate('registros');
-            } else {
-              if (onNavigate) onNavigate('mural');
-              else if (typeof window.switchTab === 'function') window.switchTab('mural');
-            }
-          }}
-          className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-purple-300 transition-all cursor-pointer group"
-          title="Clique para consultar notificações e ciências"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center text-sm shrink-0">
-              <i className="fa-solid fa-bell"></i>
+        {/* Bloco 3: Alertas Pedagógicos (Gestão), Chamada Hoje (Secretaria) ou Recados (Professor) */}
+        {isSecretaria ? (
+          <div
+            onClick={() => onNavigate ? onNavigate('presenca-diaria') : window.switchTab?.('presenca-diaria')}
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-cyan-300 transition-all cursor-pointer group"
+            title="Clique para abrir a Chamada Diária"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="w-9 h-9 rounded-xl bg-cyan-500/10 text-cyan-700 flex items-center justify-center text-sm shrink-0">
+                <i className="fa-solid fa-clipboard-user"></i>
+              </div>
+              <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-cyan-700 transition-colors"></i>
             </div>
-            <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-purple-600 transition-colors"></i>
+            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums mt-3">
+              {chamadaHojeStats.registrosHoje}
+            </div>
+            <span className="text-xs font-semibold text-slate-700 block mt-0.5">Chamada Diária Hoje</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block tabular-nums">
+              {chamadaHojeStats.registrosHoje > 0
+                ? `${chamadaHojeStats.presentes}P · ${chamadaHojeStats.faltas}F · ${chamadaHojeStats.justificadas}J`
+                : 'Nenhuma chamada lançada hoje'}
+            </span>
           </div>
-          <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums mt-3">
-            {['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'PAAC'].includes(activeRole)
-              ? notificacoesPedagogicasDirecao.length
-              : recadosDirecionados.length}
+        ) : (
+          <div
+            onClick={() => {
+              if (isPdcaLeadership || isPAAC) {
+                const el = document.getElementById('painel-notificacoes-pedagogicas') || document.getElementById('painel-ciencia-mural');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+                else if (onNavigate) onNavigate('registros');
+              } else {
+                if (onNavigate) onNavigate('mural');
+                else if (typeof window.switchTab === 'function') window.switchTab('mural');
+              }
+            }}
+            className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-purple-300 transition-all cursor-pointer group"
+            title="Clique para consultar notificações e ciências"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center text-sm shrink-0">
+                <i className="fa-solid fa-bell"></i>
+              </div>
+              <i className="fa-solid fa-arrow-up-right-from-square text-[11px] text-slate-300 group-hover:text-purple-600 transition-colors"></i>
+            </div>
+            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums mt-3">
+              {(isPdcaLeadership || isPAAC)
+                ? notificacoesPedagogicasDirecao.length
+                : recadosDirecionados.length}
+            </div>
+            <span className="text-xs font-semibold text-slate-700 block mt-0.5">
+              {(isPdcaLeadership || isPAAC)
+                ? 'Alertas Pedagógicos'
+                : 'Recados Direcionados'}
+            </span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block tabular-nums">
+              {(isPdcaLeadership || isPAAC)
+                ? `${notificacoesPedagogicasDirecao.length} pendente(s) da equipe`
+                : `${recadosSemCienciaUsuario.length} aguardando ciência`}
+            </span>
           </div>
-          <span className="text-xs font-semibold text-slate-700 block mt-0.5">
-            {['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'PAAC'].includes(activeRole)
-              ? 'Alertas Pedagógicos'
-              : 'Recados Direcionados'}
-          </span>
-          <span className="text-[11px] text-slate-500 mt-0.5 block">
-            {['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'PAAC'].includes(activeRole)
-              ? `${notificacoesPedagogicasDirecao.length} pendente(s) da equipe`
-              : 'Comunicados para seu perfil'}
-          </span>
-        </div>
+        )}
 
-        {/* Bloco 4: Tarefas (exclusivo para perfis com acesso à Rotina PDCA) ou Próximos Eventos */}
-        {canAccessRotinaPDCA ? (
+        {/* Bloco 4: Tarefas PDCA (ênfase para Direção/Vice/CGPG) ou Agenda Escolar */}
+        {isPdcaLeadership ? (
+          <div
+            onClick={() => {
+              const el = document.getElementById('painel-executivo-pdca');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+              else if (onNavigate) onNavigate('rotina-pdca');
+            }}
+            className={`p-4 sm:p-5 rounded-2xl border shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] transition-all cursor-pointer group ${
+              pdcaStats.equipe.atrasadas > 0
+                ? 'bg-rose-50/70 border-rose-200 hover:border-rose-300'
+                : pdcaStats.equipe.emAlerta > 0
+                ? 'bg-amber-50/70 border-amber-300 hover:border-amber-400'
+                : 'bg-white border-slate-200/80 hover:border-amber-300'
+            }`}
+            title="Clique para ir ao Painel Executivo PDCA"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm shrink-0 ${
+                pdcaStats.equipe.atrasadas > 0
+                  ? 'bg-rose-500/15 text-rose-700'
+                  : 'bg-amber-500/15 text-amber-700'
+              }`}>
+                <i className="fa-solid fa-list-check"></i>
+              </div>
+              <span className="text-[11px] font-bold tabular-nums px-2 py-0.5 rounded-full bg-white/80 text-slate-700 border border-slate-200/70">
+                {pdcaStats.equipe.taxaConclusao}% ciclo
+              </span>
+            </div>
+            <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums mt-3">
+              {pdcaStats.equipe.pendentes}
+            </div>
+            <span className="text-xs font-semibold text-slate-800 block mt-0.5">Rotina PDCA Pendente</span>
+            <span className="text-[11px] text-slate-600 mt-0.5 block tabular-nums">
+              {pdcaStats.equipe.atrasadas} atrasada(s) · {pdcaStats.equipe.emAlerta} em alerta
+            </span>
+          </div>
+        ) : canAccessRotinaPDCA ? (
           <div
             onClick={() => onNavigate ? onNavigate('rotina-pdca') : window.switchTab?.('rotina-pdca')}
             className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] hover:border-amber-300 transition-all cursor-pointer group"
@@ -1591,8 +2071,10 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             <div className="text-2xl sm:text-3xl font-bold text-slate-900 tabular-nums mt-3">
               {tarefasFiltradas.length}
             </div>
-            <span className="text-xs font-semibold text-slate-700 block mt-0.5">Tarefas Pendentes</span>
-            <span className="text-[11px] text-slate-500 mt-0.5 block">Rotinas e prazos a realizar</span>
+            <span className="text-xs font-semibold text-slate-700 block mt-0.5">Minhas Tarefas PDCA</span>
+            <span className="text-[11px] text-slate-500 mt-0.5 block tabular-nums">
+              {tarefasUrgentes.length > 0 ? `${tarefasUrgentes.length} vencida(s)/em alerta` : 'Rotinas e prazos no ciclo'}
+            </span>
           </div>
         ) : (
           <div
@@ -1861,199 +2343,529 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       </section>
 
       {/* ======================================================== */}
+      {/* 2.5. PAINEL EXECUTIVO PDCA & ROTINA DA EQUIPE (DIRETOR, VICE, CGPG) */}
+      {/* ======================================================== */}
+      {isPdcaLeadership && (
+        <section id="painel-executivo-pdca" className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-amber-200/80 border-l-4 border-l-amber-500 shadow-[0_4px_20px_-4px_rgba(245,158,11,0.10)] space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/15 text-amber-700 flex items-center justify-center text-base shrink-0">
+                <i className="fa-solid fa-rotate"></i>
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                    Painel Executivo PDCA · Rotina da Equipe
+                  </h2>
+                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 tabular-nums">
+                    {pdcaStats.equipe.taxaConclusao}% concluído no ciclo
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Acompanhamento em tempo real das rotinas diárias, semanais, mensais e anuais da equipe gestora e apoios.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setModalNovaTarefa(true)}
+                className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-xl shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <i className="fa-solid fa-plus"></i>
+                <span>Nova Tarefa PDCA</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigate ? onNavigate('rotina-pdca') : window.switchTab?.('rotina-pdca')}
+                className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>Abrir Rotina PDCA</span>
+                <i className="fa-solid fa-arrow-right text-[10px]"></i>
+              </button>
+            </div>
+          </div>
+
+          {/* Barra de Progresso do Ciclo + Contadores PDCA */}
+          <div className="space-y-3">
+            <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-amber-500 to-emerald-500 rounded-full transition-all duration-500"
+                style={{ width: `${pdcaStats.equipe.taxaConclusao}%` }}
+              ></div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <button
+                type="button"
+                onClick={() => setPdcaStatusFilter('urgentes')}
+                className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
+                  pdcaStats.equipe.atrasadas > 0
+                    ? 'bg-rose-50/80 border-rose-200 hover:border-rose-300'
+                    : 'bg-slate-50/70 border-slate-200/80 hover:border-slate-300'
+                }`}
+              >
+                <span className="text-[11px] font-semibold text-rose-700 block">Atrasadas</span>
+                <span className="text-xl font-bold text-rose-700 tabular-nums">{pdcaStats.equipe.atrasadas}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPdcaStatusFilter('urgentes')}
+                className={`p-3 rounded-2xl border text-left transition cursor-pointer ${
+                  pdcaStats.equipe.emAlerta > 0
+                    ? 'bg-amber-50/90 border-amber-300 hover:border-amber-400'
+                    : 'bg-slate-50/70 border-slate-200/80 hover:border-slate-300'
+                }`}
+              >
+                <span className="text-[11px] font-semibold text-amber-800 block">Prestes a Vencer / Hoje</span>
+                <span className="text-xl font-bold text-amber-800 tabular-nums">{pdcaStats.equipe.emAlerta}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPdcaStatusFilter('pendentes')}
+                className="p-3 rounded-2xl border bg-slate-50/70 border-slate-200/80 hover:border-indigo-300 text-left transition cursor-pointer"
+              >
+                <span className="text-[11px] font-semibold text-slate-600 block">Pendentes no Ciclo</span>
+                <span className="text-xl font-bold text-slate-900 tabular-nums">{pdcaStats.equipe.pendentes}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPdcaStatusFilter('concluidas')}
+                className="p-3 rounded-2xl border bg-emerald-50/60 border-emerald-200/70 hover:border-emerald-300 text-left transition cursor-pointer"
+              >
+                <span className="text-[11px] font-semibold text-emerald-800 block">Concluídas no Ciclo</span>
+                <span className="text-xl font-bold text-emerald-700 tabular-nums">{pdcaStats.equipe.concluidas}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Controles de Escopo, Status e Breakdown por Equipe */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-2.5 pt-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setPdcaScopeView('equipe')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                  pdcaScopeView === 'equipe' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Visão da Equipe ({pdcaStats.equipe.total})
+              </button>
+              <button
+                type="button"
+                onClick={() => setPdcaScopeView('minhas')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                  pdcaScopeView === 'minhas' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Minhas Atribuições ({pdcaStats.minhas.total})
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {([
+                { key: 'pendentes', label: 'Pendentes' },
+                { key: 'urgentes', label: 'Em Alerta / Atrasadas' },
+                { key: 'concluidas', label: 'Concluídas' },
+                { key: 'todas', label: 'Todas' }
+              ] as const).map(stOpt => (
+                <button
+                  key={stOpt.key}
+                  type="button"
+                  onClick={() => setPdcaStatusFilter(stOpt.key)}
+                  className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold border transition cursor-pointer ${
+                    pdcaStatusFilter === stOpt.key
+                      ? 'bg-amber-50 text-amber-900 border-amber-300'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {stOpt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {pdcaScopeView === 'equipe' && pdcaStats.porEquipe.length > 0 && (
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+              <button
+                type="button"
+                onClick={() => setPdcaTeamFilter('TODOS')}
+                className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold border whitespace-nowrap shrink-0 cursor-pointer transition ${
+                  pdcaTeamFilter === 'TODOS'
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                Todos os Núcleos
+              </button>
+              {pdcaStats.porEquipe.map((eq: any) => (
+                <button
+                  key={eq.key}
+                  type="button"
+                  onClick={() => setPdcaTeamFilter(eq.key === pdcaTeamFilter ? 'TODOS' : eq.key)}
+                  className={`px-2.5 py-1 rounded-xl text-[11px] font-semibold border whitespace-nowrap shrink-0 cursor-pointer transition flex items-center gap-1.5 ${
+                    pdcaTeamFilter === eq.key
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  <span>{eq.label}</span>
+                  <span className="tabular-nums opacity-80">{eq.concluidas}/{eq.total}</span>
+                  {(eq.atrasadas > 0 || eq.emAlerta > 0) && (
+                    <span className={`w-2 h-2 rounded-full ${eq.atrasadas > 0 ? 'bg-rose-500' : 'bg-amber-400'}`}></span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Lista Prioritária de Execução PDCA */}
+          {tarefasPainelExecutivo.length === 0 ? (
+            <div className="p-6 text-center text-xs text-slate-500 bg-slate-50/80 rounded-2xl border border-slate-200/70">
+              <i className="fa-solid fa-circle-check text-emerald-500 text-lg block mb-1.5"></i>
+              Nenhuma tarefa PDCA encontrada para os filtros selecionados.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              {tarefasPainelExecutivo.slice(0, 8).map(tarefa => {
+                const st = tarefa._statusInfo || {};
+                const isDone = Boolean(st.concluida);
+                const isAtrasada = !isDone && Boolean(st.atrasada);
+                const isAmarelo = !isDone && !isAtrasada && Boolean(st.emAlertaAmarelo);
+
+                return (
+                  <div
+                    key={tarefa.id}
+                    className={`p-3.5 rounded-2xl border border-l-4 flex items-start gap-3 transition-all ${
+                      isDone
+                        ? 'bg-emerald-50/40 border-emerald-200/70 border-l-emerald-500 opacity-85'
+                        : isAtrasada
+                        ? 'bg-rose-50/75 border-rose-200 border-l-rose-500'
+                        : isAmarelo
+                        ? 'bg-amber-50/85 border-amber-300 border-l-amber-500'
+                        : 'bg-white border-slate-200/80 border-l-indigo-500 hover:border-indigo-300'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isDone}
+                      onChange={() => handleToggleTarefa(tarefa.id, isDone)}
+                      className="mt-1 rounded text-amber-600 focus:ring-amber-500 cursor-pointer shrink-0"
+                      title={isDone ? 'Reabrir tarefa' : 'Concluir tarefa no ciclo'}
+                    />
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className={`text-xs font-bold leading-snug ${isDone ? 'line-through text-slate-500' : 'text-slate-900'}`}>
+                          {tarefa.titulo || tarefa.descricao}
+                        </p>
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/90 text-slate-700 border border-slate-200/80 shrink-0">
+                          {tarefa._freqKey}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                        <span className={`font-semibold px-2 py-0.5 rounded-full border ${
+                          isDone
+                            ? 'bg-emerald-100/70 text-emerald-800 border-emerald-200'
+                            : isAtrasada
+                            ? 'bg-rose-100 text-rose-800 border-rose-200'
+                            : isAmarelo
+                            ? 'bg-amber-100 text-amber-900 border-amber-300'
+                            : 'bg-slate-100 text-slate-700 border-slate-200'
+                        }`}>
+                          {st.contagemLabel || 'No prazo'}
+                        </span>
+                        {st.dataVencimentoLabel && (
+                          <span className="text-slate-600 tabular-nums">{st.dataVencimentoLabel}</span>
+                        )}
+                        <span className="text-slate-400">·</span>
+                        <span className="font-semibold text-indigo-700 truncate max-w-[140px]">
+                          {tarefa.atribuidoA || tarefa.atribuirA || 'TODA A EQUIPE'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {tarefasPainelExecutivo.length > 8 && (
+            <div className="pt-1 text-right">
+              <button
+                type="button"
+                onClick={() => onNavigate ? onNavigate('rotina-pdca') : window.switchTab?.('rotina-pdca')}
+                className="text-xs font-semibold text-amber-800 hover:text-amber-950 cursor-pointer"
+              >
+                Ver todas as {tarefasPainelExecutivo.length} tarefas no Módulo PDCA →
+              </button>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ======================================================== */}
       {/* 3. CONTEÚDO PRINCIPAL DIVIDIDO POR CARGO */}
       {/* ======================================================== */}
 
-      {/* A. VISÃO PROFESSOR / PAAC / CGPG */}
-      {(activeRole === 'PROFESSOR' || activeRole === 'PAAC' || activeRole === 'CGPG') && (
+      {/* A. VISÃO PROFESSOR / PAAC (e CGPG apenas quando possui aulas ou tutorados atribuídos) */}
+      {(isProfessor || isPAAC || (isCoord && (aulasHoje.length > 0 || horariosDoProfessor.length > 0 || tutoradosDoProfessor.length > 0 || substituicoesParaMimHoje.length > 0))) && (
         <div className="space-y-5 sm:space-y-6">
 
-          {/* Horários Individuais do Professor */}
-          <section className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm shrink-0">
-                  <i className="fa-solid fa-clock"></i>
+          {/* Substituições Designadas Hoje ao Docente (se houver) */}
+          {substituicoesParaMimHoje.length > 0 && (
+            <section className="bg-amber-50/70 rounded-2xl sm:rounded-3xl p-5 border border-amber-300/80 border-l-4 border-l-amber-500 shadow-[0_2px_15px_-3px_rgba(245,158,11,0.08)] space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-800 flex items-center justify-center text-sm shrink-0">
+                    <i className="fa-solid fa-shuffle"></i>
+                  </div>
+                  <div>
+                    <h2 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                      Substituições Designadas a Você Hoje ({substituicoesParaMimHoje.length})
+                    </h2>
+                    <p className="text-xs text-slate-600">
+                      Aulas eventuais atribuídas na grade de substituições de hoje.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
-                    Meus Horários Individuais de Aula
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Aulas programadas para hoje ({DIAS_SEMANA_LABELS[diaSemanaHoje] || 'Hoje'}) e grade semanal.
-                  </p>
-                </div>
+                {!isProfessor && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate ? onNavigate('substituicao-pei') : window.switchTab?.('substituicao-pei')}
+                    className="text-xs font-semibold text-amber-900 hover:underline cursor-pointer shrink-0"
+                  >
+                    Ver Substituições →
+                  </button>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={() => onNavigate ? onNavigate('horarios') : window.switchTab?.('horarios')}
-                className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
-              >
-                <span>Ver Grade Completa</span>
-                <i className="fa-solid fa-arrow-right text-[10px]"></i>
-              </button>
-            </div>
 
-            {aulasHoje.length === 0 ? (
-              <div className="p-6 text-center text-slate-500 text-xs bg-slate-50/80 rounded-2xl border border-slate-200/70">
-                Nenhuma aula atribuída para {effectiveTeacher.nome} neste dia ({diaSemanaHoje}).
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {aulasHoje.map(aula => {
-                  const isAtiva = isRegularTeachingClass(aula);
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                {substituicoesParaMimHoje.map((sub, idx) => {
+                  const pId = Number(sub.periodoId || sub.aulaNumero || 0);
                   return (
-                    <div
-                      key={`${aula.dia}-${aula.periodoId}-${aula.turma}-${aula.disciplina || ''}`}
-                      onClick={() => setModalAula(aula)}
-                      className={`p-3.5 rounded-2xl border border-l-4 transition-all space-y-1.5 cursor-pointer group ${
-                        isAtiva
-                          ? 'bg-white border-slate-200/80 border-l-indigo-600 hover:border-indigo-300 shadow-2xs'
-                          : 'bg-slate-50/80 border-slate-200/80 border-l-slate-400 opacity-85 hover:opacity-100'
-                      }`}
-                      title="Clique para consultar os detalhes desta aula"
-                    >
+                    <div key={sub.id || idx} className="p-3 bg-white rounded-2xl border border-amber-200/80 text-xs space-y-1">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-bold text-slate-900 tabular-nums">
-                            {aula.periodoId}ª Aula
-                          </span>
-                          <span
-                            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-                              isAtiva
-                                ? 'bg-emerald-50/90 text-emerald-800 border-emerald-200/70'
-                                : 'bg-slate-100 text-slate-600 border-slate-200'
-                            }`}
-                          >
-                            {isAtiva ? 'Ativa' : 'Inativa / Intervalo'}
-                          </span>
-                        </div>
-                        <span className="text-[11px] tabular-nums font-medium text-slate-500">
-                          {PERIODOS_HORARIOS[Number(aula.periodoId)] || 'Horário Integral'}
+                        <span className="font-bold text-amber-900 tabular-nums">
+                          {pId ? `${pId}ª Aula` : 'Substituição'}
+                        </span>
+                        <span className="text-[11px] text-slate-500 tabular-nums">
+                          {PERIODOS_HORARIOS[pId] || sub.horario || 'Horário PEI'}
                         </span>
                       </div>
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="text-sm font-bold text-slate-900 group-hover:text-indigo-900">
-                          {aula.turma && aula.turma !== '-' ? aula.turma : 'Sem Turma'}
-                        </span>
-                        <span className="text-xs font-medium text-slate-600 truncate max-w-[140px]">
-                          {aula.disciplina || 'Componente'}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-slate-500 flex items-center justify-between pt-0.5">
-                        <div className="flex items-center gap-1.5 truncate">
-                          <i className="fa-solid fa-location-dot text-slate-400 text-[10px]"></i>
-                          <span>{aula.sala && aula.sala !== '-' ? aula.sala : 'Ambiente Escolar'}</span>
-                        </div>
-                        <span className="text-[11px] font-semibold text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                          Detalhes →
-                        </span>
-                      </div>
+                      <p className="font-bold text-slate-900">
+                        {sub.turma || 'Turma PEI'} · {sub.disciplina || 'Componente'}
+                      </p>
+                      <p className="text-[11px] text-slate-500 truncate">
+                        Em substituição a: {sub.professorAusente || 'Docente ausente'}
+                      </p>
                     </div>
                   );
                 })}
               </div>
-            )}
-          </section>
+            </section>
+          )}
+
+          {/* Horários Individuais do Professor */}
+          {(!isCoord || aulasHoje.length > 0 || horariosDoProfessor.length > 0) && (
+            <section className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm shrink-0">
+                    <i className="fa-solid fa-clock"></i>
+                  </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                      Meus Horários Individuais de Aula
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Aulas programadas para hoje ({DIAS_SEMANA_LABELS[diaSemanaHoje] || 'Hoje'}) e grade semanal.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onNavigate ? onNavigate('horarios') : window.switchTab?.('horarios')}
+                  className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+                >
+                  <span>Ver Grade Completa</span>
+                  <i className="fa-solid fa-arrow-right text-[10px]"></i>
+                </button>
+              </div>
+
+              {aulasHoje.length === 0 ? (
+                <div className="p-6 text-center text-slate-500 text-xs bg-slate-50/80 rounded-2xl border border-slate-200/70">
+                  Nenhuma aula atribuída para {effectiveTeacher.nome} neste dia ({diaSemanaHoje}).
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {aulasHoje.map(aula => {
+                    const isAtiva = isRegularTeachingClass(aula);
+                    return (
+                      <div
+                        key={`${aula.dia}-${aula.periodoId}-${aula.turma}-${aula.disciplina || ''}`}
+                        onClick={() => setModalAula(aula)}
+                        className={`p-3.5 rounded-2xl border border-l-4 transition-all space-y-1.5 cursor-pointer group ${
+                          isAtiva
+                            ? 'bg-white border-slate-200/80 border-l-indigo-600 hover:border-indigo-300 shadow-2xs'
+                            : 'bg-slate-50/80 border-slate-200/80 border-l-slate-400 opacity-85 hover:opacity-100'
+                        }`}
+                        title="Clique para consultar os detalhes desta aula"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-slate-900 tabular-nums">
+                              {aula.periodoId}ª Aula
+                            </span>
+                            <span
+                              className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                                isAtiva
+                                  ? 'bg-emerald-50/90 text-emerald-800 border-emerald-200/70'
+                                  : 'bg-slate-100 text-slate-600 border-slate-200'
+                              }`}
+                            >
+                              {isAtiva ? 'Ativa' : 'Inativa / Intervalo'}
+                            </span>
+                          </div>
+                          <span className="text-[11px] tabular-nums font-medium text-slate-500">
+                            {PERIODOS_HORARIOS[Number(aula.periodoId)] || 'Horário Integral'}
+                          </span>
+                        </div>
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-sm font-bold text-slate-900 group-hover:text-indigo-900">
+                            {aula.turma && aula.turma !== '-' ? aula.turma : 'Sem Turma'}
+                          </span>
+                          <span className="text-xs font-medium text-slate-600 truncate max-w-[140px]">
+                            {aula.disciplina || 'Componente'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 flex items-center justify-between pt-0.5">
+                          <div className="flex items-center gap-1.5 truncate">
+                            <i className="fa-solid fa-location-dot text-slate-400 text-[10px]"></i>
+                            <span>{aula.sala && aula.sala !== '-' ? aula.sala : 'Ambiente Escolar'}</span>
+                          </div>
+                          <span className="text-[11px] font-semibold text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                            Detalhes →
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
 
           {/* Informações sobre seus Tutorados */}
-          <section id="secao-tutorados-professor" className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-cyan-500/10 text-cyan-700 flex items-center justify-center text-sm shrink-0">
-                  <i className="fa-solid fa-user-graduate"></i>
+          {(!isCoord || tutoradosDoProfessor.length > 0) && (
+            <section id="secao-tutorados-professor" className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-cyan-500/10 text-cyan-700 flex items-center justify-center text-sm shrink-0">
+                    <i className="fa-solid fa-user-graduate"></i>
+                  </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight tabular-nums">
+                      Meus Estudantes Tutorados ({tutoradosDoProfessor.length})
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Acompanhamento individual de rendimento, frequência e Projeto de Vida.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight tabular-nums">
-                    Meus Estudantes Tutorados ({tutoradosDoProfessor.length})
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Acompanhamento individual de rendimento, frequência e Projeto de Vida.
+                <button
+                  type="button"
+                  onClick={() => onNavigate ? onNavigate('alunos') : window.switchTab?.('alunos')}
+                  className="text-xs font-semibold text-cyan-700 hover:text-cyan-900 flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+                >
+                  <span>Módulo Alunos Completo</span>
+                  <i className="fa-solid fa-arrow-right text-[10px]"></i>
+                </button>
+              </div>
+
+              {tutoradosDoProfessor.length === 0 ? (
+                <div className="p-8 text-center text-slate-500 text-xs bg-slate-50/80 rounded-2xl border border-slate-200/70 space-y-2">
+                  <i className="fa-solid fa-id-card-clip text-2xl text-slate-400 block"></i>
+                  <p>Nenhum aluno vinculado ao tutor {effectiveTeacher.nome} no momento.</p>
+                  <p className="text-[11px] text-slate-400">
+                    Você pode vincular estudantes na aba Alunos ou selecionar outro docente acima.
                   </p>
                 </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => onNavigate ? onNavigate('alunos') : window.switchTab?.('alunos')}
-                className="text-xs font-semibold text-cyan-700 hover:text-cyan-900 flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
-              >
-                <span>Módulo Alunos Completo</span>
-                <i className="fa-solid fa-arrow-right text-[10px]"></i>
-              </button>
-            </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                  {tutoradosDoProfessor.slice(0, 12).map(aluno => {
+                    const freqNum: number | null = aluno._freqNum ?? null;
+                    const faltasSeq: number = Number(aluno._faltasConsecutivas || 0);
+                    const isAlerta = (freqNum !== null && freqNum < 75) || faltasSeq >= 3;
 
-            {tutoradosDoProfessor.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 text-xs bg-slate-50/80 rounded-2xl border border-slate-200/70 space-y-2">
-                <i className="fa-solid fa-id-card-clip text-2xl text-slate-400 block"></i>
-                <p>Nenhum aluno vinculado ao tutor {effectiveTeacher.nome} no momento.</p>
-                <p className="text-[11px] text-slate-400">
-                  Você pode vincular estudantes na aba Alunos ou selecionar outro docente acima.
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                {tutoradosDoProfessor.slice(0, 12).map(aluno => {
-                  let freqNum = 100;
-                  const rawF = aluno.presenca_anual || aluno.presenca;
-                  if (rawF) freqNum = parseFloat(String(rawF).replace('%', '').replace(',', '.'));
-                  const isAlerta = freqNum < 75;
+                    return (
+                      <div
+                        key={aluno.id || aluno.ra}
+                        onClick={() => setModalAluno(aluno)}
+                        className={`p-3.5 bg-white rounded-2xl border border-l-4 transition-all flex flex-col justify-between space-y-2 cursor-pointer group shadow-2xs ${
+                          isAlerta ? 'border-slate-200/80 border-l-rose-500 hover:border-rose-300' : 'border-slate-200/80 border-l-cyan-500 hover:border-cyan-300'
+                        }`}
+                        title="Clique para consultar os dados deste tutorado"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-xs font-semibold text-slate-900 truncate">
+                              {aluno.nome}
+                            </span>
+                            <span className="text-[10px] tabular-nums font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 shrink-0">
+                              {aluno.turma}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 tabular-nums flex items-center justify-between gap-2">
+                            <span>RA: {aluno.ra}</span>
+                            {faltasSeq >= 3 && (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                                {faltasSeq} faltas seguidas
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-600 line-clamp-1">
+                            <span className="text-slate-400">Projeto de Vida:</span>{' '}
+                            {aluno.projetoDeVida || aluno.sonhos || 'Não preenchido'}
+                          </div>
+                        </div>
 
-                  return (
-                    <div
-                      key={aluno.id || aluno.ra}
-                      onClick={() => setModalAluno(aluno)}
-                      className={`p-3.5 bg-white rounded-2xl border border-l-4 transition-all flex flex-col justify-between space-y-2 cursor-pointer group shadow-2xs ${
-                        isAlerta ? 'border-slate-200/80 border-l-rose-500 hover:border-rose-300' : 'border-slate-200/80 border-l-cyan-500 hover:border-cyan-300'
-                      }`}
-                      title="Clique para consultar os dados deste tutorado"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="text-xs font-semibold text-slate-900 truncate">
-                            {aluno.nome}
-                          </span>
-                          <span className="text-[10px] tabular-nums font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 shrink-0">
-                            {aluno.turma}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-slate-500 tabular-nums">
-                          RA: {aluno.ra}
-                        </div>
-                        <div className="text-xs text-slate-600 line-clamp-1">
-                          <span className="text-slate-400">Projeto de Vida:</span>{' '}
-                          {aluno.projetoDeVida || aluno.sonhos || 'Em construção'}
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-xs font-semibold">
+                            <span className={`tabular-nums ${
+                              freqNum === null ? 'text-slate-400' : isAlerta ? 'text-rose-600' : 'text-emerald-700'
+                            }`}>
+                              {freqNum !== null ? `${freqNum.toFixed(1).replace('.', ',')}%` : 'Sem registro'}
+                            </span>
+                            <span className="text-[11px] text-slate-400 font-normal">Frequência</span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (typeof window.abrirFichaAluno === 'function') {
+                                window.abrirFichaAluno(aluno.ra);
+                              } else if (typeof window.navegarEAbrirFichaAluno === 'function') {
+                                window.navegarEAbrirFichaAluno(aluno.ra);
+                              }
+                            }}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-cyan-800 hover:text-cyan-950 bg-cyan-50/90 hover:bg-cyan-100 rounded-xl transition-colors cursor-pointer"
+                          >
+                            Ver Ficha
+                          </button>
                         </div>
                       </div>
-
-                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 text-xs font-semibold">
-                          <span className={`tabular-nums ${isAlerta ? 'text-rose-600' : 'text-emerald-700'}`}>
-                            {aluno.presenca_anual || '92%'}
-                          </span>
-                          <span className="text-[11px] text-slate-400 font-normal">Frequência</span>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (typeof window.abrirFichaAluno === 'function') {
-                              window.abrirFichaAluno(aluno.ra);
-                            } else if (typeof window.navegarEAbrirFichaAluno === 'function') {
-                              window.navegarEAbrirFichaAluno(aluno.ra);
-                            }
-                          }}
-                          className="px-2.5 py-1 text-[11px] font-semibold text-cyan-800 hover:text-cyan-950 bg-cyan-50/90 hover:bg-cyan-100 rounded-xl transition-colors cursor-pointer"
-                        >
-                          Ver Ficha
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
         </div>
       )}
 
@@ -2188,7 +3000,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             </form>
           </section>
 
-          {/* 1.5. MÓDULO NOVO: Presença Diária & Inteligência Comportamental 2027 (oculto para Professor comum) */}
+          {/* 1.5. Resumo Real da Chamada Diária de Hoje */}
           {!isProfessor && (
             <section className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200/80 border-l-4 border-l-cyan-500 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -2197,19 +3009,11 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                     <i className="fa-solid fa-clipboard-user"></i>
                   </div>
                   <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-cyan-50/90 text-cyan-800 border border-cyan-200/70">
-                        Novo · Em Tempo Real
-                      </span>
-                      <span className="text-[11px] font-medium text-slate-500">
-                        Preparação Ano Letivo 2027
-                      </span>
-                    </div>
-                    <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight mt-1">
-                      Presença Diária &amp; Inteligência Comportamental 2027
+                    <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
+                      Chamada Diária &amp; Frequência em Tempo Real
                     </h2>
                     <p className="text-xs text-slate-500">
-                      Chamada rápida no dia, 3ª métrica de faltas (efetivas sem licenças/afastamentos), mensagem automática aos pais e projeções de risco com IA.
+                      Resumo operacional dos registros lançados hoje ({new Date().toLocaleDateString('pt-BR')}) em todas as turmas.
                     </p>
                   </div>
                 </div>
@@ -2219,37 +3023,27 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                   onClick={() => onNavigate ? onNavigate('presenca-diaria') : window.switchTab?.('presenca-diaria')}
                   className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition shadow-2xs flex items-center gap-2 cursor-pointer shrink-0 self-start sm:self-auto"
                 >
-                  <i className="fa-solid fa-bolt text-cyan-400"></i>
-                  <span>Fazer Chamada &amp; Analisar IA</span>
+                  <i className="fa-solid fa-clipboard-check text-cyan-400"></i>
+                  <span>Abrir Chamada Diária</span>
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-slate-100 text-xs">
-                <div className="p-3 bg-slate-50/80 rounded-2xl border border-slate-200/70 border-l-4 border-l-cyan-500">
-                  <span className="text-xs font-semibold text-cyan-900 block mb-1">
-                    <i className="fa-solid fa-check-double mr-1.5 text-cyan-600"></i> Chamada 1-Clique
-                  </span>
-                  <p className="text-slate-600 text-[11px]">
-                    Marque presença, atrasos com horário ou licenças médicas em poucos segundos por turma.
-                  </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-slate-100 text-xs">
+                <div className="p-3 bg-slate-50/80 rounded-2xl border border-slate-200/70">
+                  <span className="text-[11px] font-medium text-slate-500 block">Registros Hoje</span>
+                  <span className="text-lg font-bold text-slate-900 tabular-nums">{chamadaHojeStats.registrosHoje}</span>
                 </div>
-
-                <div className="p-3 bg-slate-50/80 rounded-2xl border border-slate-200/70 border-l-4 border-l-rose-500">
-                  <span className="text-xs font-semibold text-rose-900 block mb-1">
-                    <i className="fa-solid fa-triangle-exclamation mr-1.5 text-rose-600"></i> A 3ª Métrica de Faltas
-                  </span>
-                  <p className="text-slate-600 text-[11px]">
-                    Desconsidera licenças e atestados médicos para focar exclusivamente na infrequência de descompromisso.
-                  </p>
+                <div className="p-3 bg-emerald-50/60 rounded-2xl border border-emerald-200/70">
+                  <span className="text-[11px] font-medium text-emerald-700 block">Presentes</span>
+                  <span className="text-lg font-bold text-emerald-700 tabular-nums">{chamadaHojeStats.presentes}</span>
                 </div>
-
-                <div className="p-3 bg-slate-50/80 rounded-2xl border border-slate-200/70 border-l-4 border-l-purple-500">
-                  <span className="text-xs font-semibold text-purple-900 block mb-1">
-                    <i className="fa-solid fa-brain mr-1.5 text-purple-600"></i> Projeção Preditiva 2027
-                  </span>
-                  <p className="text-slate-600 text-[11px]">
-                    Mapeia padrões recorrentes e gera mensagens oficiais LGPD de WhatsApp para os responsáveis.
-                  </p>
+                <div className="p-3 bg-rose-50/60 rounded-2xl border border-rose-200/70">
+                  <span className="text-[11px] font-medium text-rose-700 block">Faltas Hoje</span>
+                  <span className="text-lg font-bold text-rose-700 tabular-nums">{chamadaHojeStats.faltas}</span>
+                </div>
+                <div className="p-3 bg-amber-50/60 rounded-2xl border border-amber-200/70">
+                  <span className="text-[11px] font-medium text-amber-800 block">Justificadas / Licenças</span>
+                  <span className="text-lg font-bold text-amber-800 tabular-nums">{chamadaHojeStats.justificadas}</span>
                 </div>
               </div>
             </section>
@@ -2306,7 +3100,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                         </div>
                         <div className="text-right shrink-0">
                           <span className="tabular-nums font-semibold text-slate-800">
-                            {o.horarioAtraso || '07:30'}
+                            {o.horarioAtraso || o.hora || '—'}
                           </span>
                           <span className={`block text-[11px] font-medium ${o.justificado ? 'text-emerald-700' : 'text-amber-700'}`}>
                             {o.justificado ? 'Justificado' : 'Sem justificativa'}
@@ -2695,8 +3489,8 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             </section>
           )}
 
-          {/* BUSCA ATIVA & OCORRÊNCIAS RECENTES (Vice-Direção e Direção) */}
-          {(activeRole === 'VICE_DIRETOR' || activeRole === 'DIRETOR') && (
+          {/* BUSCA ATIVA & OCORRÊNCIAS RECENTES (Direção, Vice-Direção e CGPG) */}
+          {isPdcaLeadership && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
 
               {/* Painel de Busca Ativa */}
@@ -2730,17 +3524,17 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                     </div>
                   </div>
                   <p className="text-xs text-slate-500 mt-1.5">
-                    Estudantes com baixa frequência (&lt;75%) demandando intervenção imediata da gestão escolar.
+                    Estudantes com baixa frequência (&lt;75%) ou 3+ faltas consecutivas demandando intervenção imediata (Resolução SEDUC-SP).
                   </p>
 
-                  <div className="divide-y divide-slate-100 mt-3 max-h-60 overflow-y-auto">
+                  <div className="divide-y divide-slate-100 mt-3 max-h-64 overflow-y-auto">
                     {alunosBuscaAtiva.length === 0 ? (
                       <div className="py-6 text-center text-xs text-slate-500">
                         <i className="fa-solid fa-circle-check text-emerald-500 mr-1.5 text-sm"></i>
-                        Nenhum estudante infrequente encontrado para este filtro.
+                        Nenhum estudante em gatilho de Busca Ativa encontrado para este filtro.
                       </div>
                     ) : (
-                      alunosBuscaAtiva.map(aluno => (
+                      alunosBuscaAtiva.slice(0, 12).map(aluno => (
                         <div
                           key={aluno.id || aluno.ra}
                           onClick={() => setModalAluno(aluno)}
@@ -2755,6 +3549,11 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                                   {aluno.status || aluno.situacao || 'INATIVO'}
                                 </span>
                               )}
+                              {aluno._faltasConsecutivas >= 3 && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200 shrink-0 tabular-nums">
+                                  {aluno._faltasConsecutivas} faltas seguidas
+                                </span>
+                              )}
                             </div>
                             <p className="text-[11px] text-slate-500 tabular-nums">
                               {aluno.turma} · RA {aluno.ra}
@@ -2762,7 +3561,9 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                           </div>
                           <div className="text-right shrink-0">
                             <span className="tabular-nums font-bold text-rose-600">
-                              {aluno.presenca_anual || '68%'}
+                              {aluno._freqNum !== null && aluno._freqNum !== undefined
+                                ? `${aluno._freqNum.toFixed(1).replace('.', ',')}%`
+                                : 'Sem %'}
                             </span>
                             <span className="block text-[11px] font-semibold text-indigo-700 group-hover:underline mt-0.5">
                               Ver Ficha →
@@ -2780,7 +3581,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                     onClick={() => onNavigate ? onNavigate('busca-ativa') : window.switchTab?.('busca-ativa')}
                     className="text-xs font-semibold text-indigo-700 hover:text-indigo-900 flex items-center gap-1.5 cursor-pointer"
                   >
-                    <span>Módulo de Busca Ativa SEDUC</span>
+                    <span>Módulo de Busca Ativa SEDUC ({alunosBuscaAtiva.length})</span>
                     <i className="fa-solid fa-arrow-right text-[10px]"></i>
                   </button>
                 </div>
@@ -2806,28 +3607,34 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                     Últimos registros pedagógicos e disciplinares registrados pela equipe escolar.
                   </p>
 
-                  <div className="divide-y divide-slate-100 mt-3 max-h-60 overflow-y-auto">
-                    {ocorrencias.slice(0, 6).map(oc => (
-                      <div
-                        key={oc.id}
-                        onClick={() => setModalOcorrencia(oc)}
-                        className="py-2.5 px-2.5 text-xs space-y-0.5 hover:bg-indigo-50/40 rounded-xl transition-colors cursor-pointer group"
-                        title="Clique para consultar os detalhes desta ocorrência"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-semibold text-slate-900 group-hover:text-indigo-900 truncate">
-                            {oc.nomeAluno || (oc.ra ? `RA: ${oc.ra}` : 'Geral')}
-                          </span>
-                          <span className="text-[11px] text-slate-500 tabular-nums shrink-0">
-                            {(oc.criadoEm || oc.data || '').slice(0, 10)}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-600 line-clamp-1">
-                          <strong className="text-slate-700">{oc.tipo || 'Ocorrência'}:</strong>{' '}
-                          {oc.descricao || 'Sem descrição'}
-                        </p>
+                  <div className="divide-y divide-slate-100 mt-3 max-h-64 overflow-y-auto">
+                    {ocorrencias.length === 0 ? (
+                      <div className="py-6 text-center text-xs text-slate-400">
+                        Nenhuma ocorrência registrada até o momento.
                       </div>
-                    ))}
+                    ) : (
+                      ocorrencias.slice(0, 6).map(oc => (
+                        <div
+                          key={oc.id}
+                          onClick={() => setModalOcorrencia(oc)}
+                          className="py-2.5 px-2.5 text-xs space-y-0.5 hover:bg-indigo-50/40 rounded-xl transition-colors cursor-pointer group"
+                          title="Clique para consultar os detalhes desta ocorrência"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold text-slate-900 group-hover:text-indigo-900 truncate">
+                              {oc.nomeAluno || (oc.ra ? `RA: ${oc.ra}` : 'Geral')}
+                            </span>
+                            <span className="text-[11px] text-slate-500 tabular-nums shrink-0">
+                              {(oc.criadoEm || oc.data || '').slice(0, 10)}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 line-clamp-1">
+                            <strong className="text-slate-700">{oc.tipo || 'Ocorrência'}:</strong>{' '}
+                            {oc.descricao || 'Sem descrição'}
+                          </p>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
 
@@ -2842,6 +3649,159 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                   </button>
                 </div>
               </section>
+
+            </div>
+          )}
+
+          {/* COBERTURA DOCENTE / SUBSTITUIÇÕES PEI & PONTUALIDADE / MAPÃO (Dados Reais) */}
+          {(isPdcaLeadership || isPAAC) && (
+            <div className={`grid grid-cols-1 ${isPdcaLeadership ? 'lg:grid-cols-2' : ''} gap-5 sm:gap-6`}>
+
+              {/* Cobertura Docente & Substituições PEI Hoje */}
+              <section className="bg-white rounded-2xl sm:rounded-3xl p-5 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-3 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center text-xs shrink-0">
+                        <i className="fa-solid fa-shuffle"></i>
+                      </div>
+                      <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                        Cobertura Docente &amp; Substituições Hoje
+                      </h2>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {substituicoesPendentesHoje.length > 0 && (
+                        <span className="text-[11px] tabular-nums font-bold text-rose-800 bg-rose-50 px-2.5 py-0.5 rounded-full border border-rose-200">
+                          {substituicoesPendentesHoje.length} sem substituto
+                        </span>
+                      )}
+                      <span className="text-xs tabular-nums font-semibold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200/60">
+                        {substituicoesHoje.length} hoje
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1.5">
+                    Aulas em substituição eventual registradas para a jornada integral de hoje.
+                  </p>
+
+                  {substituicoesHoje.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-emerald-700 bg-emerald-50/60 rounded-2xl border border-emerald-200/60 mt-3">
+                      <i className="fa-solid fa-circle-check text-emerald-600 mr-1.5"></i>
+                      Quadro docente completo — nenhuma substituição eventual registrada hoje.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-slate-100 mt-3 max-h-56 overflow-y-auto">
+                      {substituicoesHoje.slice(0, 8).map((sub, idx) => {
+                        const subNome = String(sub.professorSubstituto || '').trim();
+                        const semSub = !subNome || ['A DEFINIR', '-', 'SEM SUBSTITUTO', 'PENDENTE'].includes(subNome.toUpperCase());
+                        const pId = Number(sub.periodoId || sub.aulaNumero || 0);
+                        return (
+                          <div key={sub.id || idx} className="py-2.5 px-2 flex items-center justify-between gap-2 text-xs">
+                            <div className="min-w-0">
+                              <p className="font-semibold text-slate-900 truncate">
+                                {pId ? `${pId}ª Aula · ` : ''}{sub.turma || 'Turma'} · {sub.disciplina || 'Componente'}
+                              </p>
+                              <p className="text-[11px] text-slate-500 truncate">
+                                Ausente: {sub.professorAusente || 'Não informado'}
+                              </p>
+                            </div>
+                            <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border shrink-0 ${
+                              semSub
+                                ? 'bg-rose-50 text-rose-800 border-rose-200'
+                                : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                            }`}>
+                              {semSub ? 'A definir' : subNome}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => onNavigate ? onNavigate('substituicao-pei') : window.switchTab?.('substituicao-pei')}
+                    className="text-xs font-semibold text-amber-700 hover:text-amber-900 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span>Motor de Substituição PEI</span>
+                    <i className="fa-solid fa-arrow-right text-[10px]"></i>
+                  </button>
+                </div>
+              </section>
+
+              {/* Pontualidade & Fechamento Bimestral (Direção, Vice-Direção e CGPG) */}
+              {isPdcaLeadership && (
+                <section className="bg-white rounded-2xl sm:rounded-3xl p-5 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-3 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-xl bg-cyan-500/10 text-cyan-700 flex items-center justify-center text-xs shrink-0">
+                          <i className="fa-solid fa-chart-column"></i>
+                        </div>
+                        <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                          Pontualidade &amp; Mapão Bimestral
+                        </h2>
+                      </div>
+                      <span className="text-xs tabular-nums font-semibold text-slate-700 bg-slate-100 px-2.5 py-0.5 rounded-full">
+                        {alunosAtivos.length} ativos
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2.5 mt-3 text-center">
+                      <div className="p-3 rounded-2xl bg-amber-50/80 border border-amber-200/70">
+                        <p className="text-lg font-extrabold text-amber-900 tabular-nums">{atrasosHoje.length}</p>
+                        <p className="text-[11px] font-medium text-amber-700">Atrasos hoje</p>
+                      </div>
+                      <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80">
+                        <p className="text-lg font-extrabold text-slate-900 tabular-nums">{atrasosMes.length}</p>
+                        <p className="text-[11px] font-medium text-slate-500">Atrasos no mês</p>
+                      </div>
+                      <div className="p-3 rounded-2xl bg-cyan-50/80 border border-cyan-200/70">
+                        <p className="text-lg font-extrabold text-cyan-900 tabular-nums">{alunosMapaoPendentes.length}</p>
+                        <p className="text-[11px] font-medium text-cyan-700">Pend. Mapão</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 space-y-1.5">
+                      <p className="text-[11px] font-semibold text-slate-600">
+                        Turmas com mais atrasos no mês:
+                      </p>
+                      {turmasMaisAtrasos.length === 0 ? (
+                        <p className="text-xs text-slate-400 py-2">Sem ocorrências de atraso registradas no mês vigente.</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {turmasMaisAtrasos.map(([turma, qtd]) => (
+                            <span key={turma} className="text-[11px] font-semibold px-2.5 py-1 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 tabular-nums">
+                              {turma}: <strong>{qtd}</strong>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => onNavigate ? onNavigate('dash-pontualidade') : window.switchTab?.('dash-pontualidade')}
+                      className="text-xs font-semibold text-amber-700 hover:text-amber-900 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span>Painel Pontualidade</span>
+                      <i className="fa-solid fa-arrow-right text-[10px]"></i>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onNavigate ? onNavigate('dash-evasao') : window.switchTab?.('dash-evasao')}
+                      className="text-xs font-semibold text-cyan-700 hover:text-cyan-900 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span>Auditoria SED vs Mapão</span>
+                      <i className="fa-solid fa-arrow-right text-[10px]"></i>
+                    </button>
+                  </div>
+                </section>
+              )}
 
             </div>
           )}
@@ -2955,8 +3915,8 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         {/* COLUNA 3: Tarefas & Agenda Integradas */}
         <div className="space-y-5 sm:space-y-6">
 
-          {/* Painel de Tarefas da Rotina (restrito a perfis com acesso à Rotina PDCA) */}
-          {canAccessRotinaPDCA && (
+          {/* Painel compacto de Tarefas PDCA para PAAC (Direção, Vice e CGPG já possuem o Painel Executivo PDCA acima) */}
+          {isPAAC && (
             <section className="bg-white rounded-2xl sm:rounded-3xl p-5 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-3.5">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                 <div className="flex items-center gap-2">
@@ -2965,9 +3925,13 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                   </div>
                   <div>
                     <h2 className="text-base font-bold text-slate-900 tracking-tight">
-                      Minhas Tarefas
+                      Minhas Tarefas PDCA
                     </h2>
-                    <span className="text-[11px] text-slate-500">Prazos e rotinas atribuídas</span>
+                    <span className="text-[11px] text-slate-500">
+                      {pdcaStats.minhas.atrasadas > 0 || pdcaStats.minhas.emAlerta > 0
+                        ? `${pdcaStats.minhas.atrasadas} atrasada(s) · ${pdcaStats.minhas.emAlerta} prestes a vencer`
+                        : 'Prazos e rotinas atribuídas'}
+                    </span>
                   </div>
                 </div>
                 <button
@@ -2981,38 +3945,59 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
               </div>
 
               {tarefasFiltradas.length === 0 ? (
-                <p className="text-xs text-slate-400 py-4 text-center">
-                  Nenhuma tarefa pendente no momento.
+                <p className="text-xs text-emerald-700 bg-emerald-50/70 rounded-2xl py-4 px-3 text-center font-medium">
+                  Todas as suas tarefas do ciclo vigente foram concluídas.
                 </p>
               ) : (
-                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                  {tarefasFiltradas.slice(0, 5).map(tarefa => (
-                    <div
-                      key={tarefa.id}
-                      className={`p-2.5 rounded-xl border border-l-4 text-xs flex items-start gap-2.5 transition-all ${
-                        tarefa.concluido
-                          ? 'bg-slate-50 border-slate-200 border-l-slate-300 text-slate-400 line-through'
-                          : 'bg-white border-slate-200/80 border-l-amber-500 text-slate-800 hover:border-amber-300'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={Boolean(tarefa.concluido)}
-                        onChange={() => handleToggleTarefa(tarefa.id, Boolean(tarefa.concluido))}
-                        className="mt-0.5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-slate-800 leading-tight">
-                          {tarefa.titulo || tarefa.descricao}
-                        </p>
-                        {tarefa.dataLimite && (
-                          <span className="text-[11px] text-amber-700 tabular-nums mt-0.5 block">
-                            Prazo: {tarefa.dataLimite}
-                          </span>
-                        )}
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {tarefasFiltradas.slice(0, 6).map(tarefa => {
+                    const st = tarefa._statusInfo;
+                    const cardStyle = st?.atrasada
+                      ? 'bg-rose-50/60 border-rose-200 border-l-rose-500 text-slate-900'
+                      : st?.emAlertaAmarelo
+                        ? 'bg-amber-50/80 border-amber-300 border-l-amber-500 text-slate-900'
+                        : 'bg-white border-slate-200/80 border-l-slate-400 text-slate-800 hover:border-amber-300';
+
+                    return (
+                      <div
+                        key={tarefa.id}
+                        className={`p-2.5 rounded-xl border border-l-4 text-xs flex items-start gap-2.5 transition-all ${cardStyle}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={Boolean(st?.concluida)}
+                          onChange={() => handleToggleTarefa(tarefa.id, Boolean(st?.concluida))}
+                          className="mt-0.5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                        />
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <p className="font-semibold text-slate-900 leading-tight">
+                            {tarefa.titulo || tarefa.descricao}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                            <span className="px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold">
+                              {tarefa._freqKey}
+                            </span>
+                            {st?.contagemLabel && (
+                              <span className={`px-1.5 py-0.5 rounded-md font-bold tabular-nums ${
+                                st.atrasada
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : st.emAlertaAmarelo
+                                    ? 'bg-amber-100 text-amber-900'
+                                    : 'bg-slate-100 text-slate-600'
+                              }`}>
+                                {st.contagemLabel}
+                              </span>
+                            )}
+                            {st?.dataVencimentoLabel && (
+                              <span className="text-slate-500 tabular-nums">
+                                Vence {st.dataVencimentoLabel}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
@@ -3153,13 +4138,16 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         </div>
       )}
 
-      {/* Modal Nova Tarefa */}
+      {/* Modal Nova Tarefa PDCA */}
       {modalNovaTarefa && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-md w-full shadow-2xl border border-slate-200/80 max-h-[90vh] flex flex-col overflow-hidden">
+          <div className="bg-white rounded-t-3xl sm:rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200/80 max-h-[90vh] flex flex-col overflow-hidden">
             <div className="w-10 h-1 rounded-full bg-slate-200 mx-auto mt-2.5 sm:hidden shrink-0"></div>
             <div className="flex items-center justify-between border-b border-slate-100 px-5 sm:px-6 py-4 shrink-0">
-              <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">Nova Tarefa Rápida</h3>
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">Nova Tarefa PDCA</h3>
+                <p className="text-[11px] text-slate-500">Crie rotinas recorrentes ou ações pontuais integradas ao ciclo PDCA.</p>
+              </div>
               <button
                 type="button"
                 onClick={() => setModalNovaTarefa(false)}
@@ -3172,27 +4160,39 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             <form onSubmit={handleSalvarNovaTarefa} className="flex flex-col overflow-hidden">
               <div className="p-5 sm:p-6 space-y-3.5 overflow-y-auto">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Descrição da Tarefa:</label>
-                  <textarea
+                  <label className="text-xs font-semibold text-slate-700">Título da Tarefa:</label>
+                  <input
+                    type="text"
                     required
-                    rows={3}
-                    value={novaTarefaDesc}
-                    onChange={(e) => setNovaTarefaDesc(e.target.value)}
-                    placeholder="Ex: Entregar relatório de busca ativa no conselho..."
+                    value={novaTarefaTitulo}
+                    onChange={(e) => setNovaTarefaTitulo(e.target.value)}
+                    placeholder="Ex: Conferência de frequência e Busca Ativa"
                     className="w-full p-2.5 text-xs bg-slate-50/80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/30"
                   />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-700">Data Limite (Prazo):</label>
-                    <input
-                      type="date"
-                      value={novaTarefaPrazo}
-                      onChange={(e) => setNovaTarefaPrazo(e.target.value)}
-                      className="w-full p-2.5 text-xs bg-slate-50/80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/30"
-                    />
+                    <label className="text-xs font-semibold text-slate-700">Periodicidade:</label>
+                    <select
+                      value={novaTarefaFreq}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setNovaTarefaFreq(val);
+                        setNovaTarefaAntecedencia(getDefaultAntecedencia(val));
+                      }}
+                      className="w-full p-2.5 text-xs bg-slate-50/80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/30 cursor-pointer"
+                    >
+                      <option value="Diária">Diária</option>
+                      <option value="Semanal">Semanal</option>
+                      <option value="Mensal">Mensal</option>
+                      <option value="Bimestral">Bimestral</option>
+                      <option value="Semestral">Semestral</option>
+                      <option value="Anual">Anual</option>
+                      <option value="Ação Pontual (Prazo Fixo)">Ação Pontual (Prazo Fixo)</option>
+                    </select>
                   </div>
+
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-slate-700">Atribuir a:</label>
                     <select
@@ -3201,15 +4201,93 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                       className="w-full p-2.5 text-xs bg-slate-50/80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/30 cursor-pointer"
                     >
                       <option value="">Meu Cargo ({activeRole})</option>
-                      <option value="PROFESSOR">Professores</option>
-                      <option value="SECRETARIA">Secretaria</option>
+                      <option value="DIRETOR">Direção</option>
+                      <option value="VICE_DIRETOR">Vice-Direção</option>
                       <option value="CGPG">CGPG</option>
                       <option value="PAAC">PAAC</option>
-                      <option value="VICE_DIRETOR">Vice-Direção</option>
-                      <option value="DIRETOR">Direção</option>
-                      <option value="TODA A EQUIPE">Toda a Equipe</option>
+                      <option value="TODA A EQUIPE">Toda a Equipe Gestora</option>
                     </select>
                   </div>
+                </div>
+
+                {/* Regra de Vencimento Específica por Periodicidade */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-2xl bg-amber-50/60 border border-amber-200/70">
+                  {novaTarefaFreq === 'Semanal' && (
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-amber-950">Dia da Semana (Vencimento):</label>
+                      <select
+                        value={novaTarefaDiaSemana}
+                        onChange={(e) => setNovaTarefaDiaSemana(Number(e.target.value))}
+                        className="w-full p-2 text-xs bg-white border border-amber-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/30 cursor-pointer"
+                      >
+                        {DIAS_SEMANA_OPCOES.map((op: any) => (
+                          <option key={op.value} value={op.value}>{op.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {['Mensal', 'Bimestral', 'Semestral', 'Anual'].includes(novaTarefaFreq) && (
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-amber-950">Dia do Mês (Vencimento):</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={novaTarefaDiaMes}
+                        onChange={(e) => setNovaTarefaDiaMes(Number(e.target.value))}
+                        className="w-full p-2 text-xs bg-white border border-amber-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/30 tabular-nums"
+                      />
+                    </div>
+                  )}
+
+                  {novaTarefaFreq === 'Diária' && (
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-amber-950">Horário Limite Diário:</label>
+                      <input
+                        type="time"
+                        value={novaTarefaHorarioLimite}
+                        onChange={(e) => setNovaTarefaHorarioLimite(e.target.value)}
+                        className="w-full p-2 text-xs bg-white border border-amber-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/30 tabular-nums"
+                      />
+                    </div>
+                  )}
+
+                  {novaTarefaFreq === 'Ação Pontual (Prazo Fixo)' && (
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-amber-950">Data Limite (Prazo):</label>
+                      <input
+                        type="date"
+                        required
+                        value={novaTarefaPrazo}
+                        onChange={(e) => setNovaTarefaPrazo(e.target.value)}
+                        className="w-full p-2 text-xs bg-white border border-amber-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/30"
+                      />
+                    </div>
+                  )}
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-amber-950">Alerta Amarelo (dias antes):</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={30}
+                      value={novaTarefaAntecedencia}
+                      onChange={(e) => setNovaTarefaAntecedencia(Number(e.target.value))}
+                      className="w-full p-2 text-xs bg-white border border-amber-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/30 tabular-nums"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700">Detalhamento / Critério de Entrega (Opcional):</label>
+                  <textarea
+                    rows={2}
+                    value={novaTarefaDesc}
+                    onChange={(e) => setNovaTarefaDesc(e.target.value)}
+                    placeholder="Ex: Conferir assinaturas no livro de registros e validar na SED..."
+                    className="w-full p-2.5 text-xs bg-slate-50/80 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500/30"
+                  />
                 </div>
               </div>
 
@@ -3225,7 +4303,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                   type="submit"
                   className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl shadow-2xs cursor-pointer"
                 >
-                  Criar Tarefa
+                  Criar Tarefa PDCA
                 </button>
               </div>
             </form>
@@ -3578,10 +4656,23 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-medium">Presença Anual:</span>
-                  <span className={`tabular-nums font-bold ${parseFloat(String(modalAluno.presenca_anual || modalAluno.presenca || '100').replace('%', '').replace(',', '.')) < 75 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                    {modalAluno.presenca_anual || modalAluno.presenca || '95%'}
-                  </span>
+                  {(() => {
+                    const f = getRealStudentFreq(modalAluno);
+                    return (
+                      <span className={`tabular-nums font-bold ${f !== null && f < 75 ? 'text-rose-600' : f !== null ? 'text-emerald-700' : 'text-slate-500'}`}>
+                        {f !== null ? `${f.toFixed(1).replace('.', ',')}%` : 'Não informada'}
+                      </span>
+                    );
+                  })()}
                 </div>
+                {getFaltasConsecutivas(modalAluno) > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-500 font-medium">Faltas Consecutivas (Sequência):</span>
+                    <span className={`tabular-nums font-bold ${getFaltasConsecutivas(modalAluno) >= 3 ? 'text-rose-600' : 'text-slate-800'}`}>
+                      {getFaltasConsecutivas(modalAluno)} dia(s)
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-medium">Total de Faltas Computadas:</span>
                   <span className="tabular-nums font-semibold text-slate-800">{modalAluno.total_faltas || modalAluno.faltas || 0} aulas</span>

@@ -3215,11 +3215,11 @@
 
       // Matrix de Permissão de Abas por Nível de Acesso (RBAC - Presença Diária & IA liberada para todos os perfis)
       window.PERMISSOES_ABAS = {
-        DIRETOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "auditoria"],
-        VICE_DIRETOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "auditoria"],
-        "VICE-DIRETOR": ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "auditoria"],
-        CGPG: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei"],
-        CGPCG: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei"],
+        DIRETOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria"],
+        VICE_DIRETOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria"],
+        "VICE-DIRETOR": ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria"],
+        CGPG: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas"],
+        CGPCG: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas"],
         PROFESSOR_PAAC: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei"],
         PAAC: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei"],
         PROFESSOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "registros", "agenda", "admin", "horarios"],
@@ -16397,7 +16397,7 @@ Yasmin Seline`;
             autor_nome: item.autor_nome || raw.autor_nome || item.autor_criacao?.nome || raw.autor_criacao?.nome || "",
             autor_email: item.autor_email || raw.autor_email || "",
             editado_por_nome: item.editado_por_nome || raw.editado_por_nome || "",
-            isAtraso: Boolean(item.isAtraso || raw.isAtraso || tipoVal.toUpperCase().includes("ATRASO")),
+            isAtraso: origemVal !== "ATA_ESCOLAR" && Boolean(item.isAtraso || raw.isAtraso || tipoVal.toUpperCase().includes("ATRASO")),
             isDispensa: Boolean(item.isDispensa || raw.isDispensa || tipoVal.toUpperCase().includes("DISPENSA")),
             dataInicio: item.dataInicio || raw.dataInicio || "",
             dataFim: item.dataFim || raw.dataFim || "",
@@ -16578,10 +16578,13 @@ Yasmin Seline`;
                   const dataFmt = escapeHtmlDossie(rawDataFmt);
                   const origemUpper = String(ac.origem || "").toUpperCase();
                   const isBuscaAtiva = origemUpper === "BUSCA_ATIVA";
-                  const tipoExibicao = escapeHtmlDossie(ac.tipo || (isBuscaAtiva ? "BUSCA ATIVA" : "OCORRÊNCIA"));
+                  const isAtaEscolar = origemUpper === "ATA_ESCOLAR";
+                  const tipoExibicao = escapeHtmlDossie(ac.tipo || (isBuscaAtiva ? "BUSCA ATIVA" : (isAtaEscolar ? "ATA ESCOLAR" : "OCORRÊNCIA")));
                   const origemBadge = isBuscaAtiva
                     ? `<span class="block text-[8.5px] font-black text-emerald-800 uppercase tracking-wide mb-0.5">Busca Ativa</span>`
-                    : `<span class="block text-[8.5px] font-black text-blue-900 uppercase tracking-wide mb-0.5">Ocorrência</span>`;
+                    : (isAtaEscolar
+                        ? `<span class="block text-[8.5px] font-black text-indigo-900 uppercase tracking-wide mb-0.5">Ata / Reunião</span>`
+                        : `<span class="block text-[8.5px] font-black text-blue-900 uppercase tracking-wide mb-0.5">Ocorrência</span>`);
 
                   const descLimpa = escapeHtmlDossie(String(ac.descricao || ac.observacao || "—").trim());
                   const encLimpo = escapeHtmlDossie(String(ac.encaminhamento || "").trim());
@@ -17296,7 +17299,7 @@ Yasmin Seline`;
           }
 
           const totalAtrasos = acoesAluno.filter(oc => {
-            if (oc.isDispensa) return false;
+            if (oc.isDispensa || String(oc.origem || "").toUpperCase() === "ATA_ESCOLAR") return false;
             const descLower = (oc.descricao || "").toLowerCase();
             const tipoLower = (oc.tipo || "").toLowerCase();
             return oc.isAtraso === true || tipoLower.includes("atraso") || descLower.includes("atraso") || descLower.includes("atrasos");
@@ -17335,17 +17338,20 @@ Yasmin Seline`;
             const rawUsuario = item.usuario || item.autor || "";
             const usuario = window.formatarAutorOcorrencia ? window.formatarAutorOcorrencia(rawUsuario, item.rawDoc || item) : (rawUsuario || "Usuário Registrado");
             const isBuscaAtiva = item.origem === "BUSCA_ATIVA";
+            const isAtaEscolar = item.origem === "ATA_ESCOLAR";
 
             const descLower = desc.toLowerCase();
             const tipoLower = tipo.toLowerCase();
             const itemIsDispensa = Boolean(item.isDispensa || tipoLower.includes("dispensa"));
-            const itemIsAtraso = !itemIsDispensa && (item.isAtraso === true || tipoLower.includes("atraso") || descLower.includes("atraso") || descLower.includes("atrasos"));
+            const itemIsAtraso = !itemIsDispensa && !isAtaEscolar && (item.isAtraso === true || tipoLower.includes("atraso") || descLower.includes("atraso") || descLower.includes("atrasos"));
 
             let tipoClass = "bg-blue-100 text-blue-800 border-blue-300";
             if (itemIsDispensa) {
               tipoClass = "bg-blue-200 text-blue-950 border-blue-400 font-black";
             } else if (isBuscaAtiva) {
               tipoClass = "bg-emerald-100 text-emerald-800 border-emerald-300 font-bold";
+            } else if (isAtaEscolar) {
+              tipoClass = "bg-indigo-100 text-indigo-900 border-indigo-300 font-bold";
             } else if (tipo.includes("DISCIPLINAR")) {
               tipoClass = "bg-red-100 text-red-800 border-red-300";
             } else if (tipo.includes("ATRASO") || itemIsAtraso) {
@@ -17358,7 +17364,9 @@ Yasmin Seline`;
 
             const origemTag = isBuscaAtiva
               ? `<span class="px-1.5 py-0.5 bg-emerald-200 text-emerald-900 border border-emerald-400 rounded text-[9px] font-black uppercase tracking-wider flex items-center gap-1"><i class="fa-solid fa-magnifying-glass-location"></i> Busca Ativa</span>`
-              : `<span class="px-1.5 py-0.5 bg-blue-200 text-blue-900 border border-blue-300 rounded text-[9px] font-bold uppercase tracking-wider flex items-center gap-1"><i class="fa-solid fa-clipboard-list"></i> Ocorrência</span>`;
+              : (isAtaEscolar
+                  ? `<span class="px-1.5 py-0.5 bg-indigo-200 text-indigo-950 border border-indigo-400 rounded text-[9px] font-black uppercase tracking-wider flex items-center gap-1"><i class="fa-solid fa-file-signature"></i> Ata / Reunião</span>`
+                  : `<span class="px-1.5 py-0.5 bg-blue-200 text-blue-900 border border-blue-300 rounded text-[9px] font-bold uppercase tracking-wider flex items-center gap-1"><i class="fa-solid fa-clipboard-list"></i> Ocorrência</span>`);
 
             const dispensaTag = itemIsDispensa && item.dataInicio && item.dataFim
               ? `<span class="px-1.5 py-0.5 bg-blue-100 text-blue-950 border border-blue-300 rounded text-[9px] font-black uppercase tracking-wider flex items-center gap-1"><i class="fa-solid fa-calendar-check"></i> ${String(item.dataInicio).split("-").reverse().join("/")} a ${String(item.dataFim).split("-").reverse().join("/")}</span>`
@@ -17407,7 +17415,7 @@ Yasmin Seline`;
                   </div>
                   <span class="text-[10px] font-semibold text-slate-400"><i class="fa-regular fa-clock mr-1"></i>${dataFmt}</span>
                 </div>
-                <p class="text-xs text-slate-700 font-medium leading-relaxed uppercase whitespace-pre-wrap">${desc}</p>
+                <p class="text-xs text-slate-700 font-medium leading-relaxed ${isAtaEscolar ? '' : 'uppercase'} whitespace-pre-wrap">${desc}</p>
                 <div class="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
                   <span>Registrado por: <strong class="text-slate-600">${usuario}</strong></span>
                   <div class="flex items-center gap-1.5">
@@ -22440,6 +22448,7 @@ Yasmin Seline`;
         "agenda",
         "horarios",
         "substituicao-pei",
+        "gerador-atas",
         "professores",
         "auditoria",
         "dash-evasao",
@@ -22491,7 +22500,7 @@ Yasmin Seline`;
         contents.forEach(el => el.classList.add("hidden"));
 
         // Atualizar estilos dos botões e manter a ocultação visual estrita (RBAC)
-        const todasAbas = ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "horarios", "substituicao-pei", "admin", "rotina-pdca", "auditoria"];
+        const todasAbas = ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "busca-ativa", "agenda", "horarios", "substituicao-pei", "gerador-atas", "admin", "rotina-pdca", "auditoria"];
         const isDashboardUnificadoAtivo = UNIFIED_DASHBOARD_TABS.includes(tabName);
         todasAbas.forEach(tab => {
           const ehPermitida = abasPermitidas.includes(tab);
@@ -22563,6 +22572,7 @@ Yasmin Seline`;
           agenda: "Agenda & Eventos Escolares PEI",
           horarios: "Grade Horária Escolar PEI",
           "substituicao-pei": "Gestão de Substituição PEI & Eventuais",
+          "gerador-atas": "Gerador de Atas Inteligentes (SEDUC-SP)",
           admin: "Painel do Administrador",
           "rotina-pdca": "Gestão de Tarefas & Rotina PDCA",
           professores: "Gestão & Acompanhamento de Professores"

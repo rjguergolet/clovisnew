@@ -73,14 +73,23 @@ export default function CentralPendenciasPerfil({
     }
   };
 
-  // Apenas tutorados com frequência estritamente abaixo de 75% (< 75%)
-  // Estudantes com 75% ou mais NUNCA devem constar como pendência!
+  // Apenas tutorados com frequência estritamente abaixo de 75% (< 75%) ou 3+ faltas consecutivas
+  // Estudantes com 75% ou mais sem gatilho de faltas NUNCA devem constar como pendência!
   const tutoradosReaisEmRisco = useMemo(() => {
     return (tutoradosEmRisco || []).filter((al: any) => {
-      const freq = extrairPercentualFrequencia(al);
-      return freq < 75;
+      const freq = typeof al._freqNum === 'number' ? al._freqNum : extrairPercentualFrequencia(al);
+      const faltasSeq = Number(al._faltasConsecutivas || 0);
+      return freq < 75 || faltasSeq >= 3;
     });
   }, [tutoradosEmRisco]);
+
+  // Substituições pendentes de atribuição hoje
+  const substituicoesSemDocente = useMemo(() => {
+    return substituicoesHoje.filter(s => {
+      const sub = String(s.professorSubstituto || '').trim().toUpperCase();
+      return !sub || sub === 'A DEFINIR' || sub === '-' || sub === 'SEM SUBSTITUTO' || sub === 'PENDENTE';
+    });
+  }, [substituicoesHoje]);
 
   // Total de itens pendentes calculados
   const totalPendencias = useMemo(() => {
@@ -92,9 +101,8 @@ export default function CentralPendenciasPerfil({
       if (alunosBuscaAtivaCount > 0) count += 1;
     }
     if (isSecretaria && atrasosHojeCount > 0) count += 1;
-    if ((isDirecao || isCoord || isPAAC) && substituicoesHoje.length > 0) {
-      const subsPendentes = substituicoesHoje.filter(s => !s.professorSubstituto || s.professorSubstituto === 'A definir');
-      if (subsPendentes.length > 0) count += subsPendentes.length;
+    if ((isDirecao || isCoord || isPAAC) && substituicoesSemDocente.length > 0) {
+      count += substituicoesSemDocente.length;
     }
     return count;
   }, [
@@ -106,7 +114,7 @@ export default function CentralPendenciasPerfil({
     alunosMapaoPendentesCount,
     alunosBuscaAtivaCount,
     atrasosHojeCount,
-    substituicoesHoje,
+    substituicoesSemDocente.length,
     isProfessor,
     isPAAC,
     isCoord,
@@ -114,36 +122,33 @@ export default function CentralPendenciasPerfil({
     isSecretaria
   ]);
 
-  // Substituições pendentes de atribuição hoje
-  const substituicoesSemDocente = useMemo(() => {
-    return substituicoesHoje.filter(s => !s.professorSubstituto || s.professorSubstituto === 'A definir' || s.professorSubstituto === '-');
-  }, [substituicoesHoje]);
-
-  // Próxima aula ou aula atual do professor
+  // Próxima aula ou aula atual do professor (horário oficial EE Clóvis de Lucca 07:00 - 21:20)
   const aulaAtualOuProxima = useMemo(() => {
     if (!aulasHoje || aulasHoje.length === 0) return null;
     if (proximaAulaHoje) return proximaAulaHoje;
     const now = new Date();
-    const curHour = now.getHours();
-    const curMin = now.getMinutes();
-    const curTime = curHour * 60 + curMin;
+    const curTime = now.getHours() * 60 + now.getMinutes();
 
-    // Horários aproximados do PEI em minutos
     const horariosMinutos: Record<number, { inicio: number; fim: number }> = {
-      1: { inicio: 7 * 60 + 30, fim: 8 * 60 + 15 },
-      2: { inicio: 8 * 60 + 15, fim: 9 * 60 },
-      3: { inicio: 9 * 60, fim: 9 * 60 + 45 },
-      4: { inicio: 10 * 60 + 5, fim: 10 * 60 + 50 },
-      5: { inicio: 10 * 60 + 50, fim: 11 * 60 + 35 },
-      6: { inicio: 11 * 60 + 35, fim: 12 * 60 + 20 },
-      7: { inicio: 13 * 60 + 20, fim: 14 * 60 + 5 },
-      8: { inicio: 14 * 60 + 5, fim: 14 * 60 + 50 },
-      9: { inicio: 15 * 60 + 10, fim: 15 * 60 + 55 }
+      1: { inicio: 7 * 60, fim: 7 * 60 + 50 },
+      2: { inicio: 7 * 60 + 50, fim: 8 * 60 + 40 },
+      3: { inicio: 8 * 60 + 50, fim: 9 * 60 + 40 },
+      4: { inicio: 9 * 60 + 40, fim: 10 * 60 + 30 },
+      5: { inicio: 10 * 60 + 30, fim: 11 * 60 + 20 },
+      6: { inicio: 12 * 60 + 20, fim: 13 * 60 + 10 },
+      7: { inicio: 13 * 60 + 10, fim: 14 * 60 },
+      8: { inicio: 14 * 60 + 20, fim: 15 * 60 + 10 },
+      9: { inicio: 15 * 60 + 10, fim: 16 * 60 },
+      10: { inicio: 16 * 60 + 10, fim: 17 * 60 },
+      11: { inicio: 17 * 60, fim: 17 * 60 + 50 },
+      12: { inicio: 17 * 60 + 50, fim: 18 * 60 + 40 },
+      13: { inicio: 19 * 60 + 40, fim: 20 * 60 + 30 },
+      14: { inicio: 20 * 60 + 30, fim: 21 * 60 + 20 }
     };
 
     const ativas = aulasHoje.filter(a => {
-      const p = String(a.turma || '').trim();
-      return p && p !== '-' && p !== 'ATPC' && p !== 'ALMOÇO';
+      const p = String(a.turma || '').trim().toUpperCase();
+      return p && p !== '-' && !p.includes('ATPC') && !p.includes('ALMOÇO') && !p.includes('ALMOCO') && !p.includes('INTERVALO');
     });
 
     for (const aula of ativas) {
@@ -202,24 +207,35 @@ export default function CentralPendenciasPerfil({
       });
     });
 
-    // 2. Tarefas PDCA com prazo crítico ou vencido (apenas para perfis autorizados)
+    // 2. Tarefas PDCA atrasadas ou prestes a vencer (apenas para perfis autorizados)
     if (canAccessPDCA) {
       tarefasUrgentes.forEach((t: any) => {
-        const dataPrazo = t.dataLimite ? String(t.dataLimite).slice(0, 10).split('-').reverse().join('/') : 'Hoje';
+        const st = t._statusInfo;
+        const freqLabel = t._freqKey || t.frequencia || 'Rotina';
+        const isAtrasada = Boolean(st?.atrasada);
+        const prazoTexto = st?.contagemLabel
+          ? `${st.contagemLabel}${st.dataVencimentoLabel ? ` · ${st.dataVencimentoLabel}` : ''}`
+          : t.dataLimite
+          ? `Prazo: ${String(t.dataLimite).slice(0, 10).split('-').reverse().join('/')}`
+          : 'Aguardando conclusão';
         itens.push({
           id: `tarefa-${t.id}`,
           categoria: 'tarefa',
-          categoriaLabel: 'Plano PDCA · Tarefa Crítica',
-          corBadge: 'bg-amber-50/90 text-amber-900 border-amber-200/60 border-l-4 border-l-amber-500',
-          corBorda: 'border-slate-200/80 border-l-4 border-l-amber-500 bg-white',
-          icone: 'fa-solid fa-list-check text-amber-600',
+          categoriaLabel: `PDCA · ${freqLabel}`,
+          corBadge: isAtrasada
+            ? 'bg-rose-50/90 text-rose-900 border-rose-200'
+            : 'bg-amber-50/90 text-amber-900 border-amber-300',
+          corBorda: isAtrasada
+            ? 'border-rose-200 bg-rose-50/40'
+            : 'border-amber-200 bg-amber-50/50',
+          icone: `fa-solid ${isAtrasada ? 'fa-circle-exclamation text-rose-600' : 'fa-clock text-amber-600'}`,
           titulo: t.titulo || t.descricao || 'Tarefa da Rotina Escolar',
-          subtitulo: `Atribuída a: ${t.atribuirA || t.responsavel || 'Equipe PEI'}`,
-          motivoAcao: `Prazo crítico: ${dataPrazo} (Aguardando conclusão)`,
+          subtitulo: `Responsável: ${t.atribuirA || t.atribuidoA || t.responsavel || 'Equipe PEI'}`,
+          motivoAcao: prazoTexto,
           botaoAcaoTexto: 'Concluir Tarefa',
           botaoAcaoIcone: 'fa-solid fa-check-double',
           aoExecutarAcao: () => {
-            if (onToggleTarefa) onToggleTarefa(t.id, false);
+            if (onToggleTarefa) onToggleTarefa(t.id, Boolean(st?.concluida));
           },
           botaoSecundarioTexto: 'Ver no PDCA',
           aoExecutarSecundario: () => nav('rotina-pdca')
@@ -227,21 +243,24 @@ export default function CentralPendenciasPerfil({
       });
     }
 
-    // 3. Tutorados em risco de frequência (Professor / PAAC) - estritamente < 75%
+    // 3. Tutorados em risco de frequência (Professor / PAAC) - estritamente < 75% ou 3+ faltas consecutivas
     if (isProfessor || isPAAC) {
       tutoradosReaisEmRisco.forEach((al: any) => {
-        const freqNum = extrairPercentualFrequencia(al);
-        const presenca = al.presenca_anual || al.presenca || `${freqNum}%`;
+        const freqNum = typeof al._freqNum === 'number' ? al._freqNum : extrairPercentualFrequencia(al);
+        const faltasSeq = Number(al._faltasConsecutivas || 0);
+        const presenca = al.presenca_anual || al.presenca || (freqNum < 100 ? `${freqNum}%` : 'Sem reg.');
         itens.push({
           id: `tutorado-${al.ra || al.id}`,
           categoria: 'tutorado',
-          categoriaLabel: 'Tutoria PEI · Frequência em Risco',
-          corBadge: 'bg-indigo-50/80 text-slate-800 border-indigo-200/50 border-l-4 border-l-indigo-600',
-          corBorda: 'border-slate-200/80 border-l-4 border-l-indigo-500 bg-white',
-          icone: 'fa-solid fa-user-graduate text-indigo-600',
+          categoriaLabel: 'Tutoria PEI · Atenção à Frequência',
+          corBadge: 'bg-rose-50/90 text-rose-900 border-rose-200',
+          corBorda: 'border-slate-200 bg-white',
+          icone: 'fa-solid fa-user-graduate text-rose-600',
           titulo: `${al.nome} · ${al.turma || 'Turma não informada'}`,
-          subtitulo: `RA: ${al.ra} · Frequência Atual: ${presenca}`,
-          motivoAcao: `Presença em ${presenca} (Abaixo do mínimo legal de 75%)`,
+          subtitulo: `RA: ${al.ra} · Frequência: ${presenca}${faltasSeq >= 3 ? ` · ${faltasSeq} faltas seguidas` : ''}`,
+          motivoAcao: faltasSeq >= 3
+            ? `${faltasSeq} faltas consecutivas detectadas na chamada diária`
+            : `Presença em ${presenca} (Abaixo do mínimo legal de 75%)`,
           botaoAcaoTexto: 'Abrir Ficha',
           botaoAcaoIcone: 'fa-solid fa-folder-open',
           aoExecutarAcao: () => {
@@ -302,17 +321,17 @@ export default function CentralPendenciasPerfil({
       });
     }
 
-    // 6. Alunos em Busca Ativa (Direção)
-    if (isDirecao && alunosBuscaAtivaCount > 0) {
+    // 6. Alunos em Busca Ativa (Direção / Vice / CGPG)
+    if ((isDirecao || isCoord) && alunosBuscaAtivaCount > 0) {
       itens.push({
         id: 'alerta-busca-ativa',
         categoria: 'busca_ativa',
         categoriaLabel: 'Busca Ativa SEDUC · SLA 48h',
-        corBadge: 'bg-rose-50/90 text-rose-900 border-rose-200/60 border-l-4 border-l-rose-500',
-        corBorda: 'border-slate-200/80 border-l-4 border-l-rose-500 bg-white',
+        corBadge: 'bg-rose-50/90 text-rose-900 border-rose-200',
+        corBorda: 'border-slate-200 bg-white',
         icone: 'fa-solid fa-magnifying-glass-location text-rose-600',
-        titulo: `${alunosBuscaAtivaCount} estudantes em alerta crítico de faltas`,
-        subtitulo: 'Estudantes com faltas consecutivas ou frequência inferior a 75%',
+        titulo: `${alunosBuscaAtivaCount} estudante${alunosBuscaAtivaCount === 1 ? '' : 's'} em alerta de infrequência`,
+        subtitulo: 'Estudantes com 3+ faltas consecutivas ou frequência inferior a 75%',
         motivoAcao: 'Exigência legal de registro de contato com as famílias e regularização',
         botaoAcaoTexto: 'Abrir Busca Ativa',
         botaoAcaoIcone: 'fa-solid fa-arrow-right',
@@ -473,7 +492,7 @@ export default function CentralPendenciasPerfil({
                     <span>{substituicoesSemDocente.length} Aula{substituicoesSemDocente.length > 1 ? 's' : ''} sem Substituto</span>
                   </button>
                 )}
-                {isDirecao && alunosBuscaAtivaCount > 0 && (
+                {(isDirecao || isCoord) && alunosBuscaAtivaCount > 0 && (
                   <button
                     type="button"
                     onClick={() => nav('busca-ativa')}
@@ -918,34 +937,45 @@ export default function CentralPendenciasPerfil({
                 </p>
 
                 {tarefasUrgentes.length > 0 ? (
-                  <div className="mt-3 space-y-2 max-h-44 overflow-y-auto pr-1">
-                    {tarefasUrgentes.slice(0, 4).map(t => (
-                      <div
-                        key={t.id}
-                        className="p-2.5 bg-amber-50/70 rounded-xl border border-amber-200/70 border-l-4 border-l-amber-500 flex items-center justify-between text-xs gap-2"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-slate-800 truncate">{t.descricao}</p>
-                          <span className="text-[11px] font-mono text-amber-800 tabular-nums block">
-                            Prazo: {t.dataLimite ? String(t.dataLimite).slice(0, 10).split('-').reverse().join('/') : 'Hoje'}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => onToggleTarefa && onToggleTarefa(t.id, false)}
-                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] rounded-lg transition-colors shrink-0 cursor-pointer flex items-center gap-1"
-                          title="Marcar tarefa como concluída agora"
+                  <div className="mt-3 space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {tarefasUrgentes.slice(0, 4).map(t => {
+                      const st = t._statusInfo;
+                      const isAtrasada = Boolean(st?.atrasada);
+                      const isAmarelo = Boolean(st?.emAlertaAmarelo);
+                      return (
+                        <div
+                          key={t.id}
+                          className={`p-2.5 rounded-xl border flex items-center justify-between text-xs gap-2 ${
+                            isAtrasada
+                              ? 'bg-rose-50/70 border-rose-200'
+                              : isAmarelo
+                              ? 'bg-amber-50/80 border-amber-300'
+                              : 'bg-slate-50 border-slate-200'
+                          }`}
                         >
-                          <i className="fa-solid fa-check text-[10px]"></i>
-                          <span>Concluir</span>
-                        </button>
-                      </div>
-                    ))}
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-slate-900 truncate">{t.titulo || t.descricao}</p>
+                            <span className={`text-[11px] tabular-nums block ${isAtrasada ? 'text-rose-700 font-medium' : 'text-amber-800 font-medium'}`}>
+                              {t._freqKey || 'Rotina'} · {st?.contagemLabel || (t.dataLimite ? `Prazo: ${String(t.dataLimite).slice(0, 10).split('-').reverse().join('/')}` : 'Pendente')}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => onToggleTarefa && onToggleTarefa(t.id, Boolean(st?.concluida))}
+                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-[11px] rounded-lg transition-colors shrink-0 cursor-pointer flex items-center gap-1"
+                            title="Marcar tarefa como concluída agora"
+                          >
+                            <i className="fa-solid fa-check text-[10px]"></i>
+                            <span>Concluir</span>
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="mt-3 p-3 bg-emerald-50/70 rounded-xl border border-emerald-200/70 text-center text-xs text-emerald-800 font-medium flex items-center justify-center gap-1.5">
                     <i className="fa-solid fa-circle-check text-emerald-600"></i>
-                    <span>Nenhuma tarefa atrasada hoje.</span>
+                    <span>Nenhuma tarefa atrasada ou em alerta hoje.</span>
                   </div>
                 )}
               </div>
@@ -1180,8 +1210,8 @@ export default function CentralPendenciasPerfil({
             </div>
           )}
 
-          {/* 5. GESTÃO: BUSCA ATIVA & SLA SEDUC (DIREÇÃO/VICE) */}
-          {(filtroAtivo === 'todas' || filtroAtivo === 'urgentes' || filtroAtivo === 'alunos') && isDirecao && (
+          {/* 5. GESTÃO: BUSCA ATIVA & SLA SEDUC (DIREÇÃO/VICE/CGPG) */}
+          {(filtroAtivo === 'todas' || filtroAtivo === 'urgentes' || filtroAtivo === 'alunos') && (isDirecao || isCoord) && (
             <div className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between space-y-3">
               <div>
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-900 gap-2">
@@ -1191,7 +1221,7 @@ export default function CentralPendenciasPerfil({
                     </span>
                     <span>Busca Ativa &amp; SLA</span>
                   </span>
-                  <span className="text-[11px] font-semibold text-rose-700 tabular-nums">
+                  <span className={`text-[11px] font-semibold tabular-nums ${alunosBuscaAtivaCount > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
                     {alunosBuscaAtivaCount} em risco
                   </span>
                 </div>
@@ -1199,7 +1229,7 @@ export default function CentralPendenciasPerfil({
                   Estudantes com 3 faltas seguidas ou frequência &lt; 75% (Res. SEDUC 39/2023).
                 </p>
 
-                <div className="mt-3 p-3 bg-rose-50/60 border border-rose-200/60 border-l-4 border-l-rose-500 rounded-xl text-xs space-y-1">
+                <div className="mt-3 p-3 bg-slate-50 border border-slate-200/70 rounded-xl text-xs space-y-1">
                   <div className="flex items-center justify-between font-semibold text-slate-800">
                     <span>SLA de Contato:</span>
                     <span className="text-rose-700 font-mono">48 horas</span>

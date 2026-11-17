@@ -1120,6 +1120,17 @@
               <span class="truncate">Substituição PEI</span>
               <span id="badge-nav-substituicao" class="ml-auto hidden px-2 py-0.5 text-[10px] font-black rounded-full bg-amber-400 text-amber-950 shadow-2xs font-bold">0</span>
             </button>
+
+            <button 
+              onclick="switchTab('gerador-atas')" 
+              id="nav-gerador-atas" 
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer hidden"
+            >
+              <div class="nav-icon-tile bg-amber-400/20 border-amber-400/30 text-amber-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-file-signature text-xs"></i>
+              </div>
+              <span class="truncate">Gerador de Atas</span>
+            </button>
           </div>
         </div>
 
@@ -1187,14 +1198,14 @@
           var GROUP_TABS = {
             pedagogica: ['dash-evasao', 'dash-academico', 'dash-pontualidade', 'dash-convivencia', 'dash-pei', 'dash-docente', 'dash-governanca'],
             'vida-escolar': ['alunos', 'registros', 'busca-ativa', 'presenca-diaria'],
-            rotina: ['rotina-pdca', 'agenda', 'horarios', 'substituicao-pei'],
+            rotina: ['rotina-pdca', 'agenda', 'horarios', 'substituicao-pei', 'gerador-atas'],
             institucional: ['professores', 'secretaria', 'auditoria', 'admin']
           };
 
           var GROUP_DEFAULT_SUBTITLE = {
             pedagogica: 'Central BI · 7 painéis',
             'vida-escolar': 'Alunos, registros e presença',
-            rotina: 'PDCA, agenda e horários',
+            rotina: 'PDCA, agenda, horários e atas',
             institucional: 'Docentes, secretaria e banco'
           };
 
@@ -1214,6 +1225,7 @@
             agenda: 'Agenda PEI',
             horarios: 'Horários PEI',
             'substituicao-pei': 'Substituição PEI',
+            'gerador-atas': 'Gerador de Atas',
             professores: 'Professores',
             secretaria: 'Secretaria Escolar',
             auditoria: 'Auditoria',
@@ -5168,6 +5180,14 @@
                 <i class="fa-solid fa-user-gear"></i>
               </div>
               <span class="text-[11px] font-bold text-slate-700 truncate w-full">Substituição</span>
+            </button>
+
+            <!-- Gerador de Atas -->
+            <button type="button" onclick="window.switchTab('gerador-atas'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile hidden flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-gerador-atas">
+              <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-600 to-orange-600 text-white flex items-center justify-center text-lg shadow-sm">
+                <i class="fa-solid fa-file-signature"></i>
+              </div>
+              <span class="text-[11px] font-bold text-slate-700 truncate w-full">Atas IA</span>
             </button>
 
             <!-- Professores -->

@@ -1348,6 +1348,17 @@ export default function Professores({ userRole }) {
                 </button>
               </div>
 
+              {modalDossie.acoes_2026 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-1.5">
+                  <span className="text-[11px] font-semibold text-slate-600 block">
+                    Histórico Consolidado 2026 (Atas &amp; Ações Institucionais)
+                  </span>
+                  <div className="text-xs text-slate-700 whitespace-pre-wrap leading-relaxed tabular-nums">
+                    {modalDossie.acoes_2026}
+                  </div>
+                </div>
+              )}
+
               {(() => {
                 const profAnotacoes = anotacoesPermitidas.filter(
                   a => a.professorId === modalDossie.id || a.professorEmail === modalDossie.email

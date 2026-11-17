@@ -469,7 +469,9 @@ export async function gerarESalvarDossieAlunoPdf(dados: DossiePdfInput): Promise
 
       const origemUp = String(ac.origem || '').toUpperCase();
       const isBA = origemUp === 'BUSCA_ATIVA';
-      const tipoLabel = `${isBA ? 'BUSCA ATIVA' : 'OCORRÊNCIA'}\n${String(ac.tipo || (isBA ? 'BUSCA ATIVA' : 'OCORRÊNCIA')).toUpperCase()}`;
+      const isAta = origemUp === 'ATA_ESCOLAR';
+      const origemLabel = isBA ? 'BUSCA ATIVA' : (isAta ? 'ATA / REUNIÃO' : 'OCORRÊNCIA');
+      const tipoLabel = `${origemLabel}\n${String(ac.tipo || origemLabel).toUpperCase()}`;
 
       const descLimpa = String(ac.descricao || ac.observacao || '—').trim();
       const partesRelato: string[] = [descLimpa];

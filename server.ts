@@ -5,7 +5,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import compression from 'compression';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 
 import * as pdfParseModule from 'pdf-parse';
 const pdfParse = (pdfParseModule as any).default || pdfParseModule;
@@ -128,6 +128,7 @@ async function authorizeDbOperation(
     isSensitiveAdminCol ||
     isConfigEscolaPermissionDoc ||
     realCol === 'config_escola' ||
+    realCol === 'atas_escolares' ||
     realCol === 'alunos';
 
   if (requiresAuth && !realUser) {
@@ -218,6 +219,16 @@ async function authorizeDbOperation(
     return { allowed: true, status: 200, message: 'OK' };
   }
 
+  if (realCol === 'atas_escolares') {
+    if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(role)) {
+      return {
+        allowed: false,
+        status: 403,
+        message: `Acesso negado: O Gerador de Atas é exclusivo para Direção, Vice-Direção e CGPG (perfil real: ${role}).`
+      };
+    }
+  }
+
   // Regras específicas de EXCLUSÃO (DELETE) por coleção
   if (op.type === 'delete') {
     if (realCol === 'alunos') {
@@ -228,12 +239,12 @@ async function authorizeDbOperation(
           message: `Acesso negado: Perfil real "${role}" não tem permissão para excluir estudantes.`
         };
       }
-    } else if (['ocorrencias', 'busca_ativa', 'registros'].includes(realCol)) {
+    } else if (['ocorrencias', 'busca_ativa', 'registros', 'atas_escolares'].includes(realCol)) {
       if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(role)) {
         return {
           allowed: false,
           status: 403,
-          message: `Acesso negado: Perfil real "${role}" não tem permissão para excluir ocorrências ou registros de busca ativa.`
+          message: `Acesso negado: Perfil real "${role}" não tem permissão para excluir ocorrências, atas ou registros de busca ativa.`
         };
       }
     } else {
@@ -254,8 +265,15 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  // Compressão GZIP para payloads rápidos sobre a rede
-  app.use(compression());
+  // Compressão GZIP para payloads rápidos sobre a rede (desativada em rotas SSE para streaming imediato)
+  app.use(compression({
+    filter: (req, res) => {
+      if (req.path === '/api/ai/estruturar-ata' || req.headers.accept === 'text/event-stream') {
+        return false;
+      }
+      return compression.filter(req, res);
+    }
+  }));
   app.use(express.json({ limit: '15mb' }));
 
   // ==========================================
@@ -1770,6 +1788,601 @@ Processe o áudio em anexo, diferencie todas as vozes e retorne o JSON estrutura
       res.status(500).json({
         error: 'Erro ao transcrever áudio e identificar vozes com IA',
         details: err.message
+      });
+    }
+  });
+
+  // ==========================================
+  // ROTA DE IA: GERADOR DE ATAS INTELIGENTES (ROTINA E OPERAÇÕES)
+  // Restrito a Direção, Vice-Direção e CGPG. Otimizado com ThinkingLevel.LOW + SSE streaming.
+  // ==========================================
+  let cachedGeminiAtaClient: GoogleGenAI | null = null;
+  const limparMarkdownParaPlainText = (txt: string) =>
+    String(txt || '')
+      .replace(/^```[\s\S]*?\n/, '')
+      .replace(/```$/g, '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/^#{1,6}\s+/gm, '')
+      .replace(/\r\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+  app.post('/api/ai/estruturar-ata', async (req, res) => {
+    try {
+      const realUser = await resolveRealAuthenticatedUser(req);
+      if (!realUser) {
+        return res.status(401).json({
+          error: 'Autenticação obrigatória para utilizar o Gerador de Atas Inteligentes.'
+        });
+      }
+      if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(realUser.realRole)) {
+        return res.status(403).json({
+          error: `Acesso restrito: O Gerador de Atas é exclusivo para Direção, Vice-Direção e CGPG (perfil: "${realUser.realRole}").`
+        });
+      }
+
+      const {
+        tipoAta = 'Atendimento Individual',
+        dataAta,
+        horarioAta,
+        localAta = 'dependências da E.E. Clóvis de Lucca (Programa Ensino Integral - PEI)',
+        estudantes = [],
+        funcionarios = [],
+        outrosParticipantes = '',
+        notasBrutas = '',
+        stream = false
+      } = req.body || {};
+
+      if (!String(notasBrutas || '').trim()) {
+        return res.status(400).json({
+          error: 'Preencha o campo de Notas Brutas com os pontos principais da reunião ou atendimento para estruturar a ata.'
+        });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+      if (!apiKey) {
+        return res.status(500).json({
+          error: 'Chave da API Gemini não configurada no servidor (GEMINI_API_KEY).'
+        });
+      }
+
+      if (!cachedGeminiAtaClient) {
+        cachedGeminiAtaClient = new GoogleGenAI({
+          apiKey,
+          httpOptions: {
+            headers: {
+              'User-Agent': 'aistudio-build'
+            }
+          }
+        });
+      }
+      const ai = cachedGeminiAtaClient;
+
+      const agora = new Date();
+      let refDate = agora;
+      if (dataAta && /^\d{4}-\d{2}-\d{2}$/.test(String(dataAta).trim())) {
+        const [y, m, d] = String(dataAta).trim().split('-').map(Number);
+        refDate = new Date(y, m - 1, d, 12, 0, 0);
+      }
+
+      const diasExtenso = [
+        '', 'primeiro', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez',
+        'onze', 'doze', 'treze', 'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove', 'vinte',
+        'vinte e um', 'vinte e dois', 'vinte e três', 'vinte e quatro', 'vinte e cinco', 'vinte e seis',
+        'vinte e sete', 'vinte e oito', 'vinte e nove', 'trinta', 'trinta e um'
+      ];
+      const mesesExtenso = [
+        'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+        'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
+      ];
+
+      const diaNum = refDate.getDate();
+      const diaPorExtenso = diasExtenso[diaNum] || String(diaNum);
+      const mesPorExtenso = mesesExtenso[refDate.getMonth()] || 'novembro';
+      const anoNum = refDate.getFullYear();
+      const horarioStr = String(horarioAta || '').trim() || agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+      const listaEstudantesTxt = Array.isArray(estudantes) && estudantes.length > 0
+        ? estudantes.map((e: any) => `${String(e.nome || '').trim()}${e.turma ? ` (${e.turma})` : ''}${e.ra ? ` - RA ${e.ra}` : ''}`).join('; ')
+        : 'Nenhum estudante vinculado.';
+
+      const listaFuncionariosTxt = Array.isArray(funcionarios) && funcionarios.length > 0
+        ? funcionarios.map((f: any) => `${String(f.nome || '').trim()}${f.cargo ? ` (${f.cargo})` : ''}`).join('; ')
+        : 'Nenhum funcionário selecionado.';
+
+      const outrosTxt = String(outrosParticipantes || '').trim() || 'Nenhum outro participante.';
+
+      const systemInstruction = `Você é o Redator Oficial da E.E. Clóvis de Lucca (PEI / SEDUC-SP). Transforme as notas brutas em ATA FORMAL no padrão tradicional do Estado de São Paulo para Livro Ata físico.
+
+REGRAS:
+1. Abertura obrigatória: "Aos ${diaPorExtenso} dias do mês de ${mesPorExtenso} do ano de ${anoNum}, às ${horarioStr}, nas ${localAta}, reuniram-se..." citando o tipo ("${tipoAta}") e todos os presentes.
+2. Redija de 3 a 4 parágrafos longos, coesos e impessoais (3ª pessoa: "registrou-se", "esclareceu-se", "pactuou-se").
+3. Linguagem estritamente técnica, polida, diplomática e juridicamente segura: elimine gírias, juízos de valor, rótulos clínicos ou termos que exponham a equipe escolar ou estudantes, mantendo fidelidade aos fatos e encaminhamentos.
+4. SAÍDA SOMENTE EM TEXTO SIMPLES (plain text): proibido Markdown (**, *, #, -, •) ou títulos. Separe parágrafos apenas com uma linha em branco (\\n\\n).
+5. Encerre no molde clássico: "Nada mais havendo a tratar, deu-se por encerrada a presente reunião, da qual, para constar, eu, na qualidade de responsável pela lavratura, redigi a presente ata que, lida e achada conforme, segue assinada pelos presentes."
+6. Logo após o encerramento, adicione exatamente uma linha contendo apenas "---RESUMO_DOSSIE---" seguida de 1 a 2 frases curtas, impessoais e objetivas resumindo o que foi tratado e decidido para constar no Dossiê do estudante.`;
+
+      const promptUser = `Tipo: ${tipoAta} | Data/Hora: ${refDate.toLocaleDateString('pt-BR')} às ${horarioStr}
+Funcionários: ${listaFuncionariosTxt}
+Estudantes: ${listaEstudantesTxt}
+Outros Presentes: ${outrosTxt}
+Notas Brutas:
+${String(notasBrutas).trim()}`;
+
+      const formatarErroGeminiAmigavel = (err: any): { status: number; message: string } => {
+        const rawMsg = String(err?.message || err || '');
+        const is429 = err?.status === 429 || rawMsg.includes('"code":429') || rawMsg.includes('RESOURCE_EXHAUSTED') || rawMsg.includes('quota');
+        if (is429) {
+          return {
+            status: 429,
+            message: 'Limite diário de requisições gratuitas da API Gemini atingido (429 RESOURCE_EXHAUSTED). Para aumentar a cota imediatamente, selecione ou vincule uma chave com faturamento ativo no painel Settings > Secrets.'
+          };
+        }
+        const is403 = err?.status === 403 || rawMsg.includes('PERMISSION_DENIED');
+        if (is403) {
+          return {
+            status: 403,
+            message: 'Permissão negada na chave da API Gemini (403). Verifique a chave configurada em Settings > Secrets.'
+          };
+        }
+        return {
+          status: err?.status === 400 ? 400 : 500,
+          message: rawMsg.length > 260 ? 'Erro ao consultar o serviço Gemini AI. Tente novamente em instantes.' : (rawMsg || 'Erro ao estruturar ata com Gemini AI.')
+        };
+      };
+
+      const extrairAtaEResumo = (rawFull: string) => {
+        const partes = String(rawFull || '').split(/---+\s*RESUMO_DOSSIE\s*---+/i);
+        const textoAtaLimpo = limparMarkdownParaPlainText(partes[0] || '');
+        const resumoLimpo = limparMarkdownParaPlainText(partes[1] || '');
+        return { textoAtaLimpo, resumoLimpo };
+      };
+
+      const ataCandidates: Array<{ model: string; thinkingLevel: ThinkingLevel }> = [
+        { model: 'gemini-3.1-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL },
+        { model: 'gemini-4-hydrogen', thinkingLevel: ThinkingLevel.LOW }
+      ];
+
+      if (stream) {
+        res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-cache, no-transform');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no');
+        if (typeof (res as any).flushHeaders === 'function') {
+          (res as any).flushHeaders();
+        }
+
+        let fullText = '';
+        let modeloUsado = ataCandidates[0].model;
+        let lastErr: any = null;
+        let streamIniciado = false;
+
+        for (const cand of ataCandidates) {
+          try {
+            fullText = '';
+            modeloUsado = cand.model;
+            const responseStream = await ai.models.generateContentStream({
+              model: cand.model,
+              contents: promptUser,
+              config: {
+                systemInstruction,
+                thinkingConfig: { thinkingLevel: cand.thinkingLevel }
+              }
+            });
+
+            let enviadoLen = 0;
+            for await (const chunk of responseStream) {
+              const delta = chunk.text || '';
+              if (!delta) continue;
+              streamIniciado = true;
+              fullText += delta;
+
+              const markerPos = fullText.search(/---+\s*RESUMO_DOSSIE/i);
+              const safeLimit = markerPos >= 0 ? markerPos : Math.max(0, fullText.length - 18);
+              if (safeLimit > enviadoLen) {
+                const novoTrecho = fullText.slice(enviadoLen, safeLimit);
+                enviadoLen = safeLimit;
+                if (novoTrecho) {
+                  res.write(`data: ${JSON.stringify({ chunk: novoTrecho })}\n\n`);
+                  if (typeof (res as any).flush === 'function') (res as any).flush();
+                }
+              }
+            }
+            lastErr = null;
+            break;
+          } catch (candErr: any) {
+            lastErr = candErr;
+            console.warn(`[API AI Estruturar Ata Stream] Falha em ${cand.model}:`, candErr?.message || candErr);
+            if (streamIniciado) break;
+          }
+        }
+
+        if (lastErr && !fullText.trim()) {
+          const amigavel = formatarErroGeminiAmigavel(lastErr);
+          res.write(`data: ${JSON.stringify({ error: amigavel.message })}\n\n`);
+          return res.end();
+        }
+
+        const { textoAtaLimpo, resumoLimpo } = extrairAtaEResumo(fullText);
+        if (!textoAtaLimpo) {
+          res.write(`data: ${JSON.stringify({ error: 'O modelo Gemini não retornou texto estruturado. Detalhe melhor as notas brutas.' })}\n\n`);
+        } else {
+          res.write(`data: ${JSON.stringify({ done: true, textoAta: textoAtaLimpo, resumoDossie: resumoLimpo, modelo: modeloUsado })}\n\n`);
+        }
+        return res.end();
+      }
+
+      let rawText = '';
+      let modeloUsado = ataCandidates[0].model;
+      let lastErr: any = null;
+
+      for (const cand of ataCandidates) {
+        try {
+          modeloUsado = cand.model;
+          const response = await ai.models.generateContent({
+            model: cand.model,
+            contents: promptUser,
+            config: {
+              systemInstruction,
+              thinkingConfig: { thinkingLevel: cand.thinkingLevel }
+            }
+          });
+          rawText = (response.text || '').trim();
+          if (rawText) {
+            lastErr = null;
+            break;
+          }
+        } catch (candErr: any) {
+          lastErr = candErr;
+          console.warn(`[API AI Estruturar Ata] Falha em ${cand.model}:`, candErr?.message || candErr);
+        }
+      }
+
+      if (lastErr && !rawText) {
+        const amigavel = formatarErroGeminiAmigavel(lastErr);
+        return res.status(amigavel.status).json({ error: amigavel.message });
+      }
+
+      const { textoAtaLimpo, resumoLimpo } = extrairAtaEResumo(rawText);
+      if (!textoAtaLimpo) {
+        return res.status(502).json({
+          error: 'O modelo Gemini não retornou texto estruturado. Tente novamente com mais detalhes nas notas brutas.'
+        });
+      }
+
+      res.json({
+        success: true,
+        textoAta: textoAtaLimpo,
+        resumoDossie: resumoLimpo,
+        modelo: modeloUsado
+      });
+    } catch (err: any) {
+      console.error('[API AI Estruturar Ata] Erro:', err?.message || err);
+      const status = err?.status === 403 || err?.status === 400 || err?.status === 429 ? err.status : 500;
+      res.status(status).json({
+        error: 'Erro ao estruturar ata com Gemini AI.',
+        details: err?.message || String(err)
+      });
+    }
+  });
+
+  // ==========================================
+  // ROTA: SALVAR ATA & INTEGRAR AUTOMATICAMENTE EM acoes_2026 (ALUNOS E FUNCIONÁRIOS)
+  // ==========================================
+  app.post('/api/atas/salvar', async (req, res) => {
+    try {
+      const realUser = await resolveRealAuthenticatedUser(req);
+      if (!realUser) {
+        return res.status(401).json({
+          error: 'Autenticação obrigatória para salvar atas e registrar histórico nos dossiês.'
+        });
+      }
+      if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(realUser.realRole)) {
+        return res.status(403).json({
+          error: `Acesso negado: O Gerador de Atas é exclusivo para Direção, Vice-Direção e CGPG (perfil real: "${realUser.realRole}").`
+        });
+      }
+
+      const {
+        tipoAta = 'Outros',
+        dataAta,
+        horarioAta = '',
+        estudantes = [],
+        funcionarios = [],
+        outrosParticipantes = '',
+        notasBrutas = '',
+        textoAta = '',
+        resumoDossie = ''
+      } = req.body || {};
+
+      const textoFinal = String(textoAta || '').trim();
+      if (!textoFinal) {
+        return res.status(400).json({ error: 'O texto estruturado da ata é obrigatório para salvar.' });
+      }
+
+      const hojeIso = dataAta && /^\d{4}-\d{2}-\d{2}$/.test(String(dataAta).trim())
+        ? String(dataAta).trim()
+        : new Date().toISOString().slice(0, 10);
+      const [yyyy, mm, dd] = hojeIso.split('-');
+      const dataBR = `${dd}/${mm}/${yyyy}`;
+
+      const anotacaoCurta = `[${dataBR}] - Ata de ${tipoAta} registrada`;
+      const nowIso = new Date().toISOString();
+
+      // Gera resumo objetivo e diplomático da conversa (1 a 2 frases) para o Dossiê dos envolvidos se não veio pré-preenchido
+      let resumoConversa = String(resumoDossie || '').trim();
+      if (!resumoConversa) {
+        const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+        if (apiKey) {
+          try {
+            if (!cachedGeminiAtaClient) {
+              cachedGeminiAtaClient = new GoogleGenAI({
+                apiKey,
+                httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+              });
+            }
+            const sumResp = await cachedGeminiAtaClient.models.generateContent({
+              model: 'gemini-3.1-flash-lite',
+              contents: `Resuma em no máximo 2 frases curtas e objetivas (texto simples, sem Markdown, linguagem técnica e diplomática) o assunto principal tratado e os encaminhamentos desta ata (${tipoAta}) para constar no histórico do dossiê escolar:\n\n${textoFinal.slice(0, 3500)}`,
+              config: {
+                systemInstruction: 'Você sintetiza atas escolares em 1 a 2 frases impessoais, objetivas e seguras para registro em dossiê estudantil/docente. Retorne apenas texto simples, sem asteriscos ou marcadores.',
+                thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
+              }
+            });
+            resumoConversa = limparMarkdownParaPlainText(sumResp.text || '');
+          } catch (sumErr: any) {
+            console.warn('[API Atas] Aviso ao resumir ata via IA, usando síntese textual:', sumErr?.message);
+          }
+        }
+
+        if (!resumoConversa) {
+          const baseBruta = String(notasBrutas || '').trim();
+          if (baseBruta) {
+            resumoConversa = baseBruta.replace(/\s+/g, ' ').slice(0, 260);
+          } else {
+            const paragrafos = textoFinal.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+            const miolo = paragrafos.length > 1 ? paragrafos[1] : paragrafos[0] || '';
+            resumoConversa = miolo.replace(/\s+/g, ' ').slice(0, 260);
+          }
+        }
+      }
+
+      const registroCompletoDossie = resumoConversa
+        ? `Ata de ${tipoAta} (${dataBR}): ${resumoConversa}`
+        : anotacaoCurta;
+
+      // REGRA CRÍTICA: Sem campos id ou _id no payload gravado no banco
+      const ataPayload = {
+        tipoAta: String(tipoAta),
+        dataAta: hojeIso,
+        dataBR,
+        horarioAta: String(horarioAta || ''),
+        estudantes: Array.isArray(estudantes)
+          ? estudantes.map((e: any) => ({
+              ra: String(e.ra || '').trim(),
+              nome: String(e.nome || '').trim(),
+              turma: String(e.turma || '').trim()
+            }))
+          : [],
+        funcionarios: Array.isArray(funcionarios)
+          ? funcionarios.map((f: any) => ({
+              nome: String(f.nome || '').trim(),
+              email: String(f.email || '').trim(),
+              cargo: String(f.cargo || '').trim()
+            }))
+          : [],
+        outrosParticipantes: String(outrosParticipantes || '').trim(),
+        notasBrutas: String(notasBrutas || '').trim(),
+        textoAta: textoFinal,
+        resumoDossie: resumoConversa,
+        anotacaoDossie: registroCompletoDossie,
+        autorNome: realUser.nome || realUser.email,
+        autorEmail: realUser.email,
+        autorCargo: realUser.realRole,
+        criadoEm: nowIso
+      };
+
+      const savedAta = await addDoc('atas_escolares', ataPayload);
+      const db = await getDatabase();
+
+      // 1. Integração Automática no Dossiê de cada estudante envolvido (coleção ocorrencias + aluno.ocorrencias + acoes_2026)
+      const alunosAtualizados: Array<{ ra: string; acoes_2026: string; novaOcorrencia: any }> = [];
+      const ocorrenciasCriadas: any[] = [];
+      if (Array.isArray(estudantes) && estudantes.length > 0) {
+        const colAlunos = db.collection('alunos');
+        for (const est of estudantes) {
+          const raStr = String(est?.ra || '').trim();
+          const estId = String(est?.id || '').trim();
+          const estNome = String(est?.nome || '').trim();
+          if (!raStr && !estId && !estNome) continue;
+
+          try {
+            let alunoDoc: any = null;
+            if (raStr) {
+              alunoDoc = await colAlunos.findOne(buildDocumentQuery(raStr));
+            }
+            if (!alunoDoc && estId) {
+              alunoDoc = await colAlunos.findOne(buildDocumentQuery(estId));
+            }
+            if (!alunoDoc && estNome) {
+              alunoDoc = await colAlunos.findOne({
+                nome: { $regex: new RegExp(`^${estNome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
+              });
+            }
+
+            const raResolvido = String(alunoDoc?.ra || raStr || estId || '').trim();
+            const nomeResolvido = String(alunoDoc?.nome || estNome || '').trim();
+            const turmaResolvida = String(alunoDoc?.turma || est?.turma || '').trim();
+            const horaVal = horarioAta && /^\d{2}:\d{2}/.test(String(horarioAta).trim())
+              ? String(horarioAta).trim().slice(0, 5)
+              : '12:00';
+
+            // REGRA CRÍTICA: Sem campos id ou _id no payload gravado em ocorrencias / array embutido
+            const ocorrenciaSemId = {
+              ra: raResolvido,
+              nomeAluno: nomeResolvido.toUpperCase(),
+              turma: turmaResolvida.toUpperCase(),
+              tipo: `Ata de ${tipoAta}`,
+              origem: 'ATA_ESCOLAR',
+              descricao: resumoConversa
+                ? `${resumoConversa}`
+                : anotacaoCurta,
+              encaminhamento: `Registrado via Gerador de Atas (${dataBR}${horarioAta ? ` às ${horarioAta}` : ''} · Ref.: ${savedAta.id}).`,
+              data: `${hojeIso}T${horaVal}:00`,
+              dataRegistro: nowIso,
+              ataId: savedAta.id,
+              registradoConviva: false,
+              usuario: realUser.nome || realUser.email,
+              autor: realUser.nome || realUser.email,
+              autor_nome: realUser.nome || realUser.email,
+              autor_email: realUser.email,
+              cargo: realUser.realRole,
+              criadoEm: nowIso
+            };
+
+            const savedOc = await addDoc('ocorrencias', ocorrenciaSemId);
+            const ocComId = { id: savedOc.id, ...ocorrenciaSemId };
+            ocorrenciasCriadas.push(ocComId);
+
+            if (alunoDoc) {
+              const linhaAcao = `[${dataBR}] - Ata de ${tipoAta}${resumoConversa ? `: ${resumoConversa}` : ' registrada'}`;
+              const atual = String(alunoDoc.acoes_2026 || '').trim();
+              const novoAcoes = atual ? `${atual}\n${linhaAcao}` : linhaAcao;
+
+              const updateOp: Record<string, any> = {
+                $set: {
+                  acoes_2026: novoAcoes,
+                  atualizadoEm: nowIso
+                }
+              };
+              if (Array.isArray(alunoDoc.ocorrencias)) {
+                updateOp.$push = { ocorrencias: ocorrenciaSemId };
+              } else {
+                updateOp.$set.ocorrencias = [ocorrenciaSemId];
+              }
+
+              await colAlunos.updateOne({ _id: alunoDoc._id }, updateOp);
+              alunosAtualizados.push({
+                ra: raResolvido,
+                acoes_2026: novoAcoes,
+                novaOcorrencia: ocComId
+              });
+            }
+          } catch (estErr: any) {
+            console.warn(`[API Atas] Falha ao atualizar dossiê do estudante ${raStr || estNome || estId}:`, estErr?.message);
+          }
+        }
+      }
+
+      // 2. Integração Automática no acoes_2026 e Dossiê de cada funcionário envolvido
+      const funcionariosAtualizados: Array<{ id?: string; email?: string; nome: string; acoes_2026: string }> = [];
+      const nivelMap: Record<string, number> = {
+        DIRETOR: 1,
+        VICE_DIRETOR: 2,
+        CGPG: 3,
+        PAAC: 4,
+        SECRETARIA: 5
+      };
+      const autorNivel = nivelMap[realUser.realRole] || 4;
+
+      if (Array.isArray(funcionarios) && funcionarios.length > 0) {
+        const colUsuarios = db.collection('usuarios');
+        for (const func of funcionarios) {
+          const funcId = String(func?.id || '').trim();
+          const funcEmail = String(func?.email || '').trim().toLowerCase();
+          const funcNome = String(func?.nome || '').trim();
+          if (!funcId && !funcEmail && !funcNome) continue;
+
+          try {
+            let userDoc: any = null;
+            if (funcId) {
+              userDoc = await colUsuarios.findOne(buildDocumentQuery(funcId));
+            }
+            if (!userDoc && funcEmail) {
+              userDoc = await colUsuarios.findOne({
+                email: { $regex: new RegExp(`^${funcEmail.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
+              });
+            }
+            if (!userDoc && funcNome) {
+              userDoc = await colUsuarios.findOne({
+                nome: { $regex: new RegExp(`^${funcNome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
+              });
+            }
+
+            const linhaFunc = `[${dataBR}] - Ata de ${tipoAta}${resumoConversa ? `: ${resumoConversa}` : ' registrada'}`;
+            const atual = String(userDoc?.acoes_2026 || '').trim();
+            const novoAcoes = atual ? `${atual}\n${linhaFunc}` : linhaFunc;
+
+            if (userDoc) {
+              await colUsuarios.updateOne(
+                { _id: userDoc._id },
+                { $set: { acoes_2026: novoAcoes, atualizadoEm: nowIso } }
+              );
+              funcionariosAtualizados.push({
+                id: String(userDoc.id || userDoc._id || funcId),
+                email: String(userDoc.email || funcEmail),
+                nome: String(userDoc.nome || funcNome),
+                acoes_2026: novoAcoes
+              });
+            }
+
+            // Também registra uma anotação objetiva na coleção professores_anotacoes para visualização no Dossiê do Docente
+            await addDoc('professores_anotacoes', {
+              professorId: String(userDoc?.id || funcId || funcEmail || funcNome),
+              professorNome: String(userDoc?.nome || funcNome),
+              professorEmail: String(userDoc?.email || funcEmail),
+              professorCargo: String(userDoc?.cargo || func?.cargo || 'Equipe Escolar'),
+              categoria: 'reuniao',
+              titulo: `Ata de ${tipoAta} (${dataBR})`,
+              conteudo: resumoConversa || anotacaoCurta,
+              encaminhamentos: `Registro integrado automaticamente pelo Gerador de Atas (Ref.: ${savedAta.id}).`,
+              dataOcorrencia: hojeIso,
+              horario: String(horarioAta || ''),
+              status: 'Concluído',
+              ataId: savedAta.id,
+              autorId: realUser.email,
+              autorNome: realUser.nome || realUser.email,
+              autorEmail: realUser.email,
+              autorCargo: realUser.realRole,
+              autorNivel,
+              criadoEm: nowIso,
+              atualizadoEm: nowIso
+            });
+          } catch (funcErr: any) {
+            console.warn(`[API Atas] Falha ao atualizar histórico do funcionário ${funcNome}:`, funcErr?.message);
+          }
+        }
+      }
+
+      // Log de Auditoria
+      try {
+        await addDoc('logs_auditoria', {
+          modulo: 'Gerador de Atas',
+          acao: 'CRIAR',
+          descricao: `Ata de ${tipoAta} lavrada em ${dataBR} (${alunosAtualizados.length} estudante(s) e ${funcionariosAtualizados.length} funcionário(s) integrados ao dossiê).`,
+          usuarioNome: realUser.nome || realUser.email,
+          usuarioEmail: realUser.email,
+          usuarioCargo: realUser.realRole,
+          dataHora: nowIso
+        });
+      } catch {}
+
+      res.status(201).json({
+        success: true,
+        id: savedAta.id,
+        ata: { id: savedAta.id, ...ataPayload },
+        anotacaoCurta: registroCompletoDossie,
+        resumoDossie: resumoConversa,
+        ocorrenciasCriadas,
+        alunosAtualizados,
+        funcionariosAtualizados
+      });
+    } catch (err: any) {
+      console.error('[API Atas Salvar] Erro:', err?.message || err);
+      res.status(500).json({
+        error: 'Erro ao salvar ata e integrar histórico acoes_2026.',
+        details: err?.message || String(err)
       });
     }
   });
