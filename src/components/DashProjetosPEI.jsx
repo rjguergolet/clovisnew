@@ -308,8 +308,12 @@ export default function DashProjetosPEI() {
 
       const ocs = Array.isArray(st.ocorrencias) ? st.ocorrencias : [];
       const atrasosMes = ocs.filter(oc => {
-        if (!oc) return false;
-        const isAtr = oc.isAtraso === true || String(oc.tipo || oc.categoria || '').toUpperCase().includes('ATRASO');
+        if (!oc || oc.isDispensa === true || String(oc.origem || '').toUpperCase() === 'ATA_ESCOLAR') return false;
+        const tipoStr = String(oc.tipo || '').trim().toUpperCase();
+        const catStr = String(oc.categoria || '').trim().toUpperCase();
+        const isAtr = (tipoStr || catStr)
+          ? (tipoStr.includes('ATRASO') || catStr.includes('ATRASO'))
+          : oc.isAtraso === true;
         if (!isAtr) return false;
         const dt = new Date(oc.data || oc.createdAt || 0);
         return !isNaN(dt.getTime()) && dt.getMonth() === mesAtual && dt.getFullYear() === anoAtual;

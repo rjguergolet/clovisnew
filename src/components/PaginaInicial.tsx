@@ -1018,7 +1018,15 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
   // Atrasos e Estatísticas
   const ocorrenciasAtrasos = useMemo(() => {
-    return ocorrencias.filter(o => o.isAtraso === true || String(o.tipo || '').toUpperCase().includes('ATRASO'));
+    return ocorrencias.filter(o => {
+      if (!o || o.isDispensa === true || String(o.origem || '').toUpperCase() === 'ATA_ESCOLAR') return false;
+      const tipo = String(o.tipo || '').trim().toUpperCase();
+      const cat = String(o.categoria || '').trim().toUpperCase();
+      if (tipo || cat) {
+        return tipo.includes('ATRASO') || cat.includes('ATRASO');
+      }
+      return o.isAtraso === true;
+    });
   }, [ocorrencias]);
 
   const atrasosHoje = useMemo(() => {

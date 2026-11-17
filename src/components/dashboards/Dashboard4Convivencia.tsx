@@ -37,8 +37,12 @@ export default function Dashboard4Convivencia({
       const raKey = normalizarRa(oc.ra || oc.raAluno);
       if (raKey && !alunosPorRa.has(raKey)) return false;
 
-      const tipo = String(oc.tipo || oc.categoria || '').toLowerCase();
-      const isAtrasoRotina = oc.isAtraso === true || tipo === 'atraso' || tipo.includes('registro de atraso');
+      const tipoRaw = String(oc.tipo || '').trim().toLowerCase();
+      const catRaw = String(oc.categoria || '').trim().toLowerCase();
+      const tipo = tipoRaw || catRaw;
+      const isAtrasoRotina = (tipoRaw || catRaw)
+        ? (tipoRaw.includes('atraso') || catRaw.includes('atraso'))
+        : oc.isAtraso === true;
       if (isAtrasoRotina) return false;
       if (tipo.includes('tutoria')) return false;
       if (tipo.includes('busca ativa')) return false;

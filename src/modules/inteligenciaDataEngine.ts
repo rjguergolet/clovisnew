@@ -637,8 +637,18 @@ export function unificarOcorrencias(ocorrenciasTop: any[], alunosRaw: any[]): an
     const chave = oc.id ? `id:${oc.id}` : `sig:${ra}|${dataStr}|${tipoStr}|${descStr}`;
 
     if (!mapa.has(chave)) {
+      const tipoUpper = String(oc.tipo || '').trim().toUpperCase();
+      const catUpper = String(oc.categoria || '').trim().toUpperCase();
+      const isDisp = oc.isDispensa === true || tipoUpper.includes('DISPENSA') || catUpper.includes('DISPENSA') || tipoUpper.includes('AFASTAMENTO');
+      const isAta = String(oc.origem || '').toUpperCase() === 'ATA_ESCOLAR';
+      const isAtrEstrito = !isDisp && !isAta && (
+        (tipoUpper || catUpper)
+          ? (tipoUpper.includes('ATRASO') || catUpper.includes('ATRASO'))
+          : oc.isAtraso === true
+      );
       mapa.set(chave, {
         ...oc,
+        isAtraso: isAtrEstrito,
         ra: oc.ra || alunoFallback?.ra || '',
         nomeAluno: oc.nomeAluno || oc.alunoNome || alunoFallback?.nome || '',
         turma: String(oc.turma || alunoFallback?.turma || '').toUpperCase().trim()

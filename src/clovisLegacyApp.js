@@ -4734,8 +4734,7 @@
             }
           }
 
-          const descLower = (descricao || "").toLowerCase();
-          const isAtraso = !isDispensa && (tipoLower.includes("atraso") || descLower.includes("atraso") || descLower.includes("atrasos"));
+          const isAtraso = !isDispensa && tipoLower.includes("atraso");
           const horaRealAtraso = isAtraso ? (document.getElementById("oc-hora-atraso")?.value || new Date().toTimeString().slice(0, 5)) : "";
 
           if (isAtraso && horaRealAtraso && !descricao.includes(horaRealAtraso)) {
@@ -4757,6 +4756,7 @@
               const docRef = doc(db, "ocorrencias", editOcId);
               const payloadEdicao = {
                 tipo: tipo,
+                categoria: tipo,
                 descricao: descricao,
                 isAtraso: isAtraso,
                 isDispensa: isDispensa,
@@ -4776,6 +4776,9 @@
               if (isAtraso && horaRealAtraso) {
                 payloadEdicao.horaRealAtraso = horaRealAtraso;
                 payloadEdicao.horarioAtraso = horaRealAtraso;
+              } else {
+                payloadEdicao.horaRealAtraso = "";
+                payloadEdicao.horarioAtraso = "";
               }
               if (isDispensa) {
                 payloadEdicao.dataInicio = dispensaInicio;
@@ -4922,7 +4925,7 @@
               }
 
               // Gatilho Automático de 3 Atrasos no Mês
-              if ((isAtraso || String(tipo || "").toUpperCase().includes("ATRASO")) && typeof window.verificarGatilhoAtrasosMes === "function") {
+              if (isAtraso && typeof window.verificarGatilhoAtrasosMes === "function") {
                 await window.verificarGatilhoAtrasosMes(stObj || alunoAtual);
               }
             }
@@ -5098,7 +5101,9 @@
 
         const ocorrenciasAluno = Array.isArray(aluno.ocorrencias) ? aluno.ocorrencias : [];
         const atrasosMes = ocorrenciasAluno.filter(oc => {
-          const isAtr = oc.isAtraso === true || String(oc.tipo || oc.categoria || "").toUpperCase().includes("ATRASO");
+          const isAtr = typeof window.isOcorrenciaAtraso === "function"
+            ? window.isOcorrenciaAtraso(oc)
+            : String(oc?.tipo || oc?.categoria || "").toUpperCase().includes("ATRASO");
           if (!isAtr) return false;
           const dt = new Date(oc.data || oc.createdAt || 0);
           return !isNaN(dt.getTime()) && dt.getMonth() === mesAtual && dt.getFullYear() === anoAtual;
@@ -5207,7 +5212,9 @@
         const ocorrenciasAluno = Array.isArray(st.ocorrencias) ? st.ocorrencias : [];
         const atrasosNoMes = ocorrenciasAluno.filter(oc => {
           if (!oc) return false;
-          const isAtr = oc.isAtraso === true || String(oc.tipo || oc.categoria || "").toUpperCase().includes("ATRASO");
+          const isAtr = typeof window.isOcorrenciaAtraso === "function"
+            ? window.isOcorrenciaAtraso(oc)
+            : String(oc.tipo || oc.categoria || "").toUpperCase().includes("ATRASO");
           if (!isAtr) return false;
           const dt = new Date(oc.data || oc.createdAt || 0);
           return !isNaN(dt.getTime()) && dt.getMonth() === mesAtual && dt.getFullYear() === anoAtual;
@@ -5334,7 +5341,8 @@
               id: ocId || `oc_top_${cleanRa}_${idx}`,
               ra: raKey || (st ? String(st.ra || st.id || "").trim() : ""),
               nomeAluno: oc.nomeAluno ? oc.nomeAluno.toUpperCase() : (st?.nome || "ALUNO SEM NOME").toUpperCase(),
-              turma: oc.turma ? oc.turma.toUpperCase() : (st?.turma || "").toUpperCase()
+              turma: oc.turma ? oc.turma.toUpperCase() : (st?.turma || "").toUpperCase(),
+              isAtraso: typeof window.isOcorrenciaAtraso === "function" ? window.isOcorrenciaAtraso(oc) : Boolean(oc.isAtraso)
             };
 
             feedGlobal.push(ocFormatada);
@@ -5370,7 +5378,8 @@
               id: novoId,
               ra: oc.ra ? String(oc.ra).trim() : raAlunoStr,
               nomeAluno: oc.nomeAluno ? oc.nomeAluno.toUpperCase() : nomeAlunoStr,
-              turma: oc.turma ? oc.turma.toUpperCase() : turmaAlunoStr
+              turma: oc.turma ? oc.turma.toUpperCase() : turmaAlunoStr,
+              isAtraso: typeof window.isOcorrenciaAtraso === "function" ? window.isOcorrenciaAtraso(oc) : Boolean(oc.isAtraso)
             };
 
             feedGlobal.push(ocFormatada);
@@ -5654,7 +5663,7 @@
           const nome = (oc.nomeAluno || "ALUNO SEM NOME").toUpperCase();
           const ra = oc.ra || "-";
           const turma = (oc.turma || "-").toUpperCase();
-          const tipo = (oc.tipo || "Tutoria e Acolhimento").toUpperCase();
+          const tipo = (oc.tipo || oc.categoria || "Tutoria e Acolhimento").toUpperCase();
           const desc = oc.descricao || oc.observacao || "-";
           const rawAutor = oc.usuario || oc.autor || oc.registradoPor || "";
           const usuario = window.formatarAutorOcorrencia ? window.formatarAutorOcorrencia(rawAutor, oc) : (rawAutor || "Usuário Registrado");
@@ -5850,11 +5859,17 @@
 
       window.isOcorrenciaAtraso = function(oc) {
         if (!oc) return false;
+        if (String(oc.origem || "").toUpperCase() === "ATA_ESCOLAR") return false;
         if (typeof window.isOcorrenciaDispensa === "function" && window.isOcorrenciaDispensa(oc)) return false;
-        const tipoStr = String(oc?.tipo || "").toUpperCase();
-        const catStr = String(oc?.categoria || "").toUpperCase();
-        const descStr = String(oc?.descricao || "").toUpperCase();
-        return oc?.isAtraso === true || tipoStr.includes("ATRASO") || catStr.includes("ATRASO") || descStr.startsWith("ATRASO");
+        const tipoStr = String(oc?.tipo || "").trim().toUpperCase();
+        const catStr = String(oc?.categoria || "").trim().toUpperCase();
+        if (tipoStr.includes("DISPENSA") || tipoStr.includes("AFASTAMENTO") || catStr.includes("DISPENSA") || catStr.includes("AFASTAMENTO")) {
+          return false;
+        }
+        if (tipoStr || catStr) {
+          return tipoStr.includes("ATRASO") || catStr.includes("ATRASO");
+        }
+        return oc?.isAtraso === true;
       };
 
       window.isOcorrenciaDisciplinarOuConviva = function(oc) {
@@ -5933,7 +5948,11 @@
 
         const isAtrasoFn = typeof window.isOcorrenciaAtraso === "function" 
           ? window.isOcorrenciaAtraso 
-          : (oc) => String(oc?.tipo || oc?.categoria || oc?.descricao || '').toUpperCase().includes('ATRASO');
+          : (oc) => {
+              const t = String(oc?.tipo || '').trim().toUpperCase();
+              const c = String(oc?.categoria || '').trim().toUpperCase();
+              return (t || c) ? (t.includes('ATRASO') || c.includes('ATRASO')) : oc?.isAtraso === true;
+            };
 
         const isDiscOrConvivaFn = typeof window.isOcorrenciaDisciplinarOuConviva === "function" 
           ? window.isOcorrenciaDisciplinarOuConviva 
@@ -6178,6 +6197,7 @@
           const codigoConviva = chkConviva ? (document.getElementById("edit-oc-codigo-conviva")?.value.trim().toUpperCase() || "") : "";
 
           const isDispensaEdit = String(tipo || "").toUpperCase().includes("DISPENSA");
+          const isAtrasoEdit = !isDispensaEdit && String(tipo || "").toUpperCase().includes("ATRASO");
           const editDispIni = isDispensaEdit ? (document.getElementById("edit-oc-dispensa-inicio")?.value || "") : "";
           const editDispFim = isDispensaEdit ? (document.getElementById("edit-oc-dispensa-fim")?.value || "") : "";
           const editDispMot = isDispensaEdit ? (document.getElementById("edit-oc-dispensa-motivo")?.value || "Atestado Médico") : "";
@@ -6211,6 +6231,7 @@
               categoria: tipo,
               descricao: descricao,
               observacao: descricao,
+              isAtraso: isAtrasoEdit,
               isDispensa: isDispensaEdit,
               cienciaResponsavel: chkCiencia,
               dataCiencia: dataCiencia,
@@ -6223,6 +6244,10 @@
               editado_por_completo: userDetails.textoCompleto || "",
               data_ultima_edicao: new Date().toISOString()
             };
+            if (!isAtrasoEdit) {
+              payloadUpdate.horaRealAtraso = "";
+              payloadUpdate.horarioAtraso = "";
+            }
             if (isDispensaEdit) {
               payloadUpdate.dataInicio = editDispIni;
               payloadUpdate.dataFim = editDispFim;
@@ -6270,6 +6295,7 @@
                       categoria: tipo,
                       descricao: descricao,
                       observacao: descricao,
+                      isAtraso: isAtrasoEdit,
                       isDispensa: isDispensaEdit,
                       cienciaResponsavel: chkCiencia,
                       dataCiencia: dataCiencia,
@@ -6278,6 +6304,10 @@
                       data_ultima_edicao: new Date().toISOString(),
                       editado_por_nome: userDetails.nome || ""
                     };
+                    if (!isAtrasoEdit) {
+                      updatedItem.horaRealAtraso = "";
+                      updatedItem.horarioAtraso = "";
+                    }
                     if (isDispensaEdit) {
                       updatedItem.dataInicio = editDispIni;
                       updatedItem.dataFim = editDispFim;
@@ -6322,7 +6352,12 @@
                 itemCache.categoria = tipo;
                 itemCache.descricao = descricao;
                 itemCache.observacao = descricao;
+                itemCache.isAtraso = isAtrasoEdit;
                 itemCache.isDispensa = isDispensaEdit;
+                if (!isAtrasoEdit) {
+                  itemCache.horaRealAtraso = "";
+                  itemCache.horarioAtraso = "";
+                }
                 if (isDispensaEdit) {
                   itemCache.dataInicio = editDispIni;
                   itemCache.dataFim = editDispFim;
@@ -6344,7 +6379,12 @@
                 itemTop.categoria = tipo;
                 itemTop.descricao = descricao;
                 itemTop.observacao = descricao;
+                itemTop.isAtraso = isAtrasoEdit;
                 itemTop.isDispensa = isDispensaEdit;
+                if (!isAtrasoEdit) {
+                  itemTop.horaRealAtraso = "";
+                  itemTop.horarioAtraso = "";
+                }
                 if (isDispensaEdit) {
                   itemTop.dataInicio = editDispIni;
                   itemTop.dataFim = editDispFim;
@@ -6905,7 +6945,10 @@
           const ocData = String(oc.data || oc.dataRegistro || oc.createdAt || "");
           const isDaData = ocData.startsWith(dataVal) || (dataBrBusca && ocData.includes(dataBrBusca));
           if (isDaData) {
-            if (oc.tipo === "Atraso" || oc.isAtraso) {
+            const isAtrRow = typeof window.isOcorrenciaAtraso === "function"
+              ? window.isOcorrenciaAtraso(oc)
+              : String(oc.tipo || oc.categoria || "").toUpperCase().includes("ATRASO");
+            if (isAtrRow) {
               totalAtrasosData++;
             } else if (oc.tipo === "Saída Antecipada") {
               totalSaidasData++;
@@ -7094,7 +7137,10 @@ Yasmin Seline`;
             const ocData = String(oc.data || oc.dataRegistro || oc.createdAt || "");
             const isDaData = ocData.startsWith(dataVal) || ocData.includes(dataBrBusca);
             if (isDaData) {
-              if (oc.tipo === "Atraso" || oc.isAtraso) {
+              const isAtrBol = typeof window.isOcorrenciaAtraso === "function"
+                ? window.isOcorrenciaAtraso(oc)
+                : String(oc.tipo || oc.categoria || "").toUpperCase().includes("ATRASO");
+              if (isAtrBol) {
                 atrasosRegistrados.push({
                   nomeAluno: oc.nomeAluno || "Estudante",
                   turma: oc.turma || "",
@@ -10378,10 +10424,11 @@ Yasmin Seline`;
 
           const isAtrasoItem = (item) => {
             if (!item) return false;
-            if (item.isAtraso === true) return true;
-            const tipoStr = String(item.tipo || item.tipoContato || item.categoria || "").toUpperCase();
-            const descStr = String(item.descricao || item.observacao || item.titulo || "").toUpperCase();
-            return item.isAtraso === true || tipoStr.includes("ATRASO") || descStr.includes("ATRASO");
+            if (typeof window.isOcorrenciaAtraso === "function") return window.isOcorrenciaAtraso(item);
+            const tipoStr = String(item.tipo || item.tipoContato || "").trim().toUpperCase();
+            const catStr = String(item.categoria || "").trim().toUpperCase();
+            if (tipoStr || catStr) return tipoStr.includes("ATRASO") || catStr.includes("ATRASO");
+            return item.isAtraso === true;
           };
 
           const atrasosOcorrenciasCount = ocorrenciasDossie.filter(isAtrasoItem).length;
@@ -16397,7 +16444,9 @@ Yasmin Seline`;
             autor_nome: item.autor_nome || raw.autor_nome || item.autor_criacao?.nome || raw.autor_criacao?.nome || "",
             autor_email: item.autor_email || raw.autor_email || "",
             editado_por_nome: item.editado_por_nome || raw.editado_por_nome || "",
-            isAtraso: origemVal !== "ATA_ESCOLAR" && Boolean(item.isAtraso || raw.isAtraso || tipoVal.toUpperCase().includes("ATRASO")),
+            isAtraso: typeof window.isOcorrenciaAtraso === "function"
+              ? window.isOcorrenciaAtraso({ ...raw, ...item, origem: origemVal, tipo: tipoVal, categoria: item.categoria || raw.categoria || tipoVal })
+              : (origemVal !== "ATA_ESCOLAR" && !tipoVal.toUpperCase().includes("DISPENSA") && (tipoVal.trim() ? tipoVal.toUpperCase().includes("ATRASO") : Boolean(item.isAtraso || raw.isAtraso))),
             isDispensa: Boolean(item.isDispensa || raw.isDispensa || tipoVal.toUpperCase().includes("DISPENSA")),
             dataInicio: item.dataInicio || raw.dataInicio || "",
             dataFim: item.dataFim || raw.dataFim || "",
@@ -17208,7 +17257,9 @@ Yasmin Seline`;
               data: d.data || d.dataRegistro || "",
               descricao: d.descricao || d.observacao || "Sem descrição",
               usuario: d.usuario || d.autor || "Usuário Registrado",
-              isAtraso: d.isAtraso,
+              isAtraso: typeof window.isOcorrenciaAtraso === "function"
+                ? window.isOcorrenciaAtraso(d)
+                : Boolean(String(d.tipo || d.categoria || "").toUpperCase().includes("ATRASO")),
               isDispensa: Boolean(d.isDispensa || (d.tipo && String(d.tipo).toUpperCase().includes("DISPENSA"))),
               dataInicio: d.dataInicio || "",
               dataFim: d.dataFim || "",
@@ -17299,10 +17350,12 @@ Yasmin Seline`;
           }
 
           const totalAtrasos = acoesAluno.filter(oc => {
+            if (typeof window.isOcorrenciaAtraso === "function") return window.isOcorrenciaAtraso(oc);
             if (oc.isDispensa || String(oc.origem || "").toUpperCase() === "ATA_ESCOLAR") return false;
-            const descLower = (oc.descricao || "").toLowerCase();
-            const tipoLower = (oc.tipo || "").toLowerCase();
-            return oc.isAtraso === true || tipoLower.includes("atraso") || descLower.includes("atraso") || descLower.includes("atrasos");
+            const tipoLower = String(oc.tipo || "").trim().toLowerCase();
+            const catLower = String(oc.categoria || "").trim().toLowerCase();
+            if (tipoLower || catLower) return tipoLower.includes("atraso") || catLower.includes("atraso");
+            return oc.isAtraso === true;
           }).length;
 
           const elAtrasosVal = document.getElementById("modal-display-atrasos-val");
@@ -17340,10 +17393,11 @@ Yasmin Seline`;
             const isBuscaAtiva = item.origem === "BUSCA_ATIVA";
             const isAtaEscolar = item.origem === "ATA_ESCOLAR";
 
-            const descLower = desc.toLowerCase();
             const tipoLower = tipo.toLowerCase();
             const itemIsDispensa = Boolean(item.isDispensa || tipoLower.includes("dispensa"));
-            const itemIsAtraso = !itemIsDispensa && !isAtaEscolar && (item.isAtraso === true || tipoLower.includes("atraso") || descLower.includes("atraso") || descLower.includes("atrasos"));
+            const itemIsAtraso = typeof window.isOcorrenciaAtraso === "function"
+              ? window.isOcorrenciaAtraso(item)
+              : (!itemIsDispensa && !isAtaEscolar && tipoLower.includes("atraso"));
 
             let tipoClass = "bg-blue-100 text-blue-800 border-blue-300";
             if (itemIsDispensa) {
@@ -17608,8 +17662,7 @@ Yasmin Seline`;
         const registradoConviva = chkConviva ? chkConviva.checked : false;
         const codigoConviva = registradoConviva ? (inputCodConviva?.value.trim().toUpperCase() || "") : "";
 
-        const descLower = (descricao || "").toLowerCase();
-        const isAtraso = !isDispensa && (tipoLower.includes("atraso") || descLower.includes("atraso") || descLower.includes("atrasos"));
+        const isAtraso = !isDispensa && tipoLower.includes("atraso");
         const horaRealAtraso = isAtraso ? (document.getElementById("modal-acao-hora-atraso")?.value || new Date().toTimeString().slice(0, 5)) : "";
         if (isAtraso && horaRealAtraso && !descricao.includes(horaRealAtraso)) {
           descricao = `${descricao} (CHEGADA ÀS ${horaRealAtraso})`;
@@ -17720,7 +17773,7 @@ Yasmin Seline`;
             }
           }
 
-          if ((isAtraso || String(tipo || "").toUpperCase().includes("ATRASO")) && typeof window.verificarGatilhoAtrasosMes === "function") {
+          if (isAtraso && typeof window.verificarGatilhoAtrasosMes === "function") {
             await window.verificarGatilhoAtrasosMes(aluno);
           }
 
@@ -21550,9 +21603,9 @@ Yasmin Seline`;
         // Passagem única O(M) pelas ocorrências
         for (let i = 0; i < todasOc.length; i++) {
           const oc = todasOc[i];
-          const isAtr = typeof ehRegistroDeAtraso === "function"
-            ? ehRegistroDeAtraso(oc)
-            : (String(oc.tipo || oc.categoria || "").toUpperCase().includes("ATRASO") || Boolean(oc.horarioChegada || oc.horario_chegada));
+          const isAtr = typeof window.isOcorrenciaAtraso === "function"
+            ? window.isOcorrenciaAtraso(oc)
+            : String(oc.tipo || oc.categoria || "").toUpperCase().includes("ATRASO");
           if (!isAtr) continue;
 
           const raRaw = String(oc.ra || oc.alunoRa || "").trim();
@@ -22072,8 +22125,8 @@ Yasmin Seline`;
             arr.forEach(oc => {
               const ocRa = String(oc.ra || oc.alunoRa || "").trim();
               const ocRaClean = ocRa.replace(/\D/g, "") || ocRa;
-              const isAtr = typeof ehRegistroDeAtraso === "function"
-                ? ehRegistroDeAtraso(oc)
+              const isAtr = typeof window.isOcorrenciaAtraso === "function"
+                ? window.isOcorrenciaAtraso(oc)
                 : String(oc.tipo || oc.categoria || "").toUpperCase().includes("ATRASO");
               if (isAtr && (ocRa === raStr || ocRaClean === raClean) && !oc.ciencia) {
                 oc.ciencia = true;
@@ -22089,8 +22142,8 @@ Yasmin Seline`;
             aluno.ciencia_atrasos_data = dataHoraStr;
             const acoesArr = Array.isArray(aluno.ocorrencias) ? aluno.ocorrencias : (Array.isArray(aluno.acoes) ? aluno.acoes : []);
             acoesArr.forEach(ac => {
-              const isAtr = typeof ehRegistroDeAtraso === "function"
-                ? ehRegistroDeAtraso(ac)
+              const isAtr = typeof window.isOcorrenciaAtraso === "function"
+                ? window.isOcorrenciaAtraso(ac)
                 : String(ac.tipo || ac.categoria || "").toUpperCase().includes("ATRASO");
               if (isAtr && !ac.ciencia) {
                 ac.ciencia = true;

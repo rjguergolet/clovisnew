@@ -37,6 +37,217 @@ function normalizarRoleBackend(rawRole?: any): string {
   return 'PROFESSOR';
 }
 
+function isCategoriaAtrasoEstrita(oc: any): boolean {
+  if (!oc || typeof oc !== 'object') return false;
+  if (String(oc.origem || '').trim().toUpperCase() === 'ATA_ESCOLAR') return false;
+  const tipo = String(oc.tipo || '').trim().toUpperCase();
+  const cat = String(oc.categoria || '').trim().toUpperCase();
+  if (
+    oc.isDispensa === true ||
+    tipo.includes('DISPENSA') ||
+    cat.includes('DISPENSA') ||
+    tipo.includes('AFASTAMENTO') ||
+    cat.includes('AFASTAMENTO')
+  ) {
+    return false;
+  }
+  if (tipo || cat) {
+    return tipo.includes('ATRASO') || cat.includes('ATRASO');
+  }
+  return oc.isAtraso === true;
+}
+
+function sanitizarObjetoOcorrenciaAtraso(oc: any): any {
+  if (!oc || typeof oc !== 'object') return oc;
+  const { id: _ignId, _id: _ignUnder, ...rest } = oc;
+  const tipo = String(rest.tipo || '').trim().toUpperCase();
+  const cat = String(rest.categoria || '').trim().toUpperCase();
+  const isDisp =
+    rest.isDispensa === true ||
+    tipo.includes('DISPENSA') ||
+    cat.includes('DISPENSA') ||
+    tipo.includes('AFASTAMENTO') ||
+    cat.includes('AFASTAMENTO');
+  const isAta = String(rest.origem || '').trim().toUpperCase() === 'ATA_ESCOLAR';
+  if (tipo || cat || isDisp || isAta) {
+    const isAtr = isCategoriaAtrasoEstrita(rest);
+    rest.isAtraso = isAtr;
+    if (!isAtr) {
+      delete rest.horaRealAtraso;
+      delete rest.horarioAtraso;
+    }
+  }
+  return rest;
+}
+
+function normalizarPayloadAtrasoDb(collection: string, data: Record<string, any>): Record<string, any> {
+  if (!data || typeof data !== 'object') return data;
+  const realCol = resolveCollectionName(collection);
+  if (realCol === 'ocorrencias' || realCol === 'registros') {
+    const tipo = String(data.tipo || '').trim().toUpperCase();
+    const cat = String(data.categoria || '').trim().toUpperCase();
+    const isDisp =
+      data.isDispensa === true ||
+      tipo.includes('DISPENSA') ||
+      cat.includes('DISPENSA') ||
+      tipo.includes('AFASTAMENTO') ||
+      cat.includes('AFASTAMENTO');
+    const isAta = String(data.origem || '').trim().toUpperCase() === 'ATA_ESCOLAR';
+    if (tipo || cat || isDisp || isAta) {
+      const isAtr = isCategoriaAtrasoEstrita(data);
+      data.isAtraso = isAtr;
+      if (!isAtr) {
+        data.horaRealAtraso = '';
+        data.horarioAtraso = '';
+      }
+    }
+  } else if (realCol === 'alunos') {
+    if (Array.isArray(data.ocorrencias)) {
+      data.ocorrencias = data.ocorrencias.map(sanitizarObjetoOcorrenciaAtraso);
+    } else if (data.ocorrencias && typeof data.ocorrencias === 'object' && data.ocorrencias.__arrayUnion === true && Array.isArray(data.ocorrencias.elements)) {
+      data.ocorrencias = {
+        ...data.ocorrencias,
+        elements: data.ocorrencias.elements.map(sanitizarObjetoOcorrenciaAtraso)
+      };
+    }
+  }
+  return data;
+}
+
+function limparSufixoChegadaSintetico(texto: any, horaStored: string): string {
+  const str = String(texto || '');
+  if (!str || !horaStored) return str;
+  const esc = horaStored.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return str.replace(new RegExp(`\\s*\\(chegada\\s+[àa]s\\s+${esc}\\)\\s*$`, 'i'), '').trim();
+}
+
+async function limparFalsosAtrasosNoBanco(): Promise<{
+  ocorrenciasLimpas: number;
+  itensEmbutidosLimpos: number;
+  alunosAtualizados: number;
+}> {
+  const db = await getDatabase();
+  const nowIso = new Date().toISOString();
+  let ocorrenciasLimpas = 0;
+  let itensEmbutidosLimpos = 0;
+  let alunosAtualizados = 0;
+
+  const temFalsoFlagAtraso = (item: any): boolean => {
+    if (!item || typeof item !== 'object') return false;
+    const temMarcaAtraso =
+      item.isAtraso === true ||
+      Boolean(String(item.horaRealAtraso || '').trim()) ||
+      Boolean(String(item.horarioAtraso || '').trim());
+    if (!temMarcaAtraso) return false;
+    const tipo = String(item.tipo || '').trim().toUpperCase();
+    const cat = String(item.categoria || '').trim().toUpperCase();
+    const isDisp =
+      item.isDispensa === true ||
+      tipo.includes('DISPENSA') ||
+      cat.includes('DISPENSA') ||
+      tipo.includes('AFASTAMENTO') ||
+      cat.includes('AFASTAMENTO');
+    const isAta = String(item.origem || '').trim().toUpperCase() === 'ATA_ESCOLAR';
+    if (!tipo && !cat && !isDisp && !isAta) return false;
+    return !isCategoriaAtrasoEstrita(item);
+  };
+
+  // 1. Limpar documentos na coleção top-level 'ocorrencias'
+  const colOcorrencias = db.collection('ocorrencias');
+  const candidatosOc = await colOcorrencias.find({
+    $or: [
+      { isAtraso: true },
+      { horaRealAtraso: { $exists: true, $nin: ['', null] } },
+      { horarioAtraso: { $exists: true, $nin: ['', null] } }
+    ]
+  }).toArray();
+
+  for (const docItem of candidatosOc) {
+    if (!temFalsoFlagAtraso(docItem)) continue;
+    const horaStored = String(docItem.horaRealAtraso || docItem.horarioAtraso || '').trim();
+    const setFields: Record<string, any> = {
+      isAtraso: false,
+      atualizadoEm: nowIso
+    };
+    if (horaStored) {
+      if (typeof docItem.descricao === 'string' && docItem.descricao) {
+        const cleanedDesc = limparSufixoChegadaSintetico(docItem.descricao, horaStored);
+        if (cleanedDesc !== docItem.descricao) setFields.descricao = cleanedDesc;
+      }
+      if (typeof docItem.observacao === 'string' && docItem.observacao) {
+        const cleanedObs = limparSufixoChegadaSintetico(docItem.observacao, horaStored);
+        if (cleanedObs !== docItem.observacao) setFields.observacao = cleanedObs;
+      }
+    }
+    await colOcorrencias.updateOne(
+      { _id: docItem._id },
+      { $set: setFields, $unset: { horaRealAtraso: '', horarioAtraso: '' } }
+    );
+    ocorrenciasLimpas++;
+  }
+
+  // 2. Limpar arrays embutidos (ocorrencias / registros) na coleção 'alunos'
+  const colAlunos = db.collection('alunos');
+  const candidatosAlunos = await colAlunos.find({
+    $or: [
+      { 'ocorrencias.isAtraso': true },
+      { 'ocorrencias.horaRealAtraso': { $exists: true, $nin: ['', null] } },
+      { 'ocorrencias.horarioAtraso': { $exists: true, $nin: ['', null] } },
+      { 'registros.isAtraso': true },
+      { 'registros.horaRealAtraso': { $exists: true, $nin: ['', null] } },
+      { 'registros.horarioAtraso': { $exists: true, $nin: ['', null] } }
+    ]
+  }).toArray();
+
+  for (const al of candidatosAlunos) {
+    let alterouAluno = false;
+    const updateAlunoSet: Record<string, any> = { atualizadoEm: nowIso };
+
+    const limparArrayEmb = (arr: any[]): any[] => {
+      return arr.map((el: any) => {
+        if (!el || typeof el !== 'object') return el;
+        const { id: _ignId, _id: _ignUnder, ...cleanEl } = el;
+        if (temFalsoFlagAtraso(cleanEl)) {
+          alterouAluno = true;
+          itensEmbutidosLimpos++;
+          const horaStored = String(cleanEl.horaRealAtraso || cleanEl.horarioAtraso || '').trim();
+          cleanEl.isAtraso = false;
+          delete cleanEl.horaRealAtraso;
+          delete cleanEl.horarioAtraso;
+          if (horaStored) {
+            if (typeof cleanEl.descricao === 'string' && cleanEl.descricao) {
+              cleanEl.descricao = limparSufixoChegadaSintetico(cleanEl.descricao, horaStored);
+            }
+            if (typeof cleanEl.observacao === 'string' && cleanEl.observacao) {
+              cleanEl.observacao = limparSufixoChegadaSintetico(cleanEl.observacao, horaStored);
+            }
+          }
+        }
+        return cleanEl;
+      });
+    };
+
+    if (Array.isArray(al.ocorrencias)) {
+      updateAlunoSet.ocorrencias = limparArrayEmb(al.ocorrencias);
+    }
+    if (Array.isArray(al.registros)) {
+      updateAlunoSet.registros = limparArrayEmb(al.registros);
+    }
+
+    if (alterouAluno) {
+      await colAlunos.updateOne({ _id: al._id }, { $set: updateAlunoSet });
+      alunosAtualizados++;
+    }
+  }
+
+  if (ocorrenciasLimpas > 0 || itensEmbutidosLimpos > 0) {
+    console.log(
+      `[Limpeza Atrasos] Concluída: ${ocorrenciasLimpas} ocorrência(s) e ${itensEmbutidosLimpos} item(ns) em ${alunosAtualizados} aluno(s) removidos da categoria Atraso.`
+    );
+  }
+  return { ocorrenciasLimpas, itensEmbutidosLimpos, alunosAtualizados };
+}
+
 function signSessionToken(payload: { id: string; email: string; realRole: string }): string {
   const data = {
     ...payload,
@@ -392,6 +603,9 @@ async function startServer() {
         if (!authCheck.allowed) {
           return res.status(authCheck.status).json({ error: authCheck.message });
         }
+        if (opType !== 'delete' && op.data && typeof op.data === 'object') {
+          op.data = normalizarPayloadAtrasoDb(String(op.collection), { ...op.data });
+        }
       }
 
       await executeBatch(operations);
@@ -549,7 +763,7 @@ async function startServer() {
         return res.status(authCheck.status).json({ error: authCheck.message });
       }
 
-      const dadosLimpos = { ...req.body };
+      const dadosLimpos = normalizarPayloadAtrasoDb(collection, { ...req.body });
       delete dadosLimpos.id;
       delete dadosLimpos._id;
 
@@ -580,7 +794,7 @@ async function startServer() {
       }
 
       // Cria uma cópia dos dados e remove as chaves de identificação
-      const dadosLimpos = { ...req.body };
+      const dadosLimpos = normalizarPayloadAtrasoDb(collection, { ...req.body });
       delete dadosLimpos.id;
       delete dadosLimpos._id;
 
@@ -611,7 +825,7 @@ async function startServer() {
         return res.status(authCheck.status).json({ error: authCheck.message });
       }
 
-      const dadosLimpos = { ...req.body };
+      const dadosLimpos = normalizarPayloadAtrasoDb(collection, { ...req.body });
       delete dadosLimpos.id;
       delete dadosLimpos._id;
 
@@ -1117,9 +1331,9 @@ Rigorosamente retorne APENAS um JSON válido no formato:
         return `Tentativa ${idx + 1} (${c.data || 'Sem data'} - Canal: ${c.tipoContato || c.tipo || 'Geral'}): Status/Resposta: "${c.houveResposta || c.status || 'Sem status'}" | Detalhes: "${c.descricao || 'N/A'}"`;
       }).join('\n') : 'Nenhuma tentativa prévia de busca ativa registrada anteriormente.';
 
-      // Formatação das anotações e ocorrências do dossiê (sem atrasos brutos)
+      // Formatação das anotações e ocorrências do dossiê (sem atrasos reais por categoria)
       const ocorrenciasFormatadas = Array.isArray(ocorrenciasDossie) && ocorrenciasDossie.length > 0 ? ocorrenciasDossie
-        .filter((o: any) => !o.isAtraso && !String(o.tipo || '').toLowerCase().includes('atraso'))
+        .filter((o: any) => !isCategoriaAtrasoEstrita(o))
         .slice(0, 20)
         .map((o: any, idx: number) => {
           const conviva = o.registradoConviva ? `[Registrado Conviva SP - Cód: ${o.codigoConviva || 'Sim'}]` : '';
@@ -2382,6 +2596,29 @@ ${String(notasBrutas).trim()}`;
       console.error('[API Atas Salvar] Erro:', err?.message || err);
       res.status(500).json({
         error: 'Erro ao salvar ata e integrar histórico acoes_2026.',
+        details: err?.message || String(err)
+      });
+    }
+  });
+
+  // POST: Limpeza administrativa de registros categorizados falsamente como Atraso
+  app.post('/api/admin/limpar-falsos-atrasos', async (req, res) => {
+    try {
+      const realUser = await resolveRealAuthenticatedUser(req);
+      if (!realUser) {
+        return res.status(401).json({ error: 'Autenticação obrigatória.' });
+      }
+      if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(realUser.realRole)) {
+        return res.status(403).json({
+          error: `Acesso negado: Apenas Direção, Vice-Direção ou CGPG podem executar esta limpeza (perfil real: "${realUser.realRole}").`
+        });
+      }
+      const stats = await limparFalsosAtrasosNoBanco();
+      res.json({ success: true, ...stats });
+    } catch (err: any) {
+      console.error('[API Limpar Falsos Atrasos] Erro:', err?.message || err);
+      res.status(500).json({
+        error: 'Erro ao limpar falsos atrasos no banco de dados.',
         details: err?.message || String(err)
       });
     }
@@ -4019,8 +4256,12 @@ Direção e Equipe Gestora`;
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Servidor Clóvis] Rodando na porta ${PORT} com suporte oficial ao MongoDB Atlas`);
-    // Pré-aquece dados críticos na inicialização em background
-    prewarmCache().catch(err => console.warn('[MongoDB Prewarm] Erro inicial:', err.message));
+    // Higieniza registros categorizados incorretamente como Atraso e pré-aquece cache
+    limparFalsosAtrasosNoBanco()
+      .catch(err => console.warn('[Limpeza Atrasos] Erro inicial:', err?.message || err))
+      .finally(() => {
+        prewarmCache().catch(err => console.warn('[MongoDB Prewarm] Erro inicial:', err.message));
+      });
   });
 }
 

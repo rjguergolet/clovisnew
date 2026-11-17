@@ -149,12 +149,13 @@ function isOcorrenciaDispensaValid(oc: any): boolean {
 
 function isOcorrenciaAtrasoValid(oc: any): boolean {
   if (!oc || isOcorrenciaDispensaValid(oc)) return false;
-  if (oc.isAtraso === true) return true;
-  const tipo = String(oc.tipo || '').toUpperCase();
-  const cat = String(oc.categoria || '').toUpperCase();
-  const desc = String(oc.descricao || '').toUpperCase();
-  const titulo = String(oc.titulo || '').toUpperCase();
-  return tipo.includes('ATRASO') || cat.includes('ATRASO') || desc.startsWith('ATRASO') || titulo.includes('ATRASO');
+  if (String(oc.origem || '').toUpperCase() === 'ATA_ESCOLAR') return false;
+  const tipo = String(oc.tipo || '').trim().toUpperCase();
+  const cat = String(oc.categoria || '').trim().toUpperCase();
+  if (tipo || cat) {
+    return tipo.includes('ATRASO') || cat.includes('ATRASO');
+  }
+  return oc.isAtraso === true;
 }
 
 export default function PresencaDiariaIA() {

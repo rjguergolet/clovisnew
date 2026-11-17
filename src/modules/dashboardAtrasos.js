@@ -20,21 +20,16 @@ function normalizarRa(ra) {
  */
 function isOcorrenciaAtraso(oc) {
   if (!oc) return false;
-  const tipoStr = String(oc.tipo || "").toUpperCase();
-  const catStr = String(oc.categoria || "").toUpperCase();
+  if (String(oc.origem || "").toUpperCase() === "ATA_ESCOLAR") return false;
+  const tipoStr = String(oc.tipo || "").trim().toUpperCase();
+  const catStr = String(oc.categoria || "").trim().toUpperCase();
   if (oc.isDispensa === true || tipoStr.includes("DISPENSA") || catStr.includes("DISPENSA") || tipoStr.includes("AFASTAMENTO")) {
     return false;
   }
-  if (oc.isAtraso === true) return true;
-  const descStr = String(oc.descricao || "").toUpperCase();
-  const tituloStr = String(oc.titulo || "").toUpperCase();
-  return (
-    tipoStr.includes("ATRASO") ||
-    catStr.includes("ATRASO") ||
-    descStr.includes("ATRASO") ||
-    descStr.startsWith("ATRASO") ||
-    tituloStr.includes("ATRASO")
-  );
+  if (tipoStr || catStr) {
+    return tipoStr.includes("ATRASO") || catStr.includes("ATRASO");
+  }
+  return oc.isAtraso === true;
 }
 
 /**

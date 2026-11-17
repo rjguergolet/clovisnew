@@ -57,9 +57,16 @@ export default function Dashboard3Pontualidade({
       const raKey = normalizarRa(oc.ra || oc.raAluno);
       if (raKey && !alunosPorRa.has(raKey)) return; // respeita filtros globais
 
-      const tipo = String(oc.tipo || oc.categoria || '').toLowerCase();
-      const isAtraso = oc.isAtraso === true || tipo.includes('atraso');
-      const isSaida = tipo.includes('saída antecipada') || tipo.includes('saida antecipada');
+      const tipo = String(oc.tipo || '').trim().toLowerCase();
+      const cat = String(oc.categoria || '').trim().toLowerCase();
+      const temCategoria = Boolean(tipo || cat);
+      const isDispensa = oc.isDispensa === true || tipo.includes('dispensa') || cat.includes('dispensa') || tipo.includes('afastamento');
+      const isSaida = tipo.includes('saída antecipada') || tipo.includes('saida antecipada') || cat.includes('saída antecipada') || cat.includes('saida antecipada');
+      const isAtraso =
+        !isDispensa &&
+        !isSaida &&
+        String(oc.origem || '').toUpperCase() !== 'ATA_ESCOLAR' &&
+        (temCategoria ? (tipo.includes('atraso') || cat.includes('atraso')) : oc.isAtraso === true);
 
       if (isSaida) saidas.push(oc);
       else if (isAtraso) atrasos.push(oc);
