@@ -248,6 +248,389 @@ async function limparFalsosAtrasosNoBanco(): Promise<{
   return { ocorrenciasLimpas, itensEmbutidosLimpos, alunosAtualizados };
 }
 
+function isGatilhoAutomaticoDoc(item: any): boolean {
+  if (!item || typeof item !== 'object') return false;
+  if (item.gatilhoAutomaticoAtraso === true || item.gatilhoAutomatico === true) return true;
+  const orig = String(item.origem || '').trim().toUpperCase();
+  if (orig === 'SISTEMA_PONTUALIDADE' || orig === 'SISTEMA_AUTOMATICO') return true;
+  const desc = String(item.descricao || '');
+  const tit = String(item.titulo || '');
+  return (
+    /\[GATILHO\s+AUTOM[ÁA]TICO/i.test(desc) ||
+    /\[GATILHO\s+AUTOM[ÁA]TICO/i.test(tit) ||
+    /PAUTA\s+OBRIGAT[ÓO]RIA\s+(?:DE\s+TUTORIA|NA\s+SESS[ÃA]O)/i.test(`${tit} ${desc}`)
+  );
+}
+
+function isLogSilenciosoDocumentoDoc(item: any): boolean {
+  if (!item || typeof item !== 'object') return false;
+  const tipo = String(item.tipo || '').trim().toUpperCase();
+  const origem = String(item.origem || '').trim().toUpperCase();
+  const desc = String(item.descricao || '');
+  return (
+    (tipo === 'EMISSÃO DE DOCUMENTO' || tipo === 'EMISSAO DE DOCUMENTO' || origem === 'SECRETARIA') &&
+    /emitido\(a\)\s+pela\s+Secretaria\s*\/\s*Busca\s+Ativa/i.test(desc)
+  );
+}
+
+function isRegistroAutomaticoDossieDoc(item: any): boolean {
+  return isGatilhoAutomaticoDoc(item) || isLogSilenciosoDocumentoDoc(item);
+}
+
+function extrairDadosGatilho(item: any, alunoFallback?: any): {
+  ra: string;
+  nomeAluno: string;
+  turma: string;
+  tutorResponsavel: string;
+  qtdAtrasos: number;
+  mesReferencia: string;
+  mensagem: string;
+  data: string;
+} {
+  const desc = String(item?.descricao || '');
+  const tit = String(item?.titulo || '');
+  const ra = String(item?.ra || alunoFallback?.ra || alunoFallback?.id || '').trim();
+  const nomeAluno = String(item?.nomeAluno || alunoFallback?.nome || 'ESTUDANTE').trim().toUpperCase();
+  const turma = String(item?.turma || alunoFallback?.turma || '').trim().toUpperCase();
+
+  let tutorResponsavel = String(item?.tutorResponsavel || alunoFallback?.tutor_2026 || alunoFallback?.tutor || '').trim();
+  if (!tutorResponsavel || tutorResponsavel.toUpperCase() === 'TUTORIA PEI') {
+    const matchTutor = desc.match(/TUTORIA\s*\(([^)]+)\)/i);
+    if (matchTutor && matchTutor[1]) {
+      tutorResponsavel = matchTutor[1].trim();
+    } else if (alunoFallback?.tutor_2026 || alunoFallback?.tutor) {
+      tutorResponsavel = String(alunoFallback.tutor_2026 || alunoFallback.tutor).trim();
+    } else {
+      tutorResponsavel = 'Tutoria PEI';
+    }
+  }
+
+  let qtdAtrasos = Number(item?.qtdAtrasosGatilho || item?.qtdAtrasos || 0);
+  if (!qtdAtrasos || isNaN(qtdAtrasos)) {
+    const matchQtd = `${tit} ${desc}`.match(/(\d+)\s*ATRASO/i);
+    qtdAtrasos = matchQtd ? parseInt(matchQtd[1], 10) : 3;
+  }
+
+  let mesReferencia = String(item?.mesReferenciaGatilho || item?.mesReferencia || '').trim();
+  if (!mesReferencia) {
+    const matchMes = desc.match(/(\d{4}-\d{2})/);
+    if (matchMes) {
+      mesReferencia = matchMes[1];
+    } else if (item?.data) {
+      const dt = new Date(item.data);
+      if (!isNaN(dt.getTime())) {
+        mesReferencia = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`;
+      }
+    }
+  }
+  if (!mesReferencia) {
+    const agora = new Date();
+    mesReferencia = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  const data = String(item?.data || item?.criadoEm || new Date().toISOString());
+  const mensagem = `Estudante atingiu ${qtdAtrasos} atrasos no mês (${mesReferencia}). Realizar acompanhamento de pontualidade na sessão semanal de Tutoria e providenciar ciência do Termo de Frequência.`;
+
+  return {
+    ra,
+    nomeAluno,
+    turma,
+    tutorResponsavel,
+    qtdAtrasos,
+    mesReferencia,
+    mensagem,
+    data
+  };
+}
+
+async function migrarERemoverGatilhosAutomaticosNoBanco(): Promise<{
+  ocorrenciasRemovidas: number;
+  embutidosRemovidos: number;
+  alunosAtualizados: number;
+  notificacoesCriadas: number;
+}> {
+  const db = await getDatabase();
+  const colOcorrencias = db.collection('ocorrencias');
+  const colAlunos = db.collection('alunos');
+  const colNotifTutor = db.collection('notificacoes_tutor');
+  const nowIso = new Date().toISOString();
+
+  let ocorrenciasRemovidas = 0;
+  let embutidosRemovidos = 0;
+  let alunosAtualizados = 0;
+  let notificacoesCriadas = 0;
+
+  // Mapa para lookup rápido do aluno pelo RA e deduplicação de notificações
+  const alunosDocs = await colAlunos.find({}, {
+    projection: { ra: 1, id: 1, nome: 1, turma: 1, tutor: 1, tutor_2026: 1 }
+  }).toArray();
+  const alunoPorRa = new Map<string, any>();
+  for (const a of alunosDocs) {
+    const r = String(a.ra || a.id || '').trim();
+    const rClean = r.replace(/\D/g, '');
+    if (r) alunoPorRa.set(r, a);
+    if (rClean) alunoPorRa.set(rClean, a);
+  }
+
+  const existingNotifs = await colNotifTutor.find({}).toArray();
+  const notifKeys = new Set<string>();
+  for (const n of existingNotifs) {
+    const rClean = String(n.ra || '').replace(/\D/g, '') || String(n.ra || '').trim();
+    notifKeys.add(`${rClean}|${String(n.mesReferencia || '')}|${Number(n.qtdAtrasos || 3)}`);
+  }
+
+  const garantirNotificacaoTutor = async (item: any, alunoFallback?: any) => {
+    const dados = extrairDadosGatilho(item, alunoFallback);
+    if (!dados.ra) return;
+    const rClean = dados.ra.replace(/\D/g, '') || dados.ra;
+    const key = `${rClean}|${dados.mesReferencia}|${dados.qtdAtrasos}`;
+    if (notifKeys.has(key)) return;
+    notifKeys.add(key);
+
+    // REGRA CRÍTICA (AGENTS.md / GEMINI.md): NUNCA incluir id ou _id no documento enviado ao banco
+    await colNotifTutor.insertOne({
+      ra: dados.ra,
+      nomeAluno: dados.nomeAluno,
+      turma: dados.turma,
+      tutorResponsavel: dados.tutorResponsavel,
+      tipoNotificacao: 'GATILHO_ATRASOS_TUTORIA',
+      titulo: `Pauta de Tutoria — ${dados.qtdAtrasos} atrasos no mês (${dados.mesReferencia})`,
+      mensagem: dados.mensagem,
+      qtdAtrasos: dados.qtdAtrasos,
+      mesReferencia: dados.mesReferencia,
+      atendida: false,
+      status: 'PENDENTE',
+      atendidaPor: '',
+      atendidaEm: '',
+      observacaoAtendimento: '',
+      data: dados.data,
+      criadoEm: dados.data,
+      atualizadoEm: nowIso,
+      origem: 'SISTEMA_PONTUALIDADE'
+    });
+    notificacoesCriadas++;
+  };
+
+  // 1. Remover documentos de gatilho automático da coleção 'ocorrencias'
+  const gatilhosTop = await colOcorrencias.find({
+    $or: [
+      { gatilhoAutomaticoAtraso: true },
+      { descricao: /\[GATILHO\s+AUTOM[ÁA]TICO/i },
+      { titulo: /\[GATILHO\s+AUTOM[ÁA]TICO/i },
+      { titulo: /PAUTA\s+OBRIGAT[ÓO]RIA\s+DE\s+TUTORIA/i }
+    ]
+  }).toArray();
+
+  for (const docItem of gatilhosTop) {
+    if (!isGatilhoAutomaticoDoc(docItem)) continue;
+    const rStr = String(docItem.ra || '').trim();
+    const alRef = alunoPorRa.get(rStr) || alunoPorRa.get(rStr.replace(/\D/g, ''));
+    await garantirNotificacaoTutor(docItem, alRef);
+    await colOcorrencias.deleteOne({ _id: docItem._id });
+    ocorrenciasRemovidas++;
+  }
+
+  // 2. Remover gatilhos embutidos e linhas sintéticas de acoes_2026 em 'alunos'
+  const alunosComGatilho = await colAlunos.find({
+    $or: [
+      { 'ocorrencias.gatilhoAutomaticoAtraso': true },
+      { 'ocorrencias.descricao': /\[GATILHO\s+AUTOM[ÁA]TICO/i },
+      { 'ocorrencias.titulo': /PAUTA\s+OBRIGAT[ÓO]RIA\s+DE\s+TUTORIA/i },
+      { 'registros.gatilhoAutomaticoAtraso': true },
+      { 'registros.descricao': /\[GATILHO\s+AUTOM[ÁA]TICO/i },
+      { acoes_2026: /GATILHO\s+(?:\d+\s+ATRASOS|AUTOM[ÁA]TICO)/i },
+      { pautaTutoriaObrigatoriaPendente: true },
+      { ultimoGatilhoAtrasosMes: { $exists: true } }
+    ]
+  }).toArray();
+
+  for (const al of alunosComGatilho) {
+    let alterou = false;
+    const setFields: Record<string, any> = { atualizadoEm: nowIso };
+
+    if (Array.isArray(al.ocorrencias)) {
+      const filtradas: any[] = [];
+      for (const el of al.ocorrencias) {
+        if (isGatilhoAutomaticoDoc(el)) {
+          await garantirNotificacaoTutor(el, al);
+          embutidosRemovidos++;
+          alterou = true;
+        } else if (el && typeof el === 'object') {
+          const { id: _ignId, _id: _ignUnder, ...cleanEl } = el;
+          filtradas.push(cleanEl);
+        } else {
+          filtradas.push(el);
+        }
+      }
+      if (alterou) {
+        setFields.ocorrencias = filtradas;
+      }
+    }
+
+    if (Array.isArray(al.registros)) {
+      const filtradosReg: any[] = [];
+      let alterouReg = false;
+      for (const el of al.registros) {
+        if (isGatilhoAutomaticoDoc(el)) {
+          await garantirNotificacaoTutor(el, al);
+          embutidosRemovidos++;
+          alterou = true;
+          alterouReg = true;
+        } else if (el && typeof el === 'object') {
+          const { id: _ignId, _id: _ignUnder, ...cleanEl } = el;
+          filtradosReg.push(cleanEl);
+        } else {
+          filtradosReg.push(el);
+        }
+      }
+      if (alterouReg) {
+        setFields.registros = filtradosReg;
+      }
+    }
+
+    if (typeof al.acoes_2026 === 'string' && /GATILHO\s+(?:\d+\s+ATRASOS|AUTOM[ÁA]TICO)/i.test(al.acoes_2026)) {
+      const linhasLimpas = al.acoes_2026
+        .split('\n')
+        .filter((linha: string) => !/GATILHO\s+(?:\d+\s+ATRASOS|AUTOM[ÁA]TICO)/i.test(linha))
+        .join('\n')
+        .trim();
+      setFields.acoes_2026 = linhasLimpas;
+      alterou = true;
+    }
+
+    const unsetFields: Record<string, any> = {};
+    if (al.pautaTutoriaObrigatoriaPendente !== undefined) {
+      unsetFields.pautaTutoriaObrigatoriaPendente = '';
+      alterou = true;
+    }
+    if (al.ultimoGatilhoAtrasosMes !== undefined) {
+      unsetFields.ultimoGatilhoAtrasosMes = '';
+      alterou = true;
+    }
+
+    if (alterou) {
+      const updateOp: Record<string, any> = { $set: setFields };
+      if (Object.keys(unsetFields).length > 0) {
+        updateOp.$unset = unsetFields;
+      }
+      await colAlunos.updateOne({ _id: al._id }, updateOp);
+      alunosAtualizados++;
+    }
+  }
+
+  if (ocorrenciasRemovidas > 0 || embutidosRemovidos > 0 || alunosAtualizados > 0 || notificacoesCriadas > 0) {
+    console.log(
+      `[Migração Gatilhos Tutoria] ${ocorrenciasRemovidas} ocorrência(s) removida(s), ${embutidosRemovidos} embutido(s) removido(s) em ${alunosAtualizados} aluno(s), ${notificacoesCriadas} notificação(ões) criada(s) em notificacoes_tutor.`
+    );
+  }
+
+  return { ocorrenciasRemovidas, embutidosRemovidos, alunosAtualizados, notificacoesCriadas };
+}
+
+async function limparLogsSilenciososDossieNoBanco(): Promise<{
+  ocorrenciasRemovidas: number;
+  embutidosRemovidos: number;
+  alunosAtualizados: number;
+}> {
+  const db = await getDatabase();
+  const colOcorrencias = db.collection('ocorrencias');
+  const colAlunos = db.collection('alunos');
+  const nowIso = new Date().toISOString();
+
+  let ocorrenciasRemovidas = 0;
+  let embutidosRemovidos = 0;
+  let alunosAtualizados = 0;
+
+  // 1. Remover logs silenciosos de emissão de documentos da coleção 'ocorrencias'
+  const logsTop = await colOcorrencias.find({
+    $and: [
+      { $or: [{ tipo: 'Emissão de Documento' }, { origem: 'SECRETARIA' }] },
+      { descricao: /emitido\(a\)\s+pela\s+Secretaria\s*\/\s*Busca\s+Ativa/i }
+    ]
+  }).toArray();
+
+  for (const docItem of logsTop) {
+    if (!isLogSilenciosoDocumentoDoc(docItem)) continue;
+    await colOcorrencias.deleteOne({ _id: docItem._id });
+    ocorrenciasRemovidas++;
+  }
+
+  // 2. Remover logs silenciosos embutidos em alunos.ocorrencias / registros e linhas em acoes_2026
+  const alunosComLogs = await colAlunos.find({
+    $or: [
+      { 'ocorrencias.tipo': 'Emissão de Documento' },
+      { 'ocorrencias.descricao': /emitido\(a\)\s+pela\s+Secretaria\s*\/\s*Busca\s+Ativa/i },
+      { 'registros.tipo': 'Emissão de Documento' },
+      { 'registros.descricao': /emitido\(a\)\s+pela\s+Secretaria\s*\/\s*Busca\s+Ativa/i },
+      { acoes_2026: /emitido\(a\)\s+pela\s+Secretaria\s*\/\s*Busca\s+Ativa/i }
+    ]
+  }).toArray();
+
+  for (const al of alunosComLogs) {
+    let alterou = false;
+    const setFields: Record<string, any> = { atualizadoEm: nowIso };
+
+    if (Array.isArray(al.ocorrencias)) {
+      const filtradas: any[] = [];
+      let remOc = false;
+      for (const el of al.ocorrencias) {
+        if (isLogSilenciosoDocumentoDoc(el)) {
+          embutidosRemovidos++;
+          alterou = true;
+          remOc = true;
+        } else if (el && typeof el === 'object') {
+          const { id: _ignId, _id: _ignUnder, ...cleanEl } = el;
+          filtradas.push(cleanEl);
+        } else {
+          filtradas.push(el);
+        }
+      }
+      if (remOc) setFields.ocorrencias = filtradas;
+    }
+
+    if (Array.isArray(al.registros)) {
+      const filtradosReg: any[] = [];
+      let remReg = false;
+      for (const el of al.registros) {
+        if (isLogSilenciosoDocumentoDoc(el)) {
+          embutidosRemovidos++;
+          alterou = true;
+          remReg = true;
+        } else if (el && typeof el === 'object') {
+          const { id: _ignId, _id: _ignUnder, ...cleanEl } = el;
+          filtradosReg.push(cleanEl);
+        } else {
+          filtradosReg.push(el);
+        }
+      }
+      if (remReg) setFields.registros = filtradosReg;
+    }
+
+    if (typeof al.acoes_2026 === 'string' && /emitido\(a\)\s+pela\s+Secretaria\s*\/\s*Busca\s+Ativa/i.test(al.acoes_2026)) {
+      const linhasLimpas = al.acoes_2026
+        .split('\n')
+        .filter((linha: string) => !/emitido\(a\)\s+pela\s+Secretaria\s*\/\s*Busca\s+Ativa/i.test(linha))
+        .join('\n')
+        .trim();
+      setFields.acoes_2026 = linhasLimpas;
+      alterou = true;
+    }
+
+    if (alterou) {
+      await colAlunos.updateOne({ _id: al._id }, { $set: setFields });
+      alunosAtualizados++;
+    }
+  }
+
+  if (ocorrenciasRemovidas > 0 || embutidosRemovidos > 0 || alunosAtualizados > 0) {
+    console.log(
+      `[Limpeza Logs Silenciosos Dossiê] ${ocorrenciasRemovidas} ocorrência(s) e ${embutidosRemovidos} embutido(s) em ${alunosAtualizados} aluno(s) removidos.`
+    );
+  }
+
+  return { ocorrenciasRemovidas, embutidosRemovidos, alunosAtualizados };
+}
+
 function signSessionToken(payload: { id: string; email: string; realRole: string }): string {
   const data = {
     ...payload,
@@ -450,7 +833,7 @@ async function authorizeDbOperation(
           message: `Acesso negado: Perfil real "${role}" não tem permissão para excluir estudantes.`
         };
       }
-    } else if (['ocorrencias', 'busca_ativa', 'registros', 'atas_escolares'].includes(realCol)) {
+    } else if (['ocorrencias', 'busca_ativa', 'registros', 'atas_escolares', 'notificacoes_tutor'].includes(realCol)) {
       if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(role)) {
         return {
           allowed: false,
@@ -1663,18 +2046,19 @@ ${estagioDesejado && estagioDesejado !== 'auto' ? `O operador solicitou explicit
         notasTexto = 'Rendimento escolar em acompanhamento contínuo / sem fechamentos bimestrais consolidados na SED.';
       }
 
-      // 2. Consolidação e Categorização Profunda: CONVIVA SP, Busca Ativa e Ocorrências Pedagógicas
-      const registrosEntrada: any[] = Array.isArray(ocorrencias) ? [...ocorrencias] : [];
+      // 2. Consolidação e Categorização Profunda: CONVIVA SP, Busca Ativa e Ocorrências Pedagógicas (somente registros reais)
+      const registrosEntradaRaw: any[] = Array.isArray(ocorrencias) ? [...ocorrencias] : [];
       if (Array.isArray(buscaAtivaRegistros)) {
         buscaAtivaRegistros.forEach((ba: any) => {
-          const exists = registrosEntrada.some(r =>
+          const exists = registrosEntradaRaw.some(r =>
             (ba.id && r.id === ba.id) ||
             (String(r.data || '').slice(0, 10) === String(ba.data || '').slice(0, 10) &&
               String(r.descricao || '').trim() === String(ba.descricao || '').trim())
           );
-          if (!exists) registrosEntrada.push({ ...ba, origem: 'BUSCA_ATIVA' });
+          if (!exists) registrosEntradaRaw.push({ ...ba, origem: 'BUSCA_ATIVA' });
         });
       }
+      const registrosEntrada = registrosEntradaRaw.filter((o: any) => !isRegistroAutomaticoDossieDoc(o));
 
       const listaConviva: any[] = [];
       const listaBuscaAtiva: any[] = [];
@@ -1720,7 +2104,7 @@ ${estagioDesejado && estagioDesejado !== 'auto' ? `O operador solicitou explicit
 
       // Resumo de Frequência Diária e Dispensas
       const freqDiariaLinha = frequenciaDiariaResumo
-        ? `• Chamada Diária Escolar: ${frequenciaDiariaResumo.totalDiasChamada || 0} dias lançados (${frequenciaDiariaResumo.presencas || 0} presenças, ${frequenciaDiariaResumo.faltasChamadaDiaria || 0} faltas, ${frequenciaDiariaResumo.dispensasOuLicencas || 0} licenças/dispensas) | Faltas consecutivas recentes: ${frequenciaDiariaResumo.faltasConsecutivasAtuais || 0}${frequenciaDiariaResumo.gatilhoBuscaAtiva3Faltas ? ' (GATILHO ATIVO: 3+ faltas seguidas)' : ''}`
+        ? `• Chamada Diária Escolar: ${frequenciaDiariaResumo.totalDiasChamada || 0} dias lançados (${frequenciaDiariaResumo.presencas || 0} presenças, ${frequenciaDiariaResumo.faltasChamadaDiaria || 0} faltas, ${frequenciaDiariaResumo.dispensasOuLicencas || 0} licenças/dispensas) | Faltas consecutivas recentes: ${frequenciaDiariaResumo.faltasConsecutivasAtuais || 0}`
         : '';
 
       const dispensasTexto = Array.isArray(dispensas) && dispensas.length > 0
@@ -1735,9 +2119,20 @@ ${estagioDesejado && estagioDesejado !== 'auto' ? `O operador solicitou explicit
         aluno.reincidente ? 'Estudante marcado como REINCIDENTE em Busca Ativa' : ''
       ].filter(Boolean).join(' | ');
 
+      const acoes2026Limpas = typeof aluno.acoes_2026 === 'string'
+        ? aluno.acoes_2026
+            .split('\n')
+            .filter((l: string) =>
+              !/GATILHO\s+(?:\d+\s+ATRASOS|AUTOM[ÁA]TICO)/i.test(l) &&
+              !/emitido\(a\)\s+pela\s+Secretaria\s*\/\s*Busca\s+Ativa/i.test(l)
+            )
+            .join('\n')
+            .trim()
+        : '';
+
       // Anotações pedagógicas complementares
       const anotacoesExtras = [
-        aluno.acoes_2026 ? `• Histórico de Ações 2026: ${aluno.acoes_2026}` : '',
+        acoes2026Limpas ? `• Histórico de Ações 2026: ${acoes2026Limpas}` : '',
         aluno.acoes_2025 ? `• Histórico de Ações 2025: ${aluno.acoes_2025}` : '',
         aluno.oficio ? `• Ofício / Notificação DEMP: ${aluno.oficio}` : '',
         aluno.ficha_ct ? `• Encaminhamento FICAI / Conselho Tutelar: ${aluno.ficha_ct}` : '',
@@ -2619,6 +3014,29 @@ ${String(notasBrutas).trim()}`;
       console.error('[API Limpar Falsos Atrasos] Erro:', err?.message || err);
       res.status(500).json({
         error: 'Erro ao limpar falsos atrasos no banco de dados.',
+        details: err?.message || String(err)
+      });
+    }
+  });
+
+  // POST: Migrar e limpar gatilhos automáticos legados para notificacoes_tutor
+  app.post('/api/admin/migrar-gatilhos-tutor', async (req, res) => {
+    try {
+      const realUser = await resolveRealAuthenticatedUser(req);
+      if (!realUser) {
+        return res.status(401).json({ error: 'Autenticação obrigatória.' });
+      }
+      if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(realUser.realRole)) {
+        return res.status(403).json({
+          error: `Acesso negado: Apenas Direção, Vice-Direção ou CGPG podem executar esta migração (perfil real: "${realUser.realRole}").`
+        });
+      }
+      const stats = await migrarERemoverGatilhosAutomaticosNoBanco();
+      res.json({ success: true, ...stats });
+    } catch (err: any) {
+      console.error('[API Migrar Gatilhos Tutor] Erro:', err?.message || err);
+      res.status(500).json({
+        error: 'Erro ao migrar gatilhos automáticos para notificações da tutoria.',
         details: err?.message || String(err)
       });
     }
@@ -4123,7 +4541,7 @@ Direção e Equipe Gestora`;
     const pv = String(aluno.projeto_vida_2026 || aluno.projeto_vida || aluno.pv || aluno.sonhos || '').trim();
     const isRec = Boolean(aluno.recomposicao);
     const isAee = Boolean(aluno.aee);
-    const listaUnificada = Array.isArray(ocorrencias) ? ocorrencias : [];
+    const listaUnificada = (Array.isArray(ocorrencias) ? ocorrencias : []).filter((o: any) => !isRegistroAutomaticoDossieDoc(o));
     const qtdOcorrencias = listaUnificada.length;
     const qtdConviva = Array.isArray(extras?.listaConviva)
       ? extras.listaConviva.length
@@ -4200,8 +4618,8 @@ Direção e Equipe Gestora`;
 
     const faltasStr = totalFaltas > 0 ? ` com ${totalFaltas} faltas acumuladas no ano` : '';
     const atrasosStr = atrasosCount > 0 ? ` e ${atrasosCount} atraso(s) registrado(s)` : '';
-    const consecStr = extras?.frequenciaDiariaResumo?.gatilhoBuscaAtiva3Faltas
-      ? ` (com alerta ativo de ${extras.frequenciaDiariaResumo.faltasConsecutivasAtuais} faltas consecutivas na chamada diária)`
+    const consecStr = (extras?.frequenciaDiariaResumo?.faltasConsecutivasAtuais || 0) >= 3
+      ? ` (com ${extras.frequenciaDiariaResumo.faltasConsecutivasAtuais} faltas consecutivas apuradas na chamada diária)`
       : '';
     const discDefasagemStr = disciplinasAbaixo.length > 0
       ? `, com defasagem pontual em ${disciplinasAbaixo.map(d => `${d.nome} (${d.nota})`).join(', ')}`
@@ -4256,9 +4674,13 @@ Direção e Equipe Gestora`;
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Servidor Clóvis] Rodando na porta ${PORT} com suporte oficial ao MongoDB Atlas`);
-    // Higieniza registros categorizados incorretamente como Atraso e pré-aquece cache
+    // Higieniza registros categorizados incorretamente como Atraso, migra gatilhos automáticos legados, remove logs silenciosos do dossiê e pré-aquece cache
     limparFalsosAtrasosNoBanco()
       .catch(err => console.warn('[Limpeza Atrasos] Erro inicial:', err?.message || err))
+      .then(() => migrarERemoverGatilhosAutomaticosNoBanco())
+      .catch(err => console.warn('[Migração Gatilhos Tutoria] Erro inicial:', err?.message || err))
+      .then(() => limparLogsSilenciososDossieNoBanco())
+      .catch(err => console.warn('[Limpeza Logs Silenciosos Dossiê] Erro inicial:', err?.message || err))
       .finally(() => {
         prewarmCache().catch(err => console.warn('[MongoDB Prewarm] Erro inicial:', err.message));
       });

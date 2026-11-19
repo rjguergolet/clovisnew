@@ -47,6 +47,9 @@ declare global {
     gradeCache?: any[];
     substituicoesCache?: any[];
     frequenciaDiariaCache?: any[];
+    notificacoesTutorCache?: any[];
+    verificarGatilhoAtrasosMes?: (alunoObj: any) => Promise<any>;
+    emitirTermoCienciaFrequenciaGatilho?: (ra: string, totalMes?: number) => void;
   }
 }
 
@@ -184,6 +187,14 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
     }
     return [];
   });
+  const [notificacoesTutor, setNotificacoesTutor] = useState<any[]>(() => {
+    if (initialCache?.notificacoesTutor?.length) return initialCache.notificacoesTutor;
+    if (typeof window !== 'undefined' && Array.isArray((window as any).notificacoesTutorCache) && (window as any).notificacoesTutorCache.length > 0) {
+      return (window as any).notificacoesTutorCache;
+    }
+    return [];
+  });
+  const [obsAtendimentoNotif, setObsAtendimentoNotif] = useState<Record<string, string>>({});
 
   // Filtros do Painel Executivo PDCA na Página Inicial
   const [pdcaScopeView, setPdcaScopeView] = useState<'equipe' | 'minhas'>('equipe');
@@ -473,7 +484,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
     try {
       // 1. Consultas simultâneas protegidas
-      const [uSnap, rSnap, tSnap, eSnap, oSnap, hSnap, subSnap, fdSnap] = await Promise.all([
+      const [uSnap, rSnap, tSnap, eSnap, oSnap, hSnap, subSnap, fdSnap, ntSnap] = await Promise.all([
         getDocs(collection(db, 'usuarios')).catch(() => ({ docs: [], forEach: () => {} })),
         getDocs(collection(db, 'mural_recados')).catch(() => ({ docs: [], forEach: () => {} })),
         getDocs(collection(db, 'rotina_equipe')).catch(() => ({ docs: [], forEach: () => {} })),
@@ -481,7 +492,8 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         getDocs(collection(db, 'ocorrencias')).catch(() => ({ docs: [], forEach: () => {} })),
         getDocs(collection(db, 'horarios')).catch(() => ({ docs: [], forEach: () => {} })),
         getDocs(collection(db, 'substituicoes_diarias')).catch(() => ({ docs: [], forEach: () => {} })),
-        getDocs(collection(db, 'frequencia_diaria')).catch(() => ({ docs: [], forEach: () => {} }))
+        getDocs(collection(db, 'frequencia_diaria')).catch(() => ({ docs: [], forEach: () => {} })),
+        getDocs(collection(db, 'notificacoes_tutor')).catch(() => ({ docs: [], forEach: () => {} }))
       ]);
 
       const listaU: any[] = [];
@@ -554,6 +566,12 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       setFrequenciaDiaria(listaFreq);
       if (typeof window !== 'undefined') (window as any).frequenciaDiariaCache = listaFreq;
 
+      const listaNT: any[] = [];
+      ntSnap.forEach(d => listaNT.push({ id: d.id, ...d.data() }));
+      listaNT.sort((a, b) => new Date(b.criadoEm || b.data || 0).getTime() - new Date(a.criadoEm || a.data || 0).getTime());
+      setNotificacoesTutor(listaNT);
+      if (typeof window !== 'undefined') (window as any).notificacoesTutorCache = listaNT;
+
       // Alunos: prioriza memória e cache local antes de consultar Firestore
       let listaA: any[] = Array.isArray((window as any).allStudentsData) && (window as any).allStudentsData.length > 0
         ? (window as any).allStudentsData
@@ -593,6 +611,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         horarios: listaH,
         substituicoes: listaSub,
         frequenciaDiaria: listaFreq,
+        notificacoesTutor: listaNT,
         alunos: listaA,
         timestamp: Date.now()
       };
@@ -607,6 +626,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             ocorrencias: listaO,
             horarios: listaH,
             substituicoes: listaSub,
+            notificacoesTutor: listaNT,
             timestamp: Date.now()
           }));
         } catch (e) {}
@@ -1133,6 +1153,28 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
     });
   }, [alunos]);
 
+  // Notificações pendentes de Tutoria direcionadas ao Tutor ativo (3+ atrasos no mês)
+  const notificacoesTutorPendentes = useMemo(() => {
+    const tNome = normalizeTeacherName(effectiveTeacher?.nome || effectiveUser?.nome || '');
+    const rasTutorados = new Set(
+      tutoradosDoProfessor.map(a => String(a.ra || a.id || '').replace(/\D/g, '') || String(a.ra || a.id || '').trim())
+    );
+    return notificacoesTutor.filter(n => {
+      if (!n) return false;
+      const isAtendida = n.atendida === true || String(n.status || '').toUpperCase() === 'ATENDIDA';
+      if (isAtendida) return false;
+
+      const nRa = String(n.ra || '').replace(/\D/g, '') || String(n.ra || '').trim();
+      if (nRa && rasTutorados.has(nRa)) return true;
+
+      const nTutor = normalizeTeacherName(n.tutorResponsavel || '');
+      if (!nTutor || nTutor === 'TUTORIA PEI' || !tNome) return false;
+      if (nTutor === tNome) return true;
+      const minLen = Math.min(nTutor.length, tNome.length);
+      return minLen >= 3 && (tNome.includes(nTutor) || nTutor.includes(tNome));
+    });
+  }, [notificacoesTutor, effectiveTeacher, effectiveUser, tutoradosDoProfessor]);
+
   const handleAtenderNotificacaoPedagogica = async (ocorrenciaId: string) => {
     try {
       const ocRef = doc(db, 'ocorrencias', ocorrenciaId);
@@ -1149,6 +1191,59 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       console.error(e);
       if (typeof (window as any).showToast === 'function') {
         (window as any).showToast('Erro ao atualizar notificação', 'error');
+      }
+    }
+  };
+
+  const handleAtenderNotificacaoTutor = async (notifId: string, observacaoManual?: string) => {
+    try {
+      const obsTexto = String(observacaoManual ?? obsAtendimentoNotif[notifId] ?? '').trim();
+      const nowIso = new Date().toISOString();
+      const ntRef = doc(db, 'notificacoes_tutor', notifId);
+      await updateDoc(ntRef, {
+        atendida: true,
+        status: 'ATENDIDA',
+        atendidaPor: currentUser.nome || effectiveTeacher?.nome || 'Tutor',
+        atendidaEm: nowIso,
+        atualizadoEm: nowIso,
+        ...(obsTexto ? { observacaoAtendimento: obsTexto } : {})
+      });
+
+      const atualizarLista = (prev: any[]) =>
+        prev.map(n =>
+          n.id === notifId
+            ? {
+                ...n,
+                atendida: true,
+                status: 'ATENDIDA',
+                atendidaPor: currentUser.nome || effectiveTeacher?.nome || 'Tutor',
+                atendidaEm: nowIso,
+                ...(obsTexto ? { observacaoAtendimento: obsTexto } : {})
+              }
+            : n
+        );
+
+      setNotificacoesTutor(atualizarLista);
+      setObsAtendimentoNotif(prev => {
+        const next = { ...prev };
+        delete next[notifId];
+        return next;
+      });
+      if (typeof window !== 'undefined') {
+        if (Array.isArray((window as any).notificacoesTutorCache)) {
+          (window as any).notificacoesTutorCache = atualizarLista((window as any).notificacoesTutorCache);
+        }
+        if ((window as any).__clovisHomeCache && Array.isArray((window as any).__clovisHomeCache.notificacoesTutor)) {
+          (window as any).__clovisHomeCache.notificacoesTutor = atualizarLista((window as any).__clovisHomeCache.notificacoesTutor);
+        }
+      }
+      if (typeof (window as any).showToast === 'function') {
+        (window as any).showToast('Notificação de tutoria marcada como atendida!', 'success');
+      }
+    } catch (e: any) {
+      console.error(e);
+      if (typeof (window as any).showToast === 'function') {
+        (window as any).showToast('Erro ao atender notificação da tutoria', 'error');
       }
     }
   };
@@ -1590,7 +1685,14 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         atualizadoEm: new Date().toISOString()
       };
 
-      await addDoc(collection(db, 'ocorrencias'), payloadOcorrencia);
+      const docRefAtraso = await addDoc(collection(db, 'ocorrencias'), payloadOcorrencia);
+      if (typeof window !== 'undefined') {
+        if (!Array.isArray((window as any).ocorrenciasTopLevel)) (window as any).ocorrenciasTopLevel = [];
+        (window as any).ocorrenciasTopLevel.unshift({ ...payloadOcorrencia, id: docRefAtraso.id });
+        if (typeof (window as any).verificarGatilhoAtrasosMes === 'function') {
+          await (window as any).verificarGatilhoAtrasosMes(alunoSelecionadoAtraso);
+        }
+      }
 
       // Gerar comprovante para impressão imediata
       const comprovante = {
@@ -1830,6 +1932,9 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         }}
         onConfirmarCiencia={handleConfirmarCiencia}
         onAtenderNotificacao={handleAtenderNotificacaoPedagogica}
+        notificacoesTutor={notificacoesTutorPendentes}
+        onAtenderNotificacaoTutor={(id) => handleAtenderNotificacaoTutor(id)}
+        onEmitirTermoTutor={(ra, qtd) => window.emitirTermoCienciaFrequenciaGatilho?.(ra, qtd)}
         onToggleTarefa={handleToggleTarefa}
         onNovaTarefa={() => setModalNovaTarefa(true)}
         onAbrirRecado={(rec) => setModalRecado(rec)}
@@ -2620,8 +2725,8 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       {/* 3. CONTEÚDO PRINCIPAL DIVIDIDO POR CARGO */}
       {/* ======================================================== */}
 
-      {/* A. VISÃO PROFESSOR / PAAC (e CGPG apenas quando possui aulas ou tutorados atribuídos) */}
-      {(isProfessor || isPAAC || (isCoord && (aulasHoje.length > 0 || horariosDoProfessor.length > 0 || tutoradosDoProfessor.length > 0 || substituicoesParaMimHoje.length > 0))) && (
+      {/* A. VISÃO PROFESSOR / PAAC (e CGPG apenas quando possui aulas, tutorados ou notificações de tutoria atribuídos) */}
+      {(isProfessor || isPAAC || (isCoord && (aulasHoje.length > 0 || horariosDoProfessor.length > 0 || tutoradosDoProfessor.length > 0 || substituicoesParaMimHoje.length > 0 || notificacoesTutorPendentes.length > 0))) && (
         <div className="space-y-5 sm:space-y-6">
 
           {/* Substituições Designadas Hoje ao Docente (se houver) */}
@@ -2765,6 +2870,107 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                   })}
                 </div>
               )}
+            </section>
+          )}
+
+          {/* Notificações da Tutoria (Alertas de Pontualidade para Atendimento) */}
+          {notificacoesTutorPendentes.length > 0 && (
+            <section id="secao-notificacoes-tutoria" className="bg-amber-50/60 rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-amber-300/80 border-l-4 border-l-amber-500 shadow-[0_2px_15px_-3px_rgba(245,158,11,0.08)] space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/70 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-800 flex items-center justify-center text-sm shrink-0">
+                    <i className="fa-solid fa-bell"></i>
+                  </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight tabular-nums">
+                      Notificações de Tutoria Pendentes ({notificacoesTutorPendentes.length})
+                    </h2>
+                    <p className="text-xs text-slate-600">
+                      Estudantes sob sua tutoria que atingiram marco de atrasos no mês. Atenda na sessão semanal de Tutoria e clique em &ldquo;Atender Notificação&rdquo;.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {notificacoesTutorPendentes.map(notif => {
+                  const dtFmt = String(notif.criadoEm || notif.data || '').slice(0, 10).split('-').reverse().join('/');
+                  const qtd = Number(notif.qtdAtrasos || 3);
+                  return (
+                    <div
+                      key={notif.id}
+                      className="p-4 bg-white rounded-2xl border border-amber-200/80 border-l-4 border-l-amber-500 shadow-2xs flex flex-col justify-between gap-3"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-amber-100/90 text-amber-900 border border-amber-200 tabular-nums">
+                            {qtd} atrasos · {notif.mesReferencia || 'Mês vigente'}
+                          </span>
+                          <span className="text-[11px] text-slate-500 font-mono tabular-nums">
+                            {dtFmt || 'Recente'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-900">
+                            {notif.nomeAluno || `Estudante RA ${notif.ra}`}
+                          </h3>
+                          <p className="text-[11px] text-slate-500 tabular-nums">
+                            {notif.turma || 'Sem turma'} · RA: {notif.ra} · Tutor(a): {notif.tutorResponsavel || effectiveTeacher.nome}
+                          </p>
+                        </div>
+
+                        <p className="text-xs text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-200/60 leading-relaxed">
+                          {notif.mensagem || notif.titulo}
+                        </p>
+
+                        <input
+                          type="text"
+                          value={obsAtendimentoNotif[notif.id] || ''}
+                          onChange={(e) => setObsAtendimentoNotif(prev => ({ ...prev, [notif.id]: e.target.value }))}
+                          placeholder="Anotação rápida do atendimento na tutoria (opcional)..."
+                          className="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-400 focus:bg-white"
+                        />
+                      </div>
+
+                      <div className="pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (typeof window.abrirFichaAluno === 'function') window.abrirFichaAluno(notif.ra);
+                              else if (typeof window.navegarEAbrirFichaAluno === 'function') window.navegarEAbrirFichaAluno(notif.ra);
+                            }}
+                            className="px-2.5 py-1.5 text-[11px] font-semibold text-indigo-700 hover:text-indigo-950 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors cursor-pointer"
+                          >
+                            Ver Ficha
+                          </button>
+                          {typeof window.emitirTermoCienciaFrequenciaGatilho === 'function' && (
+                            <button
+                              type="button"
+                              onClick={() => window.emitirTermoCienciaFrequenciaGatilho?.(notif.ra, qtd)}
+                              className="px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:text-slate-950 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1"
+                              title="Gerar Termo de Ciência de Frequência para assinatura"
+                            >
+                              <i className="fa-solid fa-print text-[10px]"></i>
+                              <span>Termo de Ciência</span>
+                            </button>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleAtenderNotificacaoTutor(notif.id)}
+                          className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                        >
+                          <i className="fa-solid fa-check text-[11px]"></i>
+                          <span>Atender Notificação</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </section>
           )}
 

@@ -454,15 +454,33 @@ export async function gerarESalvarDossieAlunoPdf(dados: DossiePdfInput): Promise
 
   // =========================================================================
   // 5. HISTÓRICO UNIFICADO DE OCORRÊNCIAS PEDAGÓGICAS, CONVIVA E BUSCA ATIVA
-  //    (Sem Controle Conviva, sem e-mail, autor em destaque sutil embaixo)
+  //    (Sem Controle Conviva, sem e-mail, autor em destaque sutil embaixo; somente registros reais)
   // =========================================================================
+  const ocorrenciasReais = (Array.isArray(dados.ocorrencias) ? dados.ocorrencias : []).filter((ac) => {
+    if (!ac) return false;
+    const raw = (ac as any).rawDoc || ac;
+    if (raw.gatilhoAutomaticoAtraso === true || raw.gatilhoAutomatico === true) return false;
+    const orig = String(ac.origem || raw.origem || '').toUpperCase();
+    if (orig === 'SISTEMA_PONTUALIDADE' || orig === 'SISTEMA_AUTOMATICO') return false;
+    const texto = `${raw.titulo || ''} ${ac.descricao || ac.observacao || ''} ${raw.descricao || ''}`;
+    if (/\[GATILHO\s+AUTOM[ÁA]TICO/i.test(texto)) return false;
+    if (/PAUTA\s+OBRIGAT[ÓO]RIA\s+(?:DE\s+TUTORIA|NA\s+SESS[ÃA]O)/i.test(texto)) return false;
+    if (
+      (String(ac.tipo || raw.tipo || '').toUpperCase() === 'EMISSÃO DE DOCUMENTO' || orig === 'SECRETARIA') &&
+      /emitido\(a\)\s+pela\s+Secretaria\s*\/\s*Busca\s+Ativa/i.test(texto)
+    ) {
+      return false;
+    }
+    return true;
+  });
+
   desenharTituloSecao(
     '5. Histórico Unificado de Ocorrências Pedagógicas, CONVIVA e Busca Ativa',
-    `${dados.ocorrencias.length} registro(s)`
+    `${ocorrenciasReais.length} registro(s)`
   );
 
-  if (dados.ocorrencias.length > 0) {
-    const bodyAcoes = dados.ocorrencias.map((ac, idx) => {
+  if (ocorrenciasReais.length > 0) {
+    const bodyAcoes = ocorrenciasReais.map((ac, idx) => {
       const dataStr = dados.formatarDataBR
         ? (dados.formatarDataBR(ac.data) || ac.data || '—')
         : (ac.data || '—');

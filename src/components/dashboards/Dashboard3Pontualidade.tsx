@@ -218,7 +218,7 @@ export default function Dashboard3Pontualidade({
         turma: item.turma.toUpperCase(),
         tipo: 'Convocação de Responsáveis (Pontualidade)',
         categoria: 'Pontualidade e Atrasos',
-        descricao: `Convocação automática gerada pelo Radar de Pontualidade (${item.totalAtrasos} atrasos acumulados · média de chegada ${item.horaMedia}). Termo de Ciência pendente de assinatura.`,
+        descricao: `Convocação de responsáveis registrada via Radar de Pontualidade (${item.totalAtrasos} atrasos acumulados · média de chegada ${item.horaMedia}). Termo de Ciência pendente de assinatura.`,
         data: agoraIso,
         dataRegistro: agoraIso,
         cienciaResponsavel: false,

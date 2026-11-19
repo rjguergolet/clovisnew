@@ -25,6 +25,9 @@ export interface CentralPendenciasPerfilProps {
   onAbrirAluno?: (ra: string) => void;
   onConfirmarCiencia?: (recadoId: string) => void;
   onAtenderNotificacao?: (notifId: string) => void;
+  notificacoesTutor?: any[];
+  onAtenderNotificacaoTutor?: (notifId: string) => void;
+  onEmitirTermoTutor?: (ra: string, qtdAtrasos?: number) => void;
   onToggleTarefa?: (tarefaId: string, concluidoAtual: boolean) => void;
   onNovaTarefa?: () => void;
   onAbrirRecado?: (recado: any) => void;
@@ -51,6 +54,8 @@ export default function CentralPendenciasPerfil({
   onAbrirAluno,
   onConfirmarCiencia,
   onAtenderNotificacao,
+  notificacoesTutor = [],
+  onAtenderNotificacaoTutor,
   onToggleTarefa,
   onNovaTarefa,
   onAbrirRecado
@@ -95,6 +100,9 @@ export default function CentralPendenciasPerfil({
   const totalPendencias = useMemo(() => {
     let count = recadosSemCiencia.length + (canAccessPDCA ? tarefasUrgentes.length : 0);
     if (isProfessor || isPAAC) count += tutoradosReaisEmRisco.length;
+    if (isProfessor || isPAAC || (isCoord && notificacoesTutor.length > 0)) {
+      count += notificacoesTutor.length;
+    }
     if (isDirecao || isCoord || isPAAC) count += notificacoesPedagogicas.length;
     if (isDirecao || isCoord) {
       if (alunosMapaoPendentesCount > 0) count += 1;
@@ -110,6 +118,7 @@ export default function CentralPendenciasPerfil({
     canAccessPDCA,
     tarefasUrgentes.length,
     tutoradosReaisEmRisco.length,
+    notificacoesTutor.length,
     notificacoesPedagogicas.length,
     alunosMapaoPendentesCount,
     alunosBuscaAtivaCount,
@@ -165,7 +174,7 @@ export default function CentralPendenciasPerfil({
   const discriminacaoAcoes = useMemo(() => {
     const itens: {
       id: string;
-      categoria: 'recado' | 'tarefa' | 'tutorado' | 'notificacao' | 'substituicao' | 'busca_ativa' | 'auditoria' | 'atraso';
+      categoria: 'recado' | 'tarefa' | 'tutorado' | 'notificacao' | 'notificacao_tutor' | 'substituicao' | 'busca_ativa' | 'auditoria' | 'atraso';
       categoriaLabel: string;
       corBadge: string;
       corBorda: string;
@@ -269,6 +278,36 @@ export default function CentralPendenciasPerfil({
           },
           botaoSecundarioTexto: 'Lançar Ocorrência',
           aoExecutarSecundario: () => nav('registros')
+        });
+      });
+    }
+
+    // 3b. Notificações de Tutoria (Atrasos acumulados no mês para atendimento pelo Tutor)
+    if (isProfessor || isPAAC || (isCoord && notificacoesTutor.length > 0)) {
+      notificacoesTutor.forEach((nt: any) => {
+        const qtd = Number(nt.qtdAtrasos || 3);
+        const mesRef = String(nt.mesReferencia || '').trim();
+        itens.push({
+          id: `tutor-notif-${nt.id}`,
+          categoria: 'notificacao_tutor',
+          categoriaLabel: `Notificação de Tutoria · ${qtd} Atrasos${mesRef ? ` (${mesRef})` : ''}`,
+          corBadge: 'bg-amber-50/90 text-amber-900 border-amber-200/70 border-l-4 border-l-amber-500',
+          corBorda: 'border-slate-200/80 border-l-4 border-l-amber-500 bg-white',
+          icone: 'fa-solid fa-bell text-amber-600',
+          titulo: `${nt.nomeAluno || `Estudante RA ${nt.ra}`}${nt.turma ? ` · ${nt.turma}` : ''}`,
+          subtitulo: `RA: ${nt.ra || '-'} · Tutor(a): ${nt.tutorResponsavel || effectiveUser.nome}`,
+          detalheExtra: nt.mensagem || `Estudante atingiu ${qtd} atrasos no mês${mesRef ? ` (${mesRef})` : ''}. Realizar acompanhamento na Tutoria e emissão/ciência do Termo de Frequência.`,
+          motivoAcao: `Notificação pendente de atendimento pelo tutor`,
+          botaoAcaoTexto: 'Atender Notificação',
+          botaoAcaoIcone: 'fa-solid fa-check',
+          aoExecutarAcao: () => {
+            if (onAtenderNotificacaoTutor) onAtenderNotificacaoTutor(nt.id);
+          },
+          botaoSecundarioTexto: 'Ver Ficha',
+          aoExecutarSecundario: () => {
+            if (onAbrirAluno && nt.ra) onAbrirAluno(nt.ra);
+            else nav('alunos');
+          }
         });
       });
     }
@@ -380,6 +419,7 @@ export default function CentralPendenciasPerfil({
     recadosSemCiencia,
     tarefasUrgentes,
     tutoradosReaisEmRisco,
+    notificacoesTutor,
     notificacoesPedagogicas,
     substituicoesSemDocente,
     alunosBuscaAtivaCount,
@@ -390,19 +430,21 @@ export default function CentralPendenciasPerfil({
     isCoord,
     isDirecao,
     isSecretaria,
+    effectiveUser.nome,
     onConfirmarCiencia,
     onAbrirRecado,
     onToggleTarefa,
     onAbrirAluno,
-    onAtenderNotificacao
+    onAtenderNotificacao,
+    onAtenderNotificacaoTutor
   ]);
 
   const acoesFiltradas = useMemo(() => {
     if (filtroAtivo === 'todas') return discriminacaoAcoes;
-    if (filtroAtivo === 'urgentes') return discriminacaoAcoes.filter(a => a.categoria === 'recado' || a.categoria === 'tarefa' || a.categoria === 'notificacao' || a.categoria === 'substituicao');
+    if (filtroAtivo === 'urgentes') return discriminacaoAcoes.filter(a => a.categoria === 'recado' || a.categoria === 'tarefa' || a.categoria === 'notificacao' || a.categoria === 'notificacao_tutor' || a.categoria === 'substituicao');
     if (filtroAtivo === 'recados') return discriminacaoAcoes.filter(a => a.categoria === 'recado');
     if (filtroAtivo === 'tarefas') return discriminacaoAcoes.filter(a => a.categoria === 'tarefa');
-    if (filtroAtivo === 'alunos') return discriminacaoAcoes.filter(a => a.categoria === 'tutorado' || a.categoria === 'busca_ativa');
+    if (filtroAtivo === 'alunos') return discriminacaoAcoes.filter(a => a.categoria === 'tutorado' || a.categoria === 'notificacao_tutor' || a.categoria === 'busca_ativa');
     if (filtroAtivo === 'aulas_subs') return discriminacaoAcoes.filter(a => a.categoria === 'substituicao');
     return discriminacaoAcoes;
   }, [discriminacaoAcoes, filtroAtivo]);
@@ -468,6 +510,17 @@ export default function CentralPendenciasPerfil({
                   >
                     <i className="fa-solid fa-user-graduate text-[10px] text-indigo-600"></i>
                     <span>{tutoradosReaisEmRisco.length} Tutorado{tutoradosReaisEmRisco.length > 1 ? 's' : ''} em Risco</span>
+                  </button>
+                )}
+                {(isProfessor || isPAAC || isCoord) && notificacoesTutor.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setFiltroAtivo('urgentes')}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-amber-50/90 hover:bg-amber-100/80 text-amber-900 border border-amber-300/70 flex items-center gap-1.5 transition-colors cursor-pointer tabular-nums"
+                    title="Filtrar notificações de pontualidade para atendimento na Tutoria"
+                  >
+                    <i className="fa-solid fa-bell text-[10px] text-amber-600"></i>
+                    <span>{notificacoesTutor.length} Notificaç{notificacoesTutor.length > 1 ? 'ões' : 'ão'} Tutoria</span>
                   </button>
                 )}
                 {(isDirecao || isCoord || isPAAC) && notificacoesPedagogicas.length > 0 && (

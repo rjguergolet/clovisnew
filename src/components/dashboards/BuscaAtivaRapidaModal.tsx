@@ -58,7 +58,7 @@ export default function BuscaAtivaRapidaModal({
         autor_cargo: user.cargo
       });
 
-      await addDoc(collection(db, 'busca_ativa'), payloadBuscaAtiva);
+      const docBaRef = await addDoc(collection(db, 'busca_ativa'), payloadBuscaAtiva);
 
       // Atualiza SLA e indicador de compensação no documento do aluno (sem id / _id)
       if (aluno.ra) {
@@ -72,14 +72,17 @@ export default function BuscaAtivaRapidaModal({
 
       // Registra também na coleção ocorrencias para manter trilha unificada (sem id / _id)
       const payloadOcorrencia = sanitizarPayloadMongo({
+        buscaAtivaId: docBaRef.id,
         ra: String(aluno.ra),
         nomeAluno: aluno.nome.toUpperCase(),
         turma: aluno.turma.toUpperCase(),
         tipo: `Busca Ativa - ${tipoContato}`,
+        tipoContato,
+        houveResposta: statusBa,
         categoria: 'Busca Ativa',
         origem: 'BUSCA_ATIVA',
-        descricao: `[Busca Ativa · ${statusBa}] ${descricao.trim()}`,
-        data: agoraIso,
+        descricao: `[Busca Ativa - Canal: ${tipoContato} | Status: ${statusBa}] ${descricao.trim()}`,
+        data: dataContato,
         dataRegistro: agoraIso,
         usuario: user.textoCompleto,
         autor: user.textoCompleto,

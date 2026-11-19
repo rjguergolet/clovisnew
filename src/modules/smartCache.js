@@ -6,11 +6,34 @@
  * dados em memória RAM e localStorage com TTL inteligente e invalidação automática sob mutações.
  */
 
+const CACHE_SCHEMA_VERSION = '2026-11-17-dossie-limpo-v2';
+
 class SmartCacheManager {
   constructor() {
     this.memoryStore = new Map();
     this.leiturasEconomizadas = 0;
     this.prefix = 'clovis_cache_';
+
+    // Invalida caches antigos de navegadores que ainda contenham gatilhos/logs automáticos pré-migração
+    try {
+      const versaoAtual = localStorage.getItem('clovis_cache_schema_version');
+      if (versaoAtual !== CACHE_SCHEMA_VERSION) {
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && (k.startsWith(this.prefix) || k === 'alunos_cache' || k.startsWith('clovis_alunos_') || k.startsWith('clovis_ocorrencias_'))) {
+            keysToRemove.push(k);
+          }
+        }
+        keysToRemove.forEach((k) => localStorage.removeItem(k));
+        try {
+          sessionStorage.removeItem('clovis_home_cache');
+          sessionStorage.removeItem('clovis_alunos_cache_v2');
+          sessionStorage.removeItem('clovis_ocorrencias_cache_v2');
+        } catch (e) {}
+        localStorage.setItem('clovis_cache_schema_version', CACHE_SCHEMA_VERSION);
+      }
+    } catch (e) {}
     
     // Recuperar contador de leituras economizadas da sessão
     try {

@@ -337,8 +337,9 @@ export default function DashProjetosPEI() {
 
     allOcorrencias.forEach(oc => {
       if (!oc) return;
+      if (oc.gatilhoAutomaticoAtraso === true || /\[GATILHO\s+AUTOM[ÁA]TICO/i.test(String(oc.descricao || oc.titulo || ''))) return;
       const tipoUpper = String(oc.tipo || oc.categoria || '').toUpperCase();
-      const isTutoria = tipoUpper.includes('TUTORIA') || tipoUpper.includes('ACOLHIMENTO') || oc.gatilhoAutomaticoAtraso === true;
+      const isTutoria = tipoUpper.includes('TUTORIA') || tipoUpper.includes('ACOLHIMENTO');
       if (!isTutoria) return;
 
       const autorRaw = oc.tutorResponsavel || oc.autor_nome || oc.autor || oc.usuario || oc.registradoPor || '';

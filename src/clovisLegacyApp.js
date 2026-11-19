@@ -5135,7 +5135,7 @@
                 TERMO DE CIÊNCIA DE FREQUÊNCIA E PONTUALIDADE ESCOLAR
               </h2>
               <p style="margin: 4px 0 0 0; font-size: 11px; font-weight: bold; color: #333;">
-                GATILHO AUTOMÁTICO DE MONITORAMENTO (${totalMes} ATRASOS EM ${nomeMes}) + PAUTA OBRIGATÓRIA DE TUTORIA
+                ACOMPANHAMENTO DE PONTUALIDADE (${totalMes} ATRASOS EM ${nomeMes}) — PAUTA DE TUTORIA
               </p>
             </div>
 
@@ -5197,100 +5197,168 @@
         }
       };
 
-      window.verificarGatilhoAtrasosMes = async function(alunoObj) {
-        if (!alunoObj) return false;
-        const cleanRa = String(alunoObj.ra || alunoObj.id || "").replace(/\D/g, "");
-        const st = (window.allStudentsData || []).find(s => String(s.ra || s.id || "").replace(/\D/g, "") === cleanRa) || alunoObj;
-        const raStr = String(st.ra || st.id || "").trim();
-        if (!raStr) return false;
+      window.isGatilhoAutomaticoOcorrencia = function(oc) {
+        if (!oc || typeof oc !== "object") return false;
+        if (oc.gatilhoAutomaticoAtraso === true || oc.gatilhoAutomatico === true) return true;
+        const origUp = String(oc.origem || "").trim().toUpperCase();
+        if (origUp === "SISTEMA_PONTUALIDADE" || origUp === "SISTEMA_AUTOMATICO") return true;
+        const desc = String(oc.descricao || oc.observacao || "");
+        const tit = String(oc.titulo || "");
+        const tipoUp = String(oc.tipo || "").trim().toUpperCase();
+        if (
+          /\[GATILHO\s+AUTOM[ÁA]TICO/i.test(desc) ||
+          /\[GATILHO\s+AUTOM[ÁA]TICO/i.test(tit) ||
+          /PAUTA\s+OBRIGAT[ÓO]RIA\s+(?:DE\s+TUTORIA|NA\s+SESS[ÃA]O)/i.test(`${tit} ${desc}`)
+        ) {
+          return true;
+        }
+        // Logs silenciosos automáticos de emissão de documentos (não são ações pedagógicas/anotações manuais)
+        if (
+          (tipoUp === "EMISSÃO DE DOCUMENTO" || tipoUp === "EMISSAO DE DOCUMENTO" || origUp === "SECRETARIA") &&
+          /emitido\(a\)\s+pela\s+Secretaria\s*\/\s*Busca\s+Ativa/i.test(desc)
+        ) {
+          return true;
+        }
+        return false;
+      };
 
+      window.obterResumoGatilhoAtrasosMes = function(alunoObjOrRa) {
+        if (!alunoObjOrRa) {
+          return { totalMes: 0, atingiuGatilho: false, mesAnoRef: "", tutorNome: "Tutoria PEI", st: null, raStr: "" };
+        }
+        const rawRa = typeof alunoObjOrRa === "object"
+          ? String(alunoObjOrRa.ra || alunoObjOrRa.id || "").trim()
+          : String(alunoObjOrRa).trim();
+        const cleanRa = rawRa.replace(/\D/g, "");
+        const st = (window.allStudentsData || []).find(s => {
+          const sRa = String(s.ra || s.id || "").trim();
+          return (rawRa && sRa === rawRa) || (cleanRa && sRa.replace(/\D/g, "") === cleanRa);
+        }) || (typeof alunoObjOrRa === "object" ? alunoObjOrRa : null);
+
+        const raStr = String(st?.ra || st?.id || rawRa || "").trim();
         const agora = new Date();
         const mesAtual = agora.getMonth();
         const anoAtual = agora.getFullYear();
-        const chaveMes = `${anoAtual}-${String(mesAtual + 1).padStart(2, "0")}`;
+        const mesAnoRef = `${anoAtual}-${String(mesAtual + 1).padStart(2, "0")}`;
+        const tutorNome = String(st?.tutor_2026 || st?.tutor || "Tutoria PEI").trim() || "Tutoria PEI";
 
-        const ocorrenciasAluno = Array.isArray(st.ocorrencias) ? st.ocorrencias : [];
-        const atrasosNoMes = ocorrenciasAluno.filter(oc => {
-          if (!oc) return false;
+        const poolBruto = [];
+        if (Array.isArray(st?.ocorrencias)) poolBruto.push(...st.ocorrencias);
+        const globals = Array.isArray(window.ocorrenciasTopLevel) && window.ocorrenciasTopLevel.length > 0
+          ? window.ocorrenciasTopLevel
+          : (Array.isArray(window.ocorrenciasCache) ? window.ocorrenciasCache : []);
+        globals.forEach(oc => {
+          if (!oc) return;
+          const ocRa = String(oc.ra || oc.alunoRa || "").trim();
+          if ((raStr && ocRa === raStr) || (cleanRa && ocRa.replace(/\D/g, "") === cleanRa)) {
+            poolBruto.push(oc);
+          }
+        });
+
+        const seenKeys = new Set();
+        const atrasosNoMes = poolBruto.filter(oc => {
+          if (!oc || window.isGatilhoAutomaticoOcorrencia(oc)) return false;
           const isAtr = typeof window.isOcorrenciaAtraso === "function"
             ? window.isOcorrenciaAtraso(oc)
             : String(oc.tipo || oc.categoria || "").toUpperCase().includes("ATRASO");
           if (!isAtr) return false;
-          const dt = new Date(oc.data || oc.createdAt || 0);
-          return !isNaN(dt.getTime()) && dt.getMonth() === mesAtual && dt.getFullYear() === anoAtual;
+          const dt = new Date(oc.data || oc.createdAt || oc.criadoEm || 0);
+          if (isNaN(dt.getTime()) || dt.getMonth() !== mesAtual || dt.getFullYear() !== anoAtual) return false;
+          const dia = String(oc.data || oc.createdAt || oc.criadoEm || "").slice(0, 10);
+          const descKey = String(oc.descricao || oc.observacao || "").trim().toLowerCase().slice(0, 80);
+          const k = oc.id ? `id:${oc.id}` : `sig:${dia}|${descKey}`;
+          if (seenKeys.has(k)) return false;
+          seenKeys.add(k);
+          return true;
         });
 
-        const qtdMes = atrasosNoMes.length;
+        const totalMes = atrasosNoMes.length;
+        return {
+          totalMes,
+          atingiuGatilho: totalMes >= 3,
+          mesAnoRef,
+          tutorNome,
+          st,
+          raStr
+        };
+      };
+
+      window.verificarGatilhoAtrasosMes = async function(alunoObj) {
+        const resumo = window.obterResumoGatilhoAtrasosMes(alunoObj);
+        if (!resumo.raStr || !resumo.st) return { ...resumo, notificado: false };
+
+        const qtdMes = resumo.totalMes;
+        const chaveMes = resumo.mesAnoRef;
+        const raStr = resumo.raStr;
+        const cleanRa = raStr.replace(/\D/g, "") || raStr;
+        const st = resumo.st;
+        const tutorNome = resumo.tutorNome;
+
         if (qtdMes >= 3 && qtdMes % 3 === 0) {
-          const marcadorGatilho = `[GATILHO AUTOMÁTICO ${qtdMes} ATRASOS - ${chaveMes}]`;
-          const jaGerouPautaNesteMarco = ocorrenciasAluno.some(oc =>
-            String(oc.descricao || oc.titulo || "").includes(marcadorGatilho)
-          );
-
-          if (!jaGerouPautaNesteMarco) {
-            const tutorNome = (st.tutor || st.tutor_2026 || "Tutoria PEI").trim();
-            const dataIso = agora.toISOString();
-            const descPauta = `${marcadorGatilho} PAUTA OBRIGATÓRIA NA SESSÃO SEMANAL DE TUTORIA (${tutorNome}): Estudante atingiu ${qtdMes} atrasos no mês (${chaveMes}). Emitido Termo de Ciência de Frequência imediato e agendada intervenção pedagógica de pontualidade.`;
-
-            // REGRA CRÍTICA (AGENTS.md / GEMINI.md): NUNCA incluir id ou _id no objeto enviado ao banco de dados
-            const pautaTutoriaPayload = {
-              ra: raStr,
-              nomeAluno: String(st.nome || "").toUpperCase(),
-              turma: String(st.turma || "").toUpperCase(),
-              titulo: `PAUTA OBRIGATÓRIA DE TUTORIA — ${qtdMes} ATRASOS NO MÊS`,
-              descricao: descPauta,
-              categoria: "Tutoria e Acolhimento",
-              tipo: "Tutoria e Acolhimento",
-              encaminhamento: `Sessão semanal de Tutoria com ${tutorNome} e assinatura do Termo de Ciência de Frequência`,
-              tutorResponsavel: tutorNome,
-              gatilhoAutomaticoAtraso: true,
-              qtdAtrasosGatilho: qtdMes,
-              mesReferenciaGatilho: chaveMes,
-              cienciaResponsavel: false,
-              dataCiencia: "",
-              registradoConviva: false,
-              data: dataIso,
-              usuario: `SISTEMA AUTOMÁTICO • Tutor: ${tutorNome}`,
-              autor: tutorNome,
-              registradoPor: tutorNome
-            };
-
-            try {
-              const docRefPauta = await addDoc(collection(db, "ocorrencias"), pautaTutoriaPayload);
-              const pautaLocal = { ...pautaTutoriaPayload, id: docRefPauta.id };
-
-              if (!Array.isArray(window.ocorrenciasTopLevel)) window.ocorrenciasTopLevel = [];
-              window.ocorrenciasTopLevel.unshift(pautaLocal);
-
-              const resumoAnt = st.acoes_2026 || "";
-              const novaLinhaResumo = `[${agora.toLocaleDateString("pt-BR")}] GATILHO 3 ATRASOS (TUTORIA + TERMO): ${descPauta}`;
-              const novoResumo = resumoAnt ? `${resumoAnt}\n${novaLinhaResumo}` : novaLinhaResumo;
-
-              const studentDocRef = doc(db, "alunos", raStr);
-              await setDoc(studentDocRef, {
-                acoes_2026: novoResumo.toUpperCase(),
-                pautaTutoriaObrigatoriaPendente: true,
-                ultimoGatilhoAtrasosMes: chaveMes,
-                ocorrencias: arrayUnion(pautaTutoriaPayload)
-              }, { merge: true });
-
-              st.acoes_2026 = novoResumo.toUpperCase();
-              st.pautaTutoriaObrigatoriaPendente = true;
-              if (!Array.isArray(st.ocorrencias)) st.ocorrencias = [];
-              st.ocorrencias.push(pautaLocal);
-            } catch (errGatilho) {
-              console.warn("Aviso ao gravar pauta automática de tutoria:", errGatilho);
+          try {
+            if (!Array.isArray(window.notificacoesTutorCache) || window.notificacoesTutorCache.length === 0) {
+              const snapNotifs = await getDocs(collection(db, "notificacoes_tutor")).catch(() => ({ forEach: () => {} }));
+              const fetchedNotifs = [];
+              snapNotifs.forEach(d => fetchedNotifs.push({ id: d.id, ...d.data() }));
+              window.notificacoesTutorCache = fetchedNotifs;
             }
 
-            if (typeof window.showToast === "function") {
-              window.showToast(`⚡ GATILHO AUTOMÁTICO (${qtdMes} Atrasos no Mês): Termo de Ciência emitido e Pauta Obrigatória incluída na Tutoria de ${st.nome}!`, "warning");
-            }
+            const jaNotificouNesteMarco = (window.notificacoesTutorCache || []).some(n => {
+              if (!n) return false;
+              const nRa = String(n.ra || "").replace(/\D/g, "") || String(n.ra || "").trim();
+              return nRa === cleanRa && String(n.mesReferencia || "") === chaveMes && Number(n.qtdAtrasos || 0) === qtdMes;
+            });
 
-            window.emitirTermoCienciaFrequenciaGatilho(raStr, qtdMes);
-            return true;
+            if (!jaNotificouNesteMarco) {
+              const dataIso = new Date().toISOString();
+              // REGRA CRÍTICA (AGENTS.md / GEMINI.md): NUNCA incluir id ou _id no objeto enviado ao banco de dados
+              const notifTutorPayload = {
+                ra: raStr,
+                nomeAluno: String(st.nome || "").toUpperCase(),
+                turma: String(st.turma || "").toUpperCase(),
+                tutorResponsavel: tutorNome,
+                tipoNotificacao: "GATILHO_ATRASOS_TUTORIA",
+                titulo: `Pauta de Tutoria — ${qtdMes} atrasos no mês (${chaveMes})`,
+                mensagem: `Estudante atingiu ${qtdMes} atrasos no mês (${chaveMes}). Realizar acompanhamento de pontualidade na sessão semanal de Tutoria e providenciar ciência do Termo de Frequência.`,
+                qtdAtrasos: qtdMes,
+                mesReferencia: chaveMes,
+                atendida: false,
+                status: "PENDENTE",
+                atendidaPor: "",
+                atendidaEm: "",
+                observacaoAtendimento: "",
+                data: dataIso,
+                criadoEm: dataIso,
+                atualizadoEm: dataIso,
+                origem: "SISTEMA_PONTUALIDADE"
+              };
+
+              const docRefNotif = await addDoc(collection(db, "notificacoes_tutor"), notifTutorPayload);
+              const notifLocal = { ...notifTutorPayload, id: docRefNotif.id };
+
+              if (!Array.isArray(window.notificacoesTutorCache)) window.notificacoesTutorCache = [];
+              window.notificacoesTutorCache.unshift(notifLocal);
+
+              if (window.__clovisHomeCache && typeof window.__clovisHomeCache === "object") {
+                if (!Array.isArray(window.__clovisHomeCache.notificacoesTutor)) {
+                  window.__clovisHomeCache.notificacoesTutor = [];
+                }
+                window.__clovisHomeCache.notificacoesTutor.unshift(notifLocal);
+              }
+
+              if (typeof window.showToast === "function") {
+                window.showToast(
+                  `🔔 Alerta de Pontualidade (${qtdMes} atrasos no mês): notificação enviada para a Página Inicial do(a) tutor(a) ${tutorNome}!`,
+                  "warning"
+                );
+              }
+              return { ...resumo, notificado: true };
+            }
+          } catch (errNotif) {
+            console.warn("Aviso ao registrar notificação na Página Inicial do Tutor:", errNotif);
           }
         }
-        return false;
+        return { ...resumo, notificado: false };
       };
 
       // Função de Consolidação do Master Feed Global de Ocorrências / Registros (Otimizada O(N + M))
@@ -5325,7 +5393,7 @@
         // 1. Prioridade para registros top-level da coleção 'ocorrencias'
         if (Array.isArray(window.ocorrenciasTopLevel)) {
           window.ocorrenciasTopLevel.forEach((oc, idx) => {
-            if (!oc) return;
+            if (!oc || (typeof window.isGatilhoAutomaticoOcorrencia === "function" && window.isGatilhoAutomaticoOcorrencia(oc))) return;
             const ocId = oc.id ? String(oc.id).trim() : (oc._id ? String(oc._id).trim() : "");
             if (ocId && seenIds.has(ocId)) return;
 
@@ -5365,6 +5433,7 @@
           for (let idx = 0; idx < rawArr.length; idx++) {
             const oc = rawArr[idx];
             if (!oc || oc.tipoContato || oc.houveResposta) continue;
+            if (typeof window.isGatilhoAutomaticoOcorrencia === "function" && window.isGatilhoAutomaticoOcorrencia(oc)) continue;
 
             const ocId = oc.id ? String(oc.id).trim() : (oc._id ? String(oc._id).trim() : "");
             if (ocId && seenIds.has(ocId)) continue;
@@ -8925,61 +8994,20 @@ Yasmin Seline`;
         if (modal) modal.classList.add("hidden");
       };
 
-      // Gravação automática e silenciosa de emissão de documentos na Linha do Tempo / Histórico
+      // Auditoria opcional de emissão de documento (NÃO grava automaticamente no Dossiê do aluno; o dossiê recebe apenas registros manuais reais)
       window.registrarLogSilenciosoEmissaoDocumento = async function(aluno, nomeDocumento) {
         if (!aluno || !aluno.ra) return;
         try {
-          const hojeIso = new Date().toISOString();
-          const hojeBR = new Date().toLocaleDateString("pt-BR");
-          const descLog = `[${hojeBR}] ${nomeDocumento} emitido(a) pela Secretaria / Busca Ativa.`;
-
-          // Grava na coleção 'ocorrencias'
-          await addDoc(collection(db, "ocorrencias"), {
-            ra: String(aluno.ra),
-            nomeAluno: (aluno.nome || "").toUpperCase(),
-            turma: (aluno.turma || "").toUpperCase(),
-            tipo: "Emissão de Documento",
-            origem: "SECRETARIA",
-            descricao: descLog,
-            data: hojeIso,
-            usuario: (typeof window.obterNomeUsuarioAtual === "function" ? window.obterNomeUsuarioAtual() : (auth.currentUser?.displayName || auth.currentUser?.email || "Secretaria Escolar")),
-            cargo: "SECRETARIA"
-          });
-
-          // Atualiza histórico em 'acoes_2026' do aluno
-          const resumoAnt = aluno.acoes_2026 || "";
-          const novoResumo = resumoAnt ? `${resumoAnt}\n${descLog}` : descLog;
-
-          const studentDocRef = doc(db, "alunos", String(aluno.ra));
-          try {
-            await updateDoc(studentDocRef, {
-              acoes_2026: novoResumo.toUpperCase(),
-              ocorrencias: arrayUnion({
-                ra: String(aluno.ra),
-                nomeAluno: (aluno.nome || "").toUpperCase(),
-                turma: (aluno.turma || "").toUpperCase(),
-                tipo: "Emissão de Documento",
-                origem: "SECRETARIA",
-                descricao: descLog,
-                data: hojeIso,
-                usuario: auth.currentUser?.email || "SECRETARIA ESCOLAR",
-                cargo: "SECRETARIA"
-              })
-            });
-          } catch (eUpd) {
-            await setDoc(studentDocRef, { acoes_2026: novoResumo.toUpperCase() }, { merge: true });
-          }
-          aluno.acoes_2026 = novoResumo.toUpperCase();
           if (typeof window.registrarLogAuditoria === "function") {
             window.registrarLogAuditoria({
               modulo: "Secretaria",
-              acao: "CRIAR",
-              descricao: `Emitido documento oficial "${nomeDocumento}" para ${aluno.nome || 'Aluno'} (RA: ${aluno.ra})`,
+              acao: "EMITIR_DOCUMENTO",
+              descricao: `Gerado documento oficial "${nomeDocumento}" para ${aluno.nome || 'Aluno'} (RA: ${aluno.ra})`,
               detalhes: { ra: aluno.ra, nomeDocumento }
             });
           }
         } catch (err) {
-          console.error("Erro ao gravar log silencioso de documento:", err);
+          console.warn("Aviso ao registrar auditoria de documento:", err);
         }
       };
 
@@ -9538,8 +9566,8 @@ Yasmin Seline`;
           msg = `Notificação Escolar Oficial - E.E. Clóvis de Lucca: Prezado(a) responsável legal pelo(a) estudante ${nomeUpper} (Turma: ${turmaUpper}), informamos que, diante da persistência das ausências não justificadas e do não comparecimento às convocações anteriores, o caso está sendo formalmente encaminhado aos órgãos de proteção social e ao Conselho Tutelar, em estrito cumprimento à legislação educacional (ECA - Art. 56 e LDB). Solicitamos o comparecimento imediato à unidade escolar. Atenciosamente, Direção Escolar.`;
         } else if (tipoModelo === 'atrasos') {
           if (btnAtrasos) btnAtrasos.className = "py-1.5 px-2 rounded-lg border text-[10px] font-extrabold uppercase transition cursor-pointer flex flex-col items-center justify-center gap-0.5 bg-purple-100 text-purple-900 border-purple-400 shadow-sm text-center ring-2 ring-purple-400";
-          const gatilhoInfo = typeof window.verificarGatilhoAtrasosMes === "function"
-            ? window.verificarGatilhoAtrasosMes(alunoBuscaAtivaSelecionado.ra)
+          const gatilhoInfo = typeof window.obterResumoGatilhoAtrasosMes === "function"
+            ? window.obterResumoGatilhoAtrasosMes(alunoBuscaAtivaSelecionado.ra)
             : { totalMes: parseInt(alunoBuscaAtivaSelecionado.atrasos || "0", 10) || 0, atingiuGatilho: false, mesAnoRef: "mês vigente" };
           const qtdMes = gatilhoInfo.totalMes || parseInt(alunoBuscaAtivaSelecionado.atrasos || "0", 10) || 1;
           const tutorNome = (alunoBuscaAtivaSelecionado.tutor_2026 || alunoBuscaAtivaSelecionado.tutor || "Professor(a) Tutor(a)").toUpperCase();
@@ -10209,13 +10237,16 @@ Yasmin Seline`;
               // Grava automaticamente na coleção 'ocorrencias' e no documento do aluno via arrayUnion (sem id / _id no payload enviado ao banco)
               const descOcorrencia = `[Busca Ativa - Canal: ${tipoContato} | Status: ${respostaVal}] ${descFinal}`;
               const novaOcorrenciaObj = {
+                buscaAtivaId: docBaCriado.id,
                 ra: String(alunoBuscaAtivaSelecionado.ra),
                 nomeAluno: (alunoBuscaAtivaSelecionado.nome || "").toUpperCase(),
                 turma: (alunoBuscaAtivaSelecionado.turma || "").toUpperCase(),
                 tipo: `Busca Ativa - ${tipoContato}`,
+                tipoContato: tipoContato,
+                houveResposta: respostaVal,
                 origem: "BUSCA_ATIVA",
                 descricao: descOcorrencia,
-                data: new Date().toISOString(),
+                data: dataContato || new Date().toISOString().split("T")[0],
                 dataRegistro: new Date().toISOString(),
                 usuario: userDetails.textoCompleto,
                 autor: userDetails.textoCompleto,
@@ -10233,7 +10264,14 @@ Yasmin Seline`;
                 }
               };
 
-              await addDoc(collection(db, "ocorrencias"), novaOcorrenciaObj);
+              const ocCriadoRef = await addDoc(collection(db, "ocorrencias"), novaOcorrenciaObj);
+              const ocMemoria = { id: ocCriadoRef.id, ...novaOcorrenciaObj };
+              if (Array.isArray(window.ocorrenciasTopLevel)) {
+                window.ocorrenciasTopLevel.unshift(ocMemoria);
+              }
+              if (Array.isArray(window.ocorrenciasCache)) {
+                window.ocorrenciasCache.unshift(ocMemoria);
+              }
 
               // Atualizar SLA para Contato Realizado se estava Monitorando
               if (alunoBuscaAtivaSelecionado.sla_busca_ativa !== "ENCAMINHADO_CONSELHO") {
@@ -10293,7 +10331,10 @@ Yasmin Seline`;
               }
 
               // Atualização automática em tempo real da Ficha Geral (Dossiê) do estudante
-              const raFichaAberta = document.getElementById("modal-edit-ra-hidden")?.value || document.getElementById("modal-edit-ra-input")?.value;
+              const raFichaAberta =
+                document.getElementById("modal-aluno-ra-hidden")?.value ||
+                document.getElementById("modal-edit-ra-hidden")?.value ||
+                document.getElementById("modal-edit-ra-input")?.value;
               if (raFichaAberta && String(raFichaAberta).trim() === String(alunoBuscaAtivaSelecionado.ra).trim() && typeof window.carregarHistoricoAcoesModal === "function") {
                 window.carregarHistoricoAcoesModal(raFichaAberta);
               }
@@ -10376,6 +10417,7 @@ Yasmin Seline`;
 
           const pushOcItem = (id, d) => {
             if (!d) return;
+            if (typeof window.isGatilhoAutomaticoOcorrencia === "function" && window.isGatilhoAutomaticoOcorrencia(d)) return;
             if (id && idsOcVistos.has(id)) return;
             if (id) idsOcVistos.add(id);
             ocorrenciasDossie.push({
@@ -10439,34 +10481,109 @@ Yasmin Seline`;
           window.currentAlunoTotalAtrasos = totalAtrasos;
           window.buscaAtivaHistoricoCache = buscaAtivaHistoricoCache;
 
+          const normalizarDataIsoBaLocal = (val) => {
+            if (!val) return "";
+            const s = String(val).trim();
+            const isoMatch = s.match(/^(\d{4}-\d{2}-\d{2})/);
+            if (isoMatch) return isoMatch[1];
+            const brMatch = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+            if (brMatch) return `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}`;
+            const d = new Date(s);
+            if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+            return "";
+          };
+
+          const extrairMetaBaLocal = (rawDesc, rawTipo) => {
+            const descOriginal = String(rawDesc || "").trim();
+            let canal = "";
+            let status = "";
+            let textoLimpo = descOriginal;
+
+            const mPadrao = descOriginal.match(/^\[Busca Ativa\s*-\s*Canal:\s*([^|\]]+?)\s*\|\s*Status:\s*([^\]]+)\]\s*([\s\S]*)$/i);
+            if (mPadrao) {
+              canal = mPadrao[1].trim();
+              status = mPadrao[2].trim();
+              textoLimpo = mPadrao[3].trim();
+            } else {
+              const mRapido = descOriginal.match(/^\[Busca Ativa\s*[·\-]\s*([^\]]+)\]\s*([\s\S]*)$/i);
+              if (mRapido) {
+                status = mRapido[1].trim();
+                textoLimpo = mRapido[2].trim();
+              }
+            }
+
+            if (!canal && rawTipo) {
+              const t = String(rawTipo).trim();
+              const mTipo = t.match(/^Busca Ativa\s*[-–:]\s*(.+)$/i);
+              if (mTipo) canal = mTipo[1].trim();
+            }
+
+            return { canal, status, textoLimpo };
+          };
+
           const listaUnificada = [];
           const assinaturasVistas = new Set();
+          const mapaBaPorAssinatura = new Map();
 
           buscaAtivaHistoricoCache.forEach(baItem => {
             if (isAtrasoItem(baItem)) return;
-            const sig = `${baItem.data || ''}|${String(baItem.descricao || '').trim().toLowerCase()}`;
+            const dataIso = normalizarDataIsoBaLocal(baItem.data || baItem.dataRegistro);
+            const textoNorm = String(baItem.descricao || "").trim().toLowerCase().replace(/\s+/g, " ");
+            const sig = `${dataIso}|${textoNorm}`;
             assinaturasVistas.add(sig);
-            listaUnificada.push({ ...baItem, origem: "BUSCA_ATIVA" });
+            const entry = { ...baItem, origem: "BUSCA_ATIVA", _source: "BUSCA_ATIVA" };
+            mapaBaPorAssinatura.set(sig, entry);
+            listaUnificada.push(entry);
           });
 
           ocorrenciasDossie.forEach(ocItem => {
             if (isAtrasoItem(ocItem)) return;
             const raw = ocItem.rawDoc || ocItem;
-            const baIdVinculado = raw.buscaAtivaId || raw.baId || (ocItem.id && ocItem.id.startsWith("ba_") ? ocItem.id.replace("ba_", "") : null);
-            if (baIdVinculado && idsBaVistos.has(baIdVinculado)) return;
+            const baIdVinculado = raw.buscaAtivaId || raw.baId || (ocItem.id && String(ocItem.id).startsWith("ba_") ? String(ocItem.id).replace("ba_", "") : null);
+            if (baIdVinculado && idsBaVistos.has(String(baIdVinculado))) {
+              const baMatch = listaUnificada.find(x => x._source === "BUSCA_ATIVA" && String(x.id) === String(baIdVinculado));
+              if (baMatch && ocItem.id && !String(ocItem.id).startsWith("emb_") && !String(ocItem.id).startsWith("oc_")) {
+                baMatch._ocorrenciaId = String(ocItem.id);
+              }
+              return;
+            }
 
-            const sig = `${ocItem.data || ''}|${String(ocItem.descricao || '').trim().toLowerCase()}`;
-            if (assinaturasVistas.has(sig)) return;
-            assinaturasVistas.add(sig);
+            const meta = extrairMetaBaLocal(ocItem.descricao, ocItem.tipo);
+            const dataIso = normalizarDataIsoBaLocal(ocItem.data || raw.dataRegistro);
+            const textoNorm = meta.textoLimpo.toLowerCase().replace(/\s+/g, " ");
+            const sigLimpa = `${dataIso}|${textoNorm}`;
+            const sigBruta = `${dataIso}|${String(ocItem.descricao || "").trim().toLowerCase().replace(/\s+/g, " ")}`;
 
+            // Se já existir o registro espelhado em busca_ativa (mesma data e descrição limpa), vincula e evita card duplicado
+            if (mapaBaPorAssinatura.has(sigLimpa) || mapaBaPorAssinatura.has(sigBruta)) {
+              const baMatch = mapaBaPorAssinatura.get(sigLimpa) || mapaBaPorAssinatura.get(sigBruta);
+              if (baMatch && ocItem.id && !String(ocItem.id).startsWith("emb_") && !String(ocItem.id).startsWith("oc_")) {
+                baMatch._ocorrenciaId = String(ocItem.id);
+              }
+              return;
+            }
+
+            if (assinaturasVistas.has(sigLimpa) || assinaturasVistas.has(sigBruta)) return;
+            assinaturasVistas.add(sigLimpa);
+
+            const isBaOrigem = ocItem.origem === "BUSCA_ATIVA";
             listaUnificada.push({
               ...ocItem,
-              origem: ocItem.origem === "BUSCA_ATIVA" ? "BUSCA_ATIVA" : "DOSSIE"
+              ra: raw.ra || raStr,
+              nomeAluno: raw.nomeAluno || alunoBuscaAtivaSelecionado?.nome || "",
+              turma: raw.turma || alunoBuscaAtivaSelecionado?.turma || "",
+              tipoContato: isBaOrigem ? (raw.tipoContato || meta.canal || ocItem.tipo || "WhatsApp") : ocItem.tipo,
+              houveResposta: isBaOrigem ? (raw.houveResposta || meta.status || "Aguardando Retorno dos Pais") : undefined,
+              descricao: isBaOrigem && meta.textoLimpo ? meta.textoLimpo : ocItem.descricao,
+              _rawDescricao: ocItem.descricao,
+              _source: "OCORRENCIA",
+              origem: isBaOrigem ? "BUSCA_ATIVA" : "DOSSIE"
             });
           });
 
           window.verificarEAtualizarAutoExpiracaoBa(buscaAtivaHistoricoCache);
           listaUnificada.sort((a, b) => new Date(b.data || b.dataRegistro || 0) - new Date(a.data || a.dataRegistro || 0));
+          window._baListaUnificadaAtual = listaUnificada;
 
           if (alunoBuscaAtivaSelecionado) {
             window.verificarReincidenciaBa(alunoBuscaAtivaSelecionado, buscaAtivaHistoricoCache);
@@ -10690,7 +10807,7 @@ Yasmin Seline`;
                 <div class="flex items-center gap-1.5 shrink-0 self-start sm:self-center">
                   <button 
                     type="button"
-                    onclick="window.abrirModalEditarContatoBa('${item.id}')"
+                    onclick="window.abrirModalEditarContatoBa('${String(item.id || "").replace(/'/g, "\\'")}')"
                     class="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white font-extrabold rounded text-[11px] transition cursor-pointer inline-flex items-center gap-1 shadow-2xs"
                     title="Editar registro ou preencher retorno do responsável"
                   >
@@ -10700,7 +10817,7 @@ Yasmin Seline`;
 
                   <button 
                     type="button"
-                    onclick="window.deletarRegistroUniversal('busca_ativa', '${item.id}')"
+                    onclick="${item._source === "OCORRENCIA" && !String(item.id || "").startsWith("emb_") ? `window.excluirOcorrenciaDossieAluno('${String(item.id || "").replace(/'/g, "\\'")}', 'OCORRENCIA', '${String(raRef || "").replace(/'/g, "\\'")}')` : `window.deletarRegistroUniversal('busca_ativa', '${String(item.id || "").replace(/'/g, "\\'")}')`}"
                     class="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded text-[11px] transition cursor-pointer inline-flex items-center gap-1"
                     title="Excluir tentativa de busca ativa"
                   >
@@ -10788,10 +10905,130 @@ Yasmin Seline`;
         containerHistoricoBaLista.innerHTML = html;
       }
 
-      // Handler do Modal de Edição Rápida
+      // Helpers de normalização para o Modal de Edição / Baixa da Busca Ativa
+      const normalizarDataInputBa = (val) => {
+        if (!val) return new Date().toISOString().split("T")[0];
+        const s = String(val).trim();
+        const isoMatch = s.match(/^(\d{4}-\d{2}-\d{2})/);
+        if (isoMatch) return isoMatch[1];
+        const brMatch = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+        if (brMatch) return `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}`;
+        const d = new Date(s);
+        if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+        return new Date().toISOString().split("T")[0];
+      };
+
+      const extrairMetaDescricaoBa = (rawDesc, rawTipo) => {
+        const descOriginal = String(rawDesc || "").trim();
+        let canal = "";
+        let status = "";
+        let textoLimpo = descOriginal;
+
+        const mPadrao = descOriginal.match(/^\[Busca Ativa\s*-\s*Canal:\s*([^|\]]+?)\s*\|\s*Status:\s*([^\]]+)\]\s*([\s\S]*)$/i);
+        if (mPadrao) {
+          canal = mPadrao[1].trim();
+          status = mPadrao[2].trim();
+          textoLimpo = mPadrao[3].trim();
+        } else {
+          const mRapido = descOriginal.match(/^\[Busca Ativa\s*[·\-]\s*([^\]]+)\]\s*([\s\S]*)$/i);
+          if (mRapido) {
+            status = mRapido[1].trim();
+            textoLimpo = mRapido[2].trim();
+          }
+        }
+
+        if (!canal && rawTipo) {
+          const t = String(rawTipo).trim();
+          const mTipo = t.match(/^Busca Ativa\s*[-–:]\s*(.+)$/i);
+          if (mTipo) canal = mTipo[1].trim();
+        }
+        return { canal, status, textoLimpo };
+      };
+
+      const resolverOpcaoSelectTipoBa = (selectEl, rawVal) => {
+        const val = String(rawVal || "").trim();
+        if (!selectEl) return val || "WhatsApp";
+        const opts = Array.from(selectEl.options).map(o => o.value);
+        if (opts.includes(val)) return val;
+        const lower = val.toLowerCase();
+        if (lower.includes("whatsapp")) return "WhatsApp";
+        if (lower.includes("liga") || lower.includes("tel")) return "Ligação Telefônica";
+        if (lower.includes("presenc") || lower.includes("reuni")) return "Reunião Presencial";
+        if (lower.includes("visita") || lower.includes("domicil")) return "Visita Domiciliar";
+        if (lower.includes("carta") || lower.includes("notific") || lower.includes("ofíc") || lower.includes("ofic") || lower.includes("conselho")) return "Carta / Notificação / Ofício";
+        return val ? "Outros" : "WhatsApp";
+      };
+
+      const resolverOpcaoSelectStatusBa = (selectEl, rawVal) => {
+        const val = String(rawVal || "").trim();
+        if (!selectEl) return val || "Aguardando Retorno dos Pais";
+        const opts = Array.from(selectEl.options).map(o => o.value);
+        if (opts.includes(val)) return val;
+        const lower = val.toLowerCase();
+        if (lower.includes("compareceu")) return "Compareceu à Escola";
+        if (lower.includes("recus")) return "Recusou Atendimento";
+        if (lower.includes("não") || lower.includes("nao") || lower.includes("sem resposta")) return "Não - Sem Resposta / Não Atendeu";
+        if (lower.includes("sim") || lower.includes("atendeu") || lower.includes("respondeu") || lower.includes("contato realizado")) return "Sim - Responsável Atendeu / Respondeu";
+        return "Aguardando Retorno dos Pais";
+      };
+
+      // Handler do Modal de Edição Rápida / Baixa
       window.abrirModalEditarContatoBa = function(itemId) {
-        const item = buscaAtivaHistoricoCache.find(x => x.id === itemId) || (window.todosContatosBaCache || []).find(x => x.id === itemId);
-        if (!item) return;
+        const targetId = String(itemId || "").trim();
+        if (!targetId) {
+          window.showToast("Registro sem identificador válido para edição.", "warning");
+          return;
+        }
+
+        // Busca unificada em todos os caches possíveis (busca_ativa, painel geral, linha do tempo unificada e dossiê)
+        let item =
+          (Array.isArray(buscaAtivaHistoricoCache) ? buscaAtivaHistoricoCache.find(x => String(x?.id) === targetId) : null) ||
+          (Array.isArray(window.todosContatosBaCache) ? window.todosContatosBaCache.find(x => String(x?.id) === targetId) : null) ||
+          (Array.isArray(window._baListaUnificadaAtual) ? window._baListaUnificadaAtual.find(x => String(x?.id) === targetId) : null) ||
+          (Array.isArray(window.currentAlunoOcorrenciasDossie) ? window.currentAlunoOcorrenciasDossie.find(x => String(x?.id) === targetId) : null) ||
+          (Array.isArray(window.ocorrenciasTopLevel) ? window.ocorrenciasTopLevel.find(x => String(x?.id) === targetId) : null) ||
+          (Array.isArray(window.ocorrenciasCache) ? window.ocorrenciasCache.find(x => String(x?.id) === targetId) : null);
+
+        if (!item) {
+          window.showToast("Não foi possível localizar os dados deste registro para edição.", "warning");
+          return;
+        }
+
+        let isOcorrenciaOnly = item._source === "OCORRENCIA" || (
+          !(Array.isArray(buscaAtivaHistoricoCache) && buscaAtivaHistoricoCache.some(x => String(x?.id) === targetId)) &&
+          !(Array.isArray(window.todosContatosBaCache) && window.todosContatosBaCache.some(x => String(x?.id) === targetId))
+        );
+        let buscaAtivaId = isOcorrenciaOnly ? (item.rawDoc?.buscaAtivaId || item.buscaAtivaId || item.baId || "") : String(item.id);
+        let ocorrenciaId = isOcorrenciaOnly
+          ? (!targetId.startsWith("emb_") && !targetId.startsWith("oc_") ? targetId : "")
+          : (item._ocorrenciaId || "");
+
+        const metaInicial = extrairMetaDescricaoBa(item._rawDescricao || item.descricao || item.observacao || "", item.tipoContato || item.tipo || "");
+        const dataIsoInicial = normalizarDataInputBa(item.data || item.dataRegistro);
+
+        // Se o clique veio de um card espelhado em ocorrências, tenta resolver para o documento canônico em busca_ativa
+        if (isOcorrenciaOnly) {
+          const poolBa = [
+            ...(Array.isArray(buscaAtivaHistoricoCache) ? buscaAtivaHistoricoCache : []),
+            ...(Array.isArray(window.todosContatosBaCache) ? window.todosContatosBaCache : [])
+          ];
+          const raItem = String(item.ra || item.rawDoc?.ra || alunoBuscaAtivaSelecionado?.ra || "").trim();
+          const descNormItem = metaInicial.textoLimpo.toLowerCase().replace(/\s+/g, " ");
+          const baCanonico = poolBa.find(b => {
+            if (!b || !b.id) return false;
+            if (buscaAtivaId && String(b.id) === String(buscaAtivaId)) return true;
+            const bRa = String(b.ra || "").trim();
+            if (raItem && bRa && bRa !== raItem && bRa.replace(/\D/g, "") !== raItem.replace(/\D/g, "")) return false;
+            const bData = normalizarDataInputBa(b.data || b.dataRegistro);
+            const bDesc = String(b.descricao || "").trim().toLowerCase().replace(/\s+/g, " ");
+            return bData === dataIsoInicial && bDesc === descNormItem;
+          });
+          if (baCanonico) {
+            item = { ...baCanonico, _ocorrenciaId: ocorrenciaId || baCanonico._ocorrenciaId || "" };
+            buscaAtivaId = String(baCanonico.id);
+            isOcorrenciaOnly = false;
+          }
+        }
 
         const modal = document.getElementById("modal-editar-contato-ba");
         const idInput = document.getElementById("modal-edit-ba-id");
@@ -10800,25 +11037,46 @@ Yasmin Seline`;
         const respInput = document.getElementById("modal-edit-ba-resposta");
         const descInput = document.getElementById("modal-edit-ba-desc");
 
-        if (idInput) idInput.value = item.id;
-        if (dataInput) dataInput.value = item.data || new Date().toISOString().split("T")[0];
-        if (tipoInput) tipoInput.value = item.tipoContato || "WhatsApp";
-        if (respInput) respInput.value = item.houveResposta || "Aguardando Retorno dos Pais";
-        if (descInput) descInput.value = item.descricao || "";
+        const metaFinal = extrairMetaDescricaoBa(item._rawDescricao || item.descricao || item.observacao || "", item.tipoContato || item.tipo || "");
+        const dataFormatada = normalizarDataInputBa(item.data || item.dataRegistro);
+        const tipoSelecionado = resolverOpcaoSelectTipoBa(tipoInput, item.tipoContato || metaFinal.canal || item.tipo);
+        const statusSelecionado = resolverOpcaoSelectStatusBa(respInput, item.houveResposta || metaFinal.status);
+        const descLimpa = metaFinal.textoLimpo || String(item.descricao || item.observacao || "").trim();
+
+        window._baEditandoContexto = {
+          clickedId: targetId,
+          buscaAtivaId: buscaAtivaId || "",
+          ocorrenciaId: ocorrenciaId || "",
+          isOcorrenciaOnly,
+          ra: String(item.ra || item.rawDoc?.ra || alunoBuscaAtivaSelecionado?.ra || "").trim(),
+          nomeAluno: (item.nomeAluno || item.rawDoc?.nomeAluno || alunoBuscaAtivaSelecionado?.nome || "").toUpperCase(),
+          turma: (item.turma || item.rawDoc?.turma || alunoBuscaAtivaSelecionado?.turma || "").toUpperCase(),
+          originalDataIso: dataFormatada,
+          originalDescClean: descLimpa.toLowerCase().replace(/\s+/g, " "),
+          originalRawDesc: String(item._rawDescricao || item.descricao || "").trim()
+        };
+
+        if (idInput) idInput.value = buscaAtivaId || targetId;
+        if (dataInput) dataInput.value = dataFormatada;
+        if (tipoInput) tipoInput.value = tipoSelecionado;
+        if (respInput) respInput.value = statusSelecionado;
+        if (descInput) descInput.value = descLimpa;
 
         if (modal) modal.classList.remove("hidden");
       };
 
       const formEditarContatoBa = document.getElementById("form-editar-contato-ba");
-      if (formEditarContatoBa) {
+      if (formEditarContatoBa && !formEditarContatoBa.dataset.baEditBound) {
+        formEditarContatoBa.dataset.baEditBound = "1";
         formEditarContatoBa.addEventListener("submit", async (e) => {
           e.preventDefault();
 
+          const ctx = window._baEditandoContexto || {};
           const itemId = document.getElementById("modal-edit-ba-id")?.value;
           const dataVal = document.getElementById("modal-edit-ba-data")?.value;
-          const tipoVal = document.getElementById("modal-edit-ba-tipo")?.value;
-          const respVal = document.getElementById("modal-edit-ba-resposta")?.value;
-          const descVal = document.getElementById("modal-edit-ba-desc")?.value.trim();
+          const tipoVal = document.getElementById("modal-edit-ba-tipo")?.value || "WhatsApp";
+          const respVal = document.getElementById("modal-edit-ba-resposta")?.value || "Aguardando Retorno dos Pais";
+          const descVal = (document.getElementById("modal-edit-ba-desc")?.value || "").trim();
 
           if (!itemId || !dataVal) {
             window.showToast("ID ou data inválidos para edição.", 'warning');
@@ -10833,67 +11091,135 @@ Yasmin Seline`;
 
           try {
             const userDetails = window.obterIdentificacaoUsuarioCompleta();
+            const nowIso = new Date().toISOString();
             const descFinal = descVal || (respVal.includes("Aguardando") ? "Aguardando retorno do responsável legal." : "Registro atualizado.");
 
-            // 1. Atualiza na coleção 'busca_ativa'
-            await setDoc(doc(db, "busca_ativa", itemId), {
+            const itemCache =
+              (buscaAtivaHistoricoCache || []).find(x => String(x?.id) === String(itemId)) ||
+              (window.todosContatosBaCache || []).find(x => String(x?.id) === String(itemId)) ||
+              (window._baListaUnificadaAtual || []).find(x => String(x?.id) === String(ctx.clickedId || itemId));
+
+            const raTarget = ctx.ra || itemCache?.ra || alunoBuscaAtivaSelecionado?.ra || "";
+            const raStr = String(raTarget).trim();
+            const cleanRa = raStr.replace(/\D/g, "");
+            const nomeAlunoFinal = (ctx.nomeAluno || itemCache?.nomeAluno || alunoBuscaAtivaSelecionado?.nome || "").toUpperCase();
+            const turmaFinal = (ctx.turma || itemCache?.turma || alunoBuscaAtivaSelecionado?.turma || "").toUpperCase();
+
+            // 1. Atualiza ou cria na coleção 'busca_ativa' (estritamente SEM id / _id no payload)
+            let canonicalBaId = ctx.buscaAtivaId || (!ctx.isOcorrenciaOnly ? String(itemId) : "");
+            const payloadBaUpdate = {
+              ra: raStr,
+              nomeAluno: nomeAlunoFinal,
+              turma: turmaFinal,
               data: dataVal,
               tipoContato: tipoVal,
               houveResposta: respVal,
               descricao: descFinal,
-              dataEdicao: new Date().toISOString(),
+              dataEdicao: nowIso,
               editado_por_email: userDetails.email,
               editado_por_nome: userDetails.nome,
               editado_por_cargo: userDetails.cargo,
               editado_por_completo: userDetails.textoCompleto,
-              data_ultima_edicao: new Date().toISOString(),
+              data_ultima_edicao: nowIso,
               usuarioEdicao: userDetails.textoCompleto
-            }, { merge: true });
+            };
 
-            // Localizar item para obter o RA do estudante
-            const itemCache = (buscaAtivaHistoricoCache || []).find(x => x.id === itemId) || (window.todosContatosBaCache || []).find(x => x.id === itemId);
-            const raTarget = itemCache?.ra || alunoBuscaAtivaSelecionado?.ra;
-            const raStr = raTarget ? String(raTarget).trim() : (alunoBuscaAtivaSelecionado?.ra || "");
+            if (canonicalBaId) {
+              await setDoc(doc(db, "busca_ativa", canonicalBaId), payloadBaUpdate, { merge: true });
+            } else {
+              const novoDocBa = await addDoc(collection(db, "busca_ativa"), {
+                ...payloadBaUpdate,
+                dataRegistro: nowIso,
+                usuario: itemCache?.usuario || userDetails.textoCompleto,
+                autor: itemCache?.autor || userDetails.textoCompleto
+              });
+              canonicalBaId = novoDocBa.id;
+            }
+
+            const registroBaAtualizadoMem = {
+              ...(itemCache && !ctx.isOcorrenciaOnly ? itemCache : {}),
+              ...payloadBaUpdate,
+              id: canonicalBaId,
+              origem: "BUSCA_ATIVA",
+              usuario: itemCache?.usuario || userDetails.textoCompleto,
+              autor: itemCache?.autor || userDetails.textoCompleto
+            };
+
+            // Atualiza caches em memória de Busca Ativa imediatamente
+            if (!Array.isArray(buscaAtivaHistoricoCache)) buscaAtivaHistoricoCache = [];
+            const idxBaLocal = buscaAtivaHistoricoCache.findIndex(x => String(x?.id) === String(canonicalBaId));
+            if (idxBaLocal !== -1) {
+              buscaAtivaHistoricoCache[idxBaLocal] = registroBaAtualizadoMem;
+            } else {
+              buscaAtivaHistoricoCache.unshift(registroBaAtualizadoMem);
+            }
+            buscaAtivaHistoricoCache.sort((a, b) => new Date(b.data || b.dataRegistro || 0) - new Date(a.data || a.dataRegistro || 0));
+
+            if (!Array.isArray(window.todosContatosBaCache)) window.todosContatosBaCache = [];
+            const idxBaGlobal = window.todosContatosBaCache.findIndex(x => String(x?.id) === String(canonicalBaId));
+            if (idxBaGlobal !== -1) {
+              window.todosContatosBaCache[idxBaGlobal] = registroBaAtualizadoMem;
+            } else {
+              window.todosContatosBaCache.unshift(registroBaAtualizadoMem);
+            }
+            window.todosContatosBaCache.sort((a, b) => new Date(b.data || b.dataRegistro || 0) - new Date(a.data || a.dataRegistro || 0));
+            if (typeof window.indexarContatosBuscaAtiva === "function") {
+              window.indexarContatosBuscaAtiva(window.todosContatosBaCache);
+            }
 
             if (raStr) {
-              const cleanRa = raStr.replace(/\D/g, "");
               const descOcorrenciaNova = `[Busca Ativa - Canal: ${tipoVal} | Status: ${respVal}] ${descFinal}`;
 
-              // 2. Atualizar ou criar registro equivalente na coleção 'ocorrencias'
+              // 2. Atualizar ou criar o registro EXATO equivalente na coleção 'ocorrencias' (sem sobrescrever outro contato)
               const qOc = query(collection(db, "ocorrencias"), where("ra", "==", raStr));
               const qOcSnap = await getDocs(qOc);
 
-              let matchingOcDocId = null;
-              qOcSnap.forEach(docSnap => {
-                const d = docSnap.data();
-                if (d.buscaAtivaId === itemId || d.baId === itemId || docSnap.id === itemId) {
-                  matchingOcDocId = docSnap.id;
-                } else if (!matchingOcDocId && (d.origem === "BUSCA_ATIVA" || d.tipo === "Busca Ativa")) {
-                  matchingOcDocId = docSnap.id;
-                }
-              });
+              let matchingOcDocId = ctx.ocorrenciaId || null;
+              if (!matchingOcDocId) {
+                qOcSnap.forEach(docSnap => {
+                  const d = docSnap.data() || {};
+                  if (String(d.buscaAtivaId || "") === String(canonicalBaId) || String(d.baId || "") === String(canonicalBaId) || String(docSnap.id) === String(canonicalBaId)) {
+                    matchingOcDocId = docSnap.id;
+                  }
+                });
+              }
+              if (!matchingOcDocId && ctx.originalDescClean) {
+                qOcSnap.forEach(docSnap => {
+                  if (matchingOcDocId) return;
+                  const d = docSnap.data() || {};
+                  const isBaOc = d.origem === "BUSCA_ATIVA" || String(d.tipo || "").toUpperCase().includes("BUSCA ATIVA");
+                  if (!isBaOc) return;
+                  const dMeta = extrairMetaDescricaoBa(d.descricao || "", d.tipo || "");
+                  const dClean = dMeta.textoLimpo.toLowerCase().replace(/\s+/g, " ");
+                  const dData = normalizarDataInputBa(d.data || d.dataRegistro);
+                  if (dClean === ctx.originalDescClean && (!ctx.originalDataIso || dData === ctx.originalDataIso)) {
+                    matchingOcDocId = docSnap.id;
+                  }
+                });
+              }
+
+              const payloadOcLimpo = {
+                buscaAtivaId: canonicalBaId,
+                ra: raStr,
+                nomeAluno: nomeAlunoFinal,
+                turma: turmaFinal,
+                tipo: `Busca Ativa - ${tipoVal}`,
+                tipoContato: tipoVal,
+                houveResposta: respVal,
+                origem: "BUSCA_ATIVA",
+                descricao: descOcorrenciaNova,
+                data: dataVal,
+                dataEdicao: nowIso,
+                editado_por_completo: userDetails.textoCompleto,
+                usuarioEdicao: userDetails.textoCompleto
+              };
 
               if (matchingOcDocId) {
-                await updateDoc(doc(db, "ocorrencias", matchingOcDocId), {
-                  descricao: descOcorrenciaNova,
-                  data: dataVal,
-                  houveResposta: respVal,
-                  tipoContato: tipoVal,
-                  dataEdicao: new Date().toISOString(),
-                  editado_por_completo: userDetails.textoCompleto,
-                  usuarioEdicao: userDetails.textoCompleto
-                });
+                await updateDoc(doc(db, "ocorrencias", matchingOcDocId), payloadOcLimpo);
               } else {
                 const ocDocRef = await addDoc(collection(db, "ocorrencias"), {
-                  buscaAtivaId: itemId,
-                  ra: raStr,
-                  nomeAluno: (itemCache?.nomeAluno || alunoBuscaAtivaSelecionado?.nome || "").toUpperCase(),
-                  turma: (itemCache?.turma || alunoBuscaAtivaSelecionado?.turma || "").toUpperCase(),
-                  tipo: "Busca Ativa",
-                  origem: "BUSCA_ATIVA",
-                  descricao: descOcorrenciaNova,
-                  data: dataVal,
-                  dataRegistro: new Date().toISOString(),
+                  ...payloadOcLimpo,
+                  dataRegistro: nowIso,
                   usuario: userDetails.textoCompleto,
                   autor: userDetails.textoCompleto,
                   registradoPor: userDetails.textoCompleto,
@@ -10905,11 +11231,11 @@ Yasmin Seline`;
                 matchingOcDocId = ocDocRef.id;
               }
 
-              // 3. Atualizar array 'ocorrencias' no documento do aluno na coleção 'alunos'
-              const studentDocRef = doc(db, "alunos", raStr);
+              // 3. Atualizar array 'ocorrencias' no documento do aluno na coleção 'alunos' (estritamente SEM id / _id!)
+              let targetStudentDocId = raStr;
               let studentData = null;
               try {
-                const studentSnap = await getDoc(studentDocRef);
+                const studentSnap = await getDoc(doc(db, "alunos", targetStudentDocId));
                 if (studentSnap.exists()) {
                   studentData = studentSnap.data();
                 }
@@ -10918,9 +11244,9 @@ Yasmin Seline`;
               if (!studentData && cleanRa) {
                 const stLocal = ((window.allStudentsData || [])).find(s => String(s.ra || "").trim() === raStr || (cleanRa && String(s.ra || "").replace(/\D/g, "") === cleanRa));
                 if (stLocal) {
+                  targetStudentDocId = String(stLocal.ra || stLocal.id || raStr);
                   try {
-                    const cleanDocRef = doc(db, "alunos", String(stLocal.ra));
-                    const cleanSnap = await getDoc(cleanDocRef);
+                    const cleanSnap = await getDoc(doc(db, "alunos", targetStudentDocId));
                     if (cleanSnap.exists()) {
                       studentData = cleanSnap.data();
                     }
@@ -10928,39 +11254,48 @@ Yasmin Seline`;
                 }
               }
 
+              const studentDocRef = doc(db, "alunos", targetStudentDocId);
               let arrOcorrencias = Array.isArray(studentData?.ocorrencias) ? [...studentData.ocorrencias] : [];
 
               let targetIdx = arrOcorrencias.findIndex(oc =>
-                oc.buscaAtivaId === itemId || oc.baId === itemId || oc.id === itemId || (matchingOcDocId && oc.id === matchingOcDocId)
+                (oc?.buscaAtivaId && String(oc.buscaAtivaId) === String(canonicalBaId)) ||
+                (oc?.baId && String(oc.baId) === String(canonicalBaId))
               );
 
-              if (targetIdx === -1) {
-                targetIdx = arrOcorrencias.findIndex(oc =>
-                  oc.origem === "BUSCA_ATIVA" || oc.tipo === "Busca Ativa"
-                );
+              if (targetIdx === -1 && ctx.originalDescClean) {
+                targetIdx = arrOcorrencias.findIndex(oc => {
+                  const isBaOc = oc?.origem === "BUSCA_ATIVA" || String(oc?.tipo || "").toUpperCase().includes("BUSCA ATIVA");
+                  if (!isBaOc) return false;
+                  const ocMeta = extrairMetaDescricaoBa(oc.descricao || "", oc.tipo || "");
+                  const ocClean = ocMeta.textoLimpo.toLowerCase().replace(/\s+/g, " ");
+                  const ocData = normalizarDataInputBa(oc.data || oc.dataRegistro);
+                  return ocClean === ctx.originalDescClean && (!ctx.originalDataIso || ocData === ctx.originalDataIso);
+                });
               }
 
-              const updatedOcObj = {
-                id: matchingOcDocId || itemId,
-                buscaAtivaId: itemId,
+              const updatedOcObjSemId = {
+                buscaAtivaId: canonicalBaId,
                 ra: raStr,
-                nomeAluno: (itemCache?.nomeAluno || alunoBuscaAtivaSelecionado?.nome || "").toUpperCase(),
-                turma: (itemCache?.turma || alunoBuscaAtivaSelecionado?.turma || "").toUpperCase(),
-                tipo: "Busca Ativa",
+                nomeAluno: nomeAlunoFinal,
+                turma: turmaFinal,
+                tipo: `Busca Ativa - ${tipoVal}`,
+                tipoContato: tipoVal,
+                houveResposta: respVal,
                 origem: "BUSCA_ATIVA",
                 descricao: descOcorrenciaNova,
                 data: dataVal,
-                dataEdicao: new Date().toISOString(),
+                dataEdicao: nowIso,
                 usuario: userDetails.textoCompleto
               };
 
               if (targetIdx !== -1) {
+                const { id: _dropId, _id: _dropUid, ...existingClean } = arrOcorrencias[targetIdx] || {};
                 arrOcorrencias[targetIdx] = {
-                  ...arrOcorrencias[targetIdx],
-                  ...updatedOcObj
+                  ...existingClean,
+                  ...updatedOcObjSemId
                 };
               } else {
-                arrOcorrencias.push(updatedOcObj);
+                arrOcorrencias.push(updatedOcObjSemId);
               }
 
               try {
@@ -10969,23 +11304,37 @@ Yasmin Seline`;
                 await setDoc(studentDocRef, { ocorrencias: arrOcorrencias }, { merge: true }).catch(() => {});
               }
 
-              // 4. Atualizar referências na memória local (window.allStudentsData e window.ocorrenciasCache)
+              // 4. Atualizar referências na memória local (allStudentsData, alunoBuscaAtivaSelecionado, ocorrenciasTopLevel e ocorrenciasCache)
               const stLocalObj = ((window.allStudentsData || [])).find(s => String(s.ra || "").trim() === raStr || (cleanRa && String(s.ra || "").replace(/\D/g, "") === cleanRa));
               if (stLocalObj) {
                 stLocalObj.ocorrencias = arrOcorrencias;
               }
-
-              if (Array.isArray(window.ocorrenciasCache)) {
-                const cacheIdx = window.ocorrenciasCache.findIndex(oc =>
-                  oc.buscaAtivaId === itemId || oc.baId === itemId || oc.id === itemId || (matchingOcDocId && oc.id === matchingOcDocId)
-                );
-                if (cacheIdx !== -1) {
-                  window.ocorrenciasCache[cacheIdx] = { ...window.ocorrenciasCache[cacheIdx], ...updatedOcObj };
-                }
+              if (alunoBuscaAtivaSelecionado && (String(alunoBuscaAtivaSelecionado.ra || "").trim() === raStr || (cleanRa && String(alunoBuscaAtivaSelecionado.ra || "").replace(/\D/g, "") === cleanRa))) {
+                alunoBuscaAtivaSelecionado.ocorrencias = arrOcorrencias;
               }
 
-              // 5. Se a Ficha Geral / Dossiê (Modal de Histórico de Ações) estiver aberto para este aluno, recarrega a modal em tempo real
-              const modalDossieRa = document.getElementById("modal-edit-ra-hidden")?.value || document.getElementById("modal-edit-ra-input")?.value;
+              const syncOcArray = (arr) => {
+                if (!Array.isArray(arr)) return;
+                const ocMemItem = { id: matchingOcDocId, ...updatedOcObjSemId };
+                const idx = arr.findIndex(oc =>
+                  (matchingOcDocId && String(oc?.id) === String(matchingOcDocId)) ||
+                  (oc?.buscaAtivaId && String(oc.buscaAtivaId) === String(canonicalBaId)) ||
+                  (ctx.clickedId && String(oc?.id) === String(ctx.clickedId))
+                );
+                if (idx !== -1) {
+                  arr[idx] = { ...arr[idx], ...ocMemItem };
+                } else if (matchingOcDocId) {
+                  arr.unshift(ocMemItem);
+                }
+              };
+              syncOcArray(window.ocorrenciasTopLevel);
+              syncOcArray(window.ocorrenciasCache);
+
+              // 5. Se a Ficha Geral / Dossiê estiver aberto para este aluno, recarrega em tempo real
+              const modalDossieRa =
+                document.getElementById("modal-aluno-ra-hidden")?.value ||
+                document.getElementById("modal-edit-ra-hidden")?.value ||
+                document.getElementById("modal-edit-ra-input")?.value;
               if (modalDossieRa && (String(modalDossieRa).trim() === raStr || (cleanRa && String(modalDossieRa).replace(/\D/g, "") === cleanRa))) {
                 if (typeof window.carregarHistoricoAcoesModal === "function") {
                   await window.carregarHistoricoAcoesModal(modalDossieRa);
@@ -11005,16 +11354,21 @@ Yasmin Seline`;
                 modulo: "Busca Ativa",
                 acao: "ATUALIZAR",
                 descricao: `Edição em registro de Busca Ativa (${tipoVal} - ${respVal}) do aluno RA ${raStr}`,
-                detalhes: { id: itemId, ra: raStr, tipoVal, respVal, descricao: descVal }
+                detalhes: { ra: raStr, tipoVal, respVal, descricao: descVal }
               });
             }
+            window._baEditandoContexto = null;
             document.getElementById("modal-editar-contato-ba")?.classList.add("hidden");
 
-            if (alunoBuscaAtivaSelecionado) {
-              window.carregarHistoricoBuscaAtiva(alunoBuscaAtivaSelecionado.ra);
+            // Atualiza imediatamente a Linha do Tempo e o Painel Geral com os caches recém-atualizados
+            if (alunoBuscaAtivaSelecionado?.ra) {
+              await window.carregarHistoricoBuscaAtiva(alunoBuscaAtivaSelecionado.ra);
             }
-            if (window.carregarTodosOsContatosGeralBa) {
-              window.carregarTodosOsContatosGeralBa();
+            if (typeof window.renderizarPainelGeralContatosBa === "function") {
+              window.renderizarPainelGeralContatosBa(window.todosContatosBaCache);
+            }
+            if (typeof window.filtrarAlunosRiscoBa === "function") {
+              window.filtrarAlunosRiscoBa();
             }
           } catch (err) {
             window.showErrorToast("Erro ao editar registro de busca ativa.", err);
@@ -16406,6 +16760,7 @@ Yasmin Seline`;
 
         const adicionarRegistro = (item, origemDefault = "OCORRENCIA") => {
           if (!item) return;
+          if (typeof window.isGatilhoAutomaticoOcorrencia === "function" && window.isGatilhoAutomaticoOcorrencia(item)) return;
           const raw = item.rawDoc || item;
           const docId = item.id ? String(item.id).trim() : "";
           const isSyntheticId = !docId || docId.startsWith("emb_") || docId.startsWith("oc_");
@@ -17248,6 +17603,7 @@ Yasmin Seline`;
 
           const pushAcao = (id, d) => {
             if (!d) return;
+            if (typeof window.isGatilhoAutomaticoOcorrencia === "function" && window.isGatilhoAutomaticoOcorrencia(d)) return;
             if (id && idsVistos.has(id)) return;
             if (id) idsVistos.add(id);
             acoesAluno.push({
@@ -19791,6 +20147,42 @@ Yasmin Seline`;
             }
           }
 
+          // Sanitiza qualquer rastro residual de gatilhos automáticos ou logs silenciosos em cache/RAM
+          const higienizarDadosDossieMemoria = () => {
+            const isAuto = typeof window.isGatilhoAutomaticoOcorrencia === "function"
+              ? window.isGatilhoAutomaticoOcorrencia
+              : () => false;
+
+            if (Array.isArray(window.ocorrenciasTopLevel)) {
+              window.ocorrenciasTopLevel = window.ocorrenciasTopLevel.filter(oc => oc && !isAuto(oc));
+            }
+            if (Array.isArray(window.allStudentsData)) {
+              window.allStudentsData.forEach(al => {
+                if (!al || typeof al !== "object") return;
+                if (Array.isArray(al.ocorrencias)) {
+                  al.ocorrencias = al.ocorrencias.filter(oc => oc && !isAuto(oc));
+                }
+                if (Array.isArray(al.registros)) {
+                  al.registros = al.registros.filter(oc => oc && !isAuto(oc));
+                }
+                if (typeof al.acoes_2026 === "string" && (
+                  /GATILHO\s+(?:\d+\s+ATRASOS|AUTOM[ÁA]TICO)/i.test(al.acoes_2026) ||
+                  /emitido\(a\)\s+pela\s+Secretaria\s*\/\s*Busca\s+Ativa/i.test(al.acoes_2026)
+                )) {
+                  al.acoes_2026 = al.acoes_2026
+                    .split("\n")
+                    .filter(l =>
+                      !/GATILHO\s+(?:\d+\s+ATRASOS|AUTOM[ÁA]TICO)/i.test(l) &&
+                      !/emitido\(a\)\s+pela\s+Secretaria\s*\/\s*Busca\s+Ativa/i.test(l)
+                    )
+                    .join("\n")
+                    .trim();
+                }
+              });
+            }
+          };
+          higienizarDadosDossieMemoria();
+
           const totalSpan = document.getElementById("total-alunos-count");
           const tabelaBody = document.getElementById("tabela-alunos-body");
 
@@ -21422,7 +21814,7 @@ Yasmin Seline`;
                 TERMO DE CIÊNCIA DE FREQUÊNCIA ESCOLAR — BUSCA ATIVA
               </h2>
               <p style="margin: 4px 0 0 0; font-size: 11px; font-weight: bold; color: #333;">
-                GATILHO AUTOMÁTICO (${totalConsecutivas} FALTAS CONSECUTIVAS) + PAUTA OBRIGATÓRIA DE TUTORIA
+                ACOMPANHAMENTO DE FREQUÊNCIA (${totalConsecutivas} FALTAS CONSECUTIVAS) — PAUTA DE TUTORIA
               </p>
             </div>
 
