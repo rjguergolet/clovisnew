@@ -5,7 +5,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import compression from 'compression';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
 import * as pdfParseModule from 'pdf-parse';
 const pdfParse = (pdfParseModule as any).default || pdfParseModule;
@@ -80,6 +80,14 @@ function sanitizarObjetoOcorrenciaAtraso(oc: any): any {
   return rest;
 }
 
+function inferirSegmentoPorTurma(turma: any): '' | 'ENSINO FUNDAMENTAL' | 'ENSINO MÉDIO' {
+  const turmaTrim = String(turma || '').trim();
+  if (!turmaTrim) return '';
+  if (/^[6789]/.test(turmaTrim)) return 'ENSINO FUNDAMENTAL';
+  if (/^[123]/.test(turmaTrim)) return 'ENSINO MÉDIO';
+  return '';
+}
+
 function normalizarPayloadAtrasoDb(collection: string, data: Record<string, any>): Record<string, any> {
   if (!data || typeof data !== 'object') return data;
   const realCol = resolveCollectionName(collection);
@@ -102,6 +110,12 @@ function normalizarPayloadAtrasoDb(collection: string, data: Record<string, any>
       }
     }
   } else if (realCol === 'alunos') {
+    if (data.turma !== undefined) {
+      const segAuto = inferirSegmentoPorTurma(data.turma);
+      if (segAuto) {
+        data.segmento = segAuto;
+      }
+    }
     if (Array.isArray(data.ocorrencias)) {
       data.ocorrencias = data.ocorrencias.map(sanitizarObjetoOcorrenciaAtraso);
     } else if (data.ocorrencias && typeof data.ocorrencias === 'object' && data.ocorrencias.__arrayUnion === true && Array.isArray(data.ocorrencias.elements)) {
@@ -629,6 +643,47 @@ async function limparLogsSilenciososDossieNoBanco(): Promise<{
   }
 
   return { ocorrenciasRemovidas, embutidosRemovidos, alunosAtualizados };
+}
+
+async function sincronizarSegmentosAlunosPorTurmaNoBanco(): Promise<{
+  alunosAtualizados: number;
+  ensinoFundamental: number;
+  ensinoMedio: number;
+}> {
+  const db = await getDatabase();
+  const colAlunos = db.collection('alunos');
+  const docs = await colAlunos
+    .find({}, { projection: { _id: 1, turma: 1, segmento: 1 } })
+    .toArray();
+
+  const bulkOps: any[] = [];
+  let ensinoFundamental = 0;
+  let ensinoMedio = 0;
+
+  for (const a of docs) {
+    const segAuto = inferirSegmentoPorTurma(a.turma);
+    if (!segAuto) continue;
+    const segAtual = String(a.segmento || '').trim().toUpperCase();
+    if (segAtual !== segAuto) {
+      bulkOps.push({
+        updateOne: {
+          filter: { _id: a._id },
+          update: { $set: { segmento: segAuto } }
+        }
+      });
+      if (segAuto === 'ENSINO FUNDAMENTAL') ensinoFundamental++;
+      else ensinoMedio++;
+    }
+  }
+
+  if (bulkOps.length > 0) {
+    await colAlunos.bulkWrite(bulkOps, { ordered: false });
+    console.log(
+      `[Sincronização Segmentos] ${bulkOps.length} aluno(s) classificado(s) automaticamente pela Turma/Série (${ensinoFundamental} Ensino Fundamental [6º-9º], ${ensinoMedio} Ensino Médio [1ª-3ª]).`
+    );
+  }
+
+  return { alunosAtualizados: bulkOps.length, ensinoFundamental, ensinoMedio };
 }
 
 function signSessionToken(payload: { id: string; email: string; realRole: string }): string {
@@ -2165,7 +2220,7 @@ ESTRUTURA OBRIGATÓRIA:
       const promptUser = `${diretrizesUsuario ? `DIRETRIZES E INSTRUÇÕES ESPECÍFICAS DA EQUIPE GESTORA:\n${diretrizesUsuario}\n\n` : ''}Analise integralmente TODOS os dados reais do Dossiê Escolar abaixo (com atenção prioritária ao Histórico Unificado de Ocorrências Pedagógicas, CONVIVA SP e Busca Ativa) e elabore o Parecer Pedagógico Oficial em exatamente dois parágrafos:
 
 --- DOSSIÊ ESCOLAR OFICIAL DO ESTUDANTE ---
-• Estudante: ${nomeAluno} | RA: ${raAluno} | Turma/Série: ${turmaAluno} | Segmento: ${aluno.segmento || 'Ensino Fundamental/Médio'} | Matrícula: ${aluno.status || 'Ativo'}
+• Estudante: ${nomeAluno} | RA: ${raAluno} | Turma/Série: ${turmaAluno} | Segmento: ${inferirSegmentoPorTurma(turmaAluno) || aluno.segmento || 'Ensino Fundamental/Médio'} | Matrícula: ${aluno.status || 'Ativo'}
 
 [PRIORIDADE CENTRAL] 1. HISTÓRICO UNIFICADO DE OCORRÊNCIAS PEDAGÓGICAS, CONVIVA SP E BUSCA ATIVA (${registrosEntrada.length} registro(s) totais):
   1A) Protocolos CONVIVA SP (${listaConviva.length} registro(s)):
@@ -3684,6 +3739,201 @@ Analise os padrões comportamentais, destaque a 3ª métrica de faltas efetivas 
   });
 
   // ==========================================
+  // ROTA DE IA: ANÁLISE E SEPARAÇÃO DE FREQUÊNCIA E BUSCA ATIVA POR SEGMENTO (FUNDAMENTAL vs MÉDIO)
+  // ==========================================
+  app.post('/api/ai/analise-busca-ativa-segmentos', async (req, res) => {
+    try {
+      const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+      if (!apiKey) {
+        return res.status(503).json({
+          error: 'Chave da API Gemini não configurada no servidor.',
+          details: 'Verifique a variável GEMINI_API_KEY em Settings > Secrets.'
+        });
+      }
+
+      const {
+        dataReferencia = new Date().toISOString().slice(0, 10),
+        totalEstudantesAtivos = 0,
+        filtroAplicado = 'TODOS',
+        resumoGeral = {},
+        ensinoFundamental = {},
+        ensinoMedio = {}
+      } = req.body || {};
+
+      const ai = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: { 'User-Agent': 'aistudio-build' }
+        }
+      });
+
+      const itemBuscaAtivaSchema = {
+        type: Type.OBJECT,
+        properties: {
+          estudanteOuTurma: {
+            type: Type.STRING,
+            description: 'Nome do estudante (com turma) ou turma prioritária presente nos dados.'
+          },
+          ra: {
+            type: Type.STRING,
+            description: 'RA do estudante exatamente como enviado no JSON, ou string vazia se for turma/grupo.'
+          },
+          situacao: {
+            type: Type.STRING,
+            description: 'Dados objetivos (ex: frequência %, faltas consecutivas ou quantidade de atrasos registrados).'
+          },
+          ultimoContatoEEncaminhamento: {
+            type: Type.STRING,
+            description: 'Síntese objetiva do último contato com responsáveis (data, canal, retorno ou ausência de contato) e encaminhamentos (CT, MP, SED) já existentes.'
+          },
+          proximoPasso: {
+            type: Type.STRING,
+            description: 'Ação prática imediata de busca ativa considerando o histórico de contatos e encaminhamentos (ex: 1º contato via WhatsApp/ligação, cobrança de retorno, convocação presencial, ofício/Conselho Tutelar).'
+          }
+        },
+        required: ['estudanteOuTurma', 'ra', 'situacao', 'ultimoContatoEEncaminhamento', 'proximoPasso']
+      };
+
+      const segmentSchema = {
+        type: Type.OBJECT,
+        properties: {
+          nivelPrioridade: {
+            type: Type.STRING,
+            description: 'CRÍTICA, ATENÇÃO ou CONTROLADA'
+          },
+          panorama: {
+            type: Type.STRING,
+            description: 'Síntese objetiva (2-3 frases) da situação de frequência/presença, faltas consecutivas, atrasos e efetividade dos últimos contatos e encaminhamentos neste segmento.'
+          },
+          buscaAtivaFaltasEPresenca: {
+            type: Type.ARRAY,
+            items: itemBuscaAtivaSchema,
+            description: 'Até 5 prioridades concretas de Busca Ativa focadas em faltas consecutivas e baixa presença/frequência, considerando últimos contatos com responsáveis e encaminhamentos.'
+          },
+          buscaAtivaAtrasos: {
+            type: Type.ARRAY,
+            items: itemBuscaAtivaSchema,
+            description: 'Até 5 prioridades concretas de Busca Ativa focadas nos maiores atrasos registrados, considerando últimos contatos com responsáveis e encaminhamentos.'
+          },
+          acompanhamentoContatosEEncaminhamentos: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+            description: 'Lista de 2 a 4 pontos objetivos sobre pendências de retorno familiar, casos críticos sem nenhum contato recente e acompanhamento de encaminhamentos (Conselho Tutelar, MP, SED).'
+          },
+          padroesIdentificados: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+            description: 'Lista de 2 a 4 padrões concretos observados entre frequência, faltas consecutivas, atrasos e resposta das famílias.'
+          },
+          acoesPraticas: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                foco: { type: Type.STRING, description: 'FALTAS, ATRASOS, PRESENÇA ou ENCAMINHAMENTO' },
+                acao: { type: Type.STRING, description: 'Ação prática imediata considerando o estágio atual dos contatos/encaminhamentos' },
+                responsavelSugerido: { type: Type.STRING, description: 'Ex: Vice-Direção, CGPG, Secretaria, Tutoria, Direção' },
+                prazo: { type: Type.STRING, description: 'Ex: Imediato (24h), Esta semana, Quinzenal' }
+              },
+              required: ['foco', 'acao', 'responsavelSugerido', 'prazo']
+            }
+          }
+        },
+        required: [
+          'nivelPrioridade',
+          'panorama',
+          'buscaAtivaFaltasEPresenca',
+          'buscaAtivaAtrasos',
+          'acompanhamentoContatosEEncaminhamentos',
+          'padroesIdentificados',
+          'acoesPraticas'
+        ]
+      };
+
+      const dadosCompactos = {
+        dataReferencia,
+        totalEstudantesAtivos,
+        filtroAplicado,
+        resumoGeral,
+        ensinoFundamental,
+        ensinoMedio
+      };
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: `Analise os dados reais de frequência/presença, faltas consecutivas, maiores atrasos registrados, últimos contatos com responsáveis e encaminhamentos (Conselho Tutelar, Ministério Público, SED) da E.E. Professor Clóvis de Lucca (PEI - São Paulo), separando rigorosamente Ensino Fundamental e Ensino Médio para orientar a Busca Ativa diária.\n\nDADOS CONSOLIDADOS:\n${JSON.stringify(dadosCompactos)}`,
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          systemInstruction: `Você é especialista em Gestão Escolar e Busca Ativa (SEDUC-SP / PEI).
+Regras obrigatórias:
+- Baseie-se estritamente nos números, turmas, estudantes, RAs, últimos contatos e encaminhamentos fornecidos no JSON de entrada. Jamais invente nomes, RAs, datas ou contatos.
+- Ajude operacionalmente a equipe a executar a Busca Ativa nas TRÊS frentes: (1) Faltas consecutivas e baixa presença, (2) Maiores atrasos registrados, e (3) Follow-up de contatos com responsáveis e encaminhamentos formais.
+- Considere sempre o histórico real de contato do estudante ao sugerir o próximo passo:
+  * Sem nenhum contato registrado → orientar 1º contato imediato (WhatsApp/ligação) com registro no Dossiê.
+  * Último contato "Sem Resposta" ou "Aguardando Retorno" há vários dias → orientar nova tentativa por outro canal, convocação presencial ou notificação formal.
+  * Responsável já atendeu/compareceu mas faltas ou atrasos continuam → orientar revisão de combinado, termo de ciência ou encaminhamento em rede.
+  * Já encaminhado ao Conselho Tutelar / MP / SED → orientar cobrança de devolutiva e monitoramento contínuo da presença.
+- Separe com clareza Ensino Fundamental (6º ao 9º ano) e Ensino Médio (1ª à 3ª série).
+- Se não houver casos críticos em uma lista (ex: atrasos ou faltas em um segmento), retorne a lista vazia [] e explique brevemente no panorama.
+- Seja objetivo, claro e pronto para ação imediata.`,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              resumoExecutivo: {
+                type: Type.STRING,
+                description: 'Visão executiva geral da escola (presença, faltas consecutivas, atrasos e situação dos contatos/encaminhamentos) em 2 a 3 frases objetivas.'
+              },
+              comparativoEntreSegmentos: {
+                type: Type.STRING,
+                description: 'Comparação direta destacando onde priorizar busca ativa de faltas, de atrasos e de cobrança de retornos entre Ensino Fundamental e Ensino Médio.'
+              },
+              ensinoFundamental: segmentSchema,
+              ensinoMedio: segmentSchema
+            },
+            required: ['resumoExecutivo', 'comparativoEntreSegmentos', 'ensinoFundamental', 'ensinoMedio']
+          }
+        }
+      });
+
+      const rawText = (response.text || '').trim();
+      if (!rawText) {
+        return res.status(502).json({
+          error: 'A API Gemini retornou uma resposta vazia.',
+          details: 'Tente novamente em alguns instantes.'
+        });
+      }
+
+      const parsed = JSON.parse(rawText);
+      res.json({
+        success: true,
+        data: parsed,
+        geradoEm: new Date().toISOString()
+      });
+    } catch (err: any) {
+      const status = Number(err?.status || err?.code) || 500;
+      const msg = String(err?.message || 'Erro ao processar análise por segmento com Gemini.');
+      console.error('[API AI Busca Ativa Segmentos] Erro:', msg);
+      if (status === 429 || msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED')) {
+        return res.status(429).json({
+          error: 'Limite temporário de requisições da API Gemini atingido (429).',
+          details: 'Aguarde alguns instantes ou verifique a cota da chave em Settings > Secrets.'
+        });
+      }
+      if (status === 403 || status === 400 || msg.includes('API_KEY_INVALID') || msg.includes('PERMISSION_DENIED')) {
+        return res.status(status === 403 ? 403 : 400).json({
+          error: 'Falha de autenticação com a API Gemini.',
+          details: 'Verifique a chave configurada em Settings > Secrets.'
+        });
+      }
+      res.status(500).json({
+        error: 'Erro ao gerar análise inteligente por segmento.',
+        details: msg
+      });
+    }
+  });
+
+  // ==========================================
   // ROTA DE IA: MENSAGEM DIÁRIA DOS FALTOSOS & ATRASADOS PARA OS PAIS (WHATSAPP + LGPD)
   // ==========================================
   app.post('/api/ai/mensagem-faltosos-dia', async (req, res) => {
@@ -4681,6 +4931,8 @@ Direção e Equipe Gestora`;
       .catch(err => console.warn('[Migração Gatilhos Tutoria] Erro inicial:', err?.message || err))
       .then(() => limparLogsSilenciososDossieNoBanco())
       .catch(err => console.warn('[Limpeza Logs Silenciosos Dossiê] Erro inicial:', err?.message || err))
+      .then(() => sincronizarSegmentosAlunosPorTurmaNoBanco())
+      .catch(err => console.warn('[Sincronização Segmentos] Erro inicial:', err?.message || err))
       .finally(() => {
         prewarmCache().catch(err => console.warn('[MongoDB Prewarm] Erro inicial:', err.message));
       });

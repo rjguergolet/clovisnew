@@ -203,23 +203,27 @@ export default function BuscaAtivaRapidaModal({
         </div>
 
         <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              onClose();
-              if (typeof (window as any).switchTab === 'function') {
-                (window as any).switchTab('busca-ativa');
-              }
-              setTimeout(() => {
-                if (typeof (window as any).selecionarAlunoParaBuscaAtiva === 'function') {
-                  (window as any).selecionarAlunoParaBuscaAtiva(aluno.ra);
+          {typeof (window as any).podeAcessarBuscaAtivaDossie !== 'function' || (window as any).podeAcessarBuscaAtivaDossie() ? (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                if (typeof (window as any).switchTab === 'function') {
+                  (window as any).switchTab('alunos');
                 }
-              }, 200);
-            }}
-            className="text-xs font-bold text-cyan-700 hover:text-cyan-900 hover:underline cursor-pointer"
-          >
-            Abrir Aba Completa de Busca Ativa
-          </button>
+                setTimeout(() => {
+                  if (typeof (window as any).abrirFichaAluno === 'function') {
+                    (window as any).abrirFichaAluno(aluno.ra, 'busca-ativa');
+                  }
+                }, 120);
+              }}
+              className="text-xs font-bold text-cyan-700 hover:text-cyan-900 hover:underline cursor-pointer"
+            >
+              Abrir Busca Ativa no Dossiê
+            </button>
+          ) : (
+            <span />
+          )}
           <div className="flex items-center gap-2">
             <button
               type="button"

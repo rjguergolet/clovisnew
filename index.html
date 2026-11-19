@@ -1024,7 +1024,7 @@
               <div class="nav-icon-tile bg-cyan-400/20 border-cyan-400/30 text-cyan-300 group-hover:scale-110 transition-transform">
                 <i class="fa-solid fa-user-graduate text-xs"></i>
               </div>
-              <span class="truncate">Alunos</span>
+              <span class="truncate">Alunos &amp; Busca Ativa</span>
             </button>
 
             <button 
@@ -1036,18 +1036,6 @@
                 <i class="fa-solid fa-clipboard-list text-xs"></i>
               </div>
               <span class="truncate">Registros &amp; Ocorrências</span>
-            </button>
-
-            <button 
-              onclick="switchTab('busca-ativa')" 
-              id="nav-busca-ativa" 
-              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer"
-            >
-              <div class="nav-icon-tile bg-cyan-400/20 border-cyan-400/30 text-cyan-300 group-hover:scale-110 transition-transform">
-                <i class="fa-solid fa-magnifying-glass-location text-xs"></i>
-              </div>
-              <span class="truncate">Busca Ativa</span>
-              <span id="badge-nav-busca-ativa" class="ml-auto hidden px-2 py-0.5 text-[10px] font-black rounded-full bg-rose-500 text-white shadow-2xs">0</span>
             </button>
 
             <button 
@@ -1197,14 +1185,14 @@
         (function() {
           var GROUP_TABS = {
             pedagogica: ['dash-evasao', 'dash-academico', 'dash-pontualidade', 'dash-convivencia', 'dash-pei', 'dash-docente', 'dash-governanca'],
-            'vida-escolar': ['alunos', 'registros', 'busca-ativa', 'presenca-diaria'],
+            'vida-escolar': ['alunos', 'registros', 'presenca-diaria'],
             rotina: ['rotina-pdca', 'agenda', 'horarios', 'substituicao-pei', 'gerador-atas'],
             institucional: ['professores', 'secretaria', 'auditoria', 'admin']
           };
 
           var GROUP_DEFAULT_SUBTITLE = {
             pedagogica: 'Central BI · 7 painéis',
-            'vida-escolar': 'Alunos, registros e presença',
+            'vida-escolar': 'Alunos, dossiê, busca ativa e presença',
             rotina: 'PDCA, agenda, horários e atas',
             institucional: 'Docentes, secretaria e banco'
           };
@@ -1217,9 +1205,8 @@
             'dash-pei': '5. Gestão PEI',
             'dash-docente': '6. Operacional Docente',
             'dash-governanca': '7. Governança & Auditoria',
-            alunos: 'Alunos',
+            alunos: 'Alunos & Busca Ativa',
             registros: 'Registros & Ocorrências',
-            'busca-ativa': 'Busca Ativa',
             'presenca-diaria': 'Presença Diária & IA',
             'rotina-pdca': 'Tarefas PDCA',
             agenda: 'Agenda PEI',
@@ -1233,7 +1220,6 @@
           };
 
           var GROUP_BADGE_IDS = {
-            'vida-escolar': ['badge-nav-busca-ativa'],
             rotina: ['badge-nav-tarefas', 'badge-nav-substituicao']
           };
 
@@ -1479,7 +1465,7 @@
             }
 
             // Observa alterações nos badges internos para refletir contagem no botão da categoria
-            ['badge-nav-busca-ativa', 'badge-nav-tarefas', 'badge-nav-substituicao'].forEach(function(bid) {
+            ['badge-nav-tarefas', 'badge-nav-substituicao'].forEach(function(bid) {
               var el = document.getElementById(bid);
               if (el && typeof MutationObserver !== 'undefined') {
                 new MutationObserver(function() {
@@ -1849,23 +1835,24 @@
             </div>
           </div>
 
-          <!-- ABA 2: ALUNOS -->
-          <div id="content-alunos" class="tab-content hidden space-y-6 w-full max-w-full overflow-hidden">
-            <!-- Badge do Filtro Ativo do Dashboard (Alunos em Risco) -->
-            <div id="badge-filtro-risco-ativo" class="hidden flex items-center justify-between p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 font-bold shadow-sm">
+          <!-- ABA 2: ALUNOS, DOSSIÊ & BUSCA ATIVA (UNIFICADO) -->
+          <div id="content-alunos" class="tab-content hidden space-y-4 w-full max-w-full overflow-hidden">
+            <!-- Alerta de Filtro Ativo de Risco -->
+            <div id="badge-filtro-risco-ativo" class="hidden flex items-center justify-between px-4 py-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 font-semibold">
               <div class="flex items-center gap-2">
-                <i class="fa-solid fa-triangle-exclamation text-red-600 text-sm"></i>
-                <span>Filtro Ativo: Exibindo apenas Alunos em Risco (&lt; 75% de frequência)</span>
+                <i class="fa-solid fa-triangle-exclamation text-rose-600 text-sm"></i>
+                <span>Exibindo estudantes em risco de frequência (&lt; 75%)</span>
               </div>
-              <button type="button" onclick="window.limparFiltroRisco()" class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg text-xs transition cursor-pointer flex items-center gap-1 shadow-sm">
-                <i class="fa-solid fa-xmark text-[10px]"></i>
-                <span>Limpar Filtro de Risco</span>
+              <button type="button" onclick="window.limparFiltroRisco()" class="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-lg text-xs transition cursor-pointer whitespace-nowrap shrink-0">
+                Limpar filtro
               </button>
             </div>
 
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 space-y-4">
-              <div class="flex flex-col lg:flex-row gap-3 items-center justify-between">
-                <div class="relative w-full lg:w-96 flex items-center gap-1.5">
+            <!-- Painel Enxuto de Busca, Filtros de Presença & Ações -->
+            <div class="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 space-y-3.5">
+              <!-- Linha 1: Busca + Ação Principal IA + Novo Aluno + Utilitários -->
+              <div class="flex flex-col lg:flex-row gap-2.5 items-stretch lg:items-center justify-between">
+                <div class="flex items-center gap-2 flex-1 max-w-xl">
                   <div class="relative flex-1">
                     <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
                       <i class="fa-solid fa-magnifying-glass text-xs"></i>
@@ -1873,8 +1860,8 @@
                     <input 
                       type="text" 
                       id="searchStudent" 
-                      placeholder="Buscar por nome ou RA..." 
-                      class="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-cyan-300 font-medium text-slate-700 transition-all uppercase" 
+                      placeholder="Buscar aluno por nome, RA ou turma..." 
+                      class="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 font-medium text-slate-800 transition" 
                       oninput="const b=document.getElementById('btn-limpar-busca-aluno-tabela');if(b){if(this.value.trim()){b.classList.remove('hidden')}else{b.classList.add('hidden')}}window.debounceFilterStudents()"
                       onkeydown="if(event.key==='Enter'){event.preventDefault();if(typeof window.applyStudentFilters==='function'){window.applyStudentFilters()}else if(typeof window.filterStudents==='function'){window.filterStudents()}}"
                     />
@@ -1882,8 +1869,8 @@
                       type="button"
                       id="btn-limpar-busca-aluno-tabela"
                       onclick="const inp=document.getElementById('searchStudent');if(inp){inp.value='';window.filterStudents();this.classList.add('hidden');inp.focus();}"
-                      class="hidden absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-700 text-xs cursor-pointer p-0.5"
-                      title="Limpar busca rápida"
+                      class="hidden absolute right-2.5 top-2 text-slate-400 hover:text-slate-700 text-xs cursor-pointer p-0.5"
+                      title="Limpar busca"
                     >
                       <i class="fa-solid fa-circle-xmark"></i>
                     </button>
@@ -1892,130 +1879,119 @@
                     type="button" 
                     id="btn-buscar-aluno-banco" 
                     onclick="window.buscarAlunoDiretoNoBanco()" 
-                    class="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0" 
-                    title="Buscar diretamente em todo o banco MongoDB Atlas (Otimizado)"
+                    class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0" 
+                    title="Consultar diretamente no banco de dados"
                   >
-                    <i class="fa-solid fa-cloud-arrow-down text-xs"></i>
-                    <span>Buscar no Banco</span>
+                    <i class="fa-solid fa-magnifying-glass-arrow-right text-xs text-slate-500"></i>
+                    <span>No Banco</span>
                   </button>
                 </div>
-                <div class="flex flex-wrap items-center gap-2 w-full lg:w-auto justify-end">
-                  <button 
+
+                <div class="flex flex-wrap items-center gap-2 justify-end">
+                  <button
                     type="button"
-                    onclick="window.abrirModalGestaoAEE()"
-                    class="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-extrabold rounded-lg shadow-sm transition flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
-                    title="Gerenciar Estudantes da Educação Especial (AEE)"
+                    id="btn-analise-ia-segmentos"
+                    onclick="window.abrirAnaliseIaSegmentos()"
+                    class="px-3.5 py-2 bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                    title="Analisar frequência e busca ativa com IA separando Ensino Fundamental e Ensino Médio"
                   >
-                    <i class="fa-solid fa-hands-holding-child text-xs"></i>
-                    <span>Gestão AEE</span>
+                    <i class="fa-solid fa-wand-magic-sparkles text-xs"></i>
+                    <span>Análise IA por Segmento</span>
                   </button>
                   <button 
                     type="button"
-                    onclick="window.abrirModalGestaoRecomposicao()"
-                    class="px-3.5 py-2 bg-purple-700 hover:bg-purple-800 text-white text-xs font-extrabold rounded-lg shadow-sm transition flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
-                    title="Gerenciar Estudantes do Projeto de Recomposição de Aprendizagem"
-                  >
-                    <i class="fa-solid fa-arrows-rotate text-xs"></i>
-                    <span>Projeto Recomposição</span>
-                  </button>
-                  <button 
-                    type="button"
-                    onclick="window.imprimirListaAlunosFiltrada()"
-                    class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 text-xs font-bold rounded-lg shadow-sm transition flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
-                    title="Imprimir Lista de Alunos Formatada (Respeita Filtros)"
-                  >
-                    <i class="fa-solid fa-print text-slate-700 text-xs"></i>
-                    <span>Imprimir Lista</span>
-                  </button>
-                  <button 
-                    id="btn-exportar-csv"
-                    type="button"
-                    onclick="if(window.exportarBaseAlunosCSV) window.exportarBaseAlunosCSV(event)"
-                    class="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold rounded-lg shadow-xs transition flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
-                  >
-                    <i class="fa-solid fa-file-excel text-emerald-600 text-xs"></i>
-                    <span>Exportar para Excel (CSV)</span>
-                  </button>
-                  <button 
-                    id="btn-modo-planilha"
-                    type="button"
-                    class="px-3.5 py-2 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-lg shadow-xs transition flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
-                  >
-                    <i class="fa-solid fa-table-cells text-xs"></i>
-                    <span id="btn-modo-planilha-text">Ativar Modo Planilha</span>
-                  </button>
-                  <button 
-                    id="btn-atribuir-lote"
-                    type="button"
-                    onclick="window.abrirModalAtribuicaoMassa()"
-                    class="hidden secao-direcao-massa px-3.5 py-2 bg-indigo-700 hover:bg-indigo-800 text-white text-xs font-bold rounded-lg shadow-xs transition flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
-                    title="Atribuir Eletivas e Clubes Juvenis em lote para os alunos selecionados"
-                  >
-                    <i class="fa-solid fa-layer-group text-xs"></i>
-                    <span id="btn-atribuir-lote-text">Atribuir Lote (0)</span>
-                  </button>
-                  <button 
                     onclick="abrirModalNovoAluno()" 
-                    class="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg shadow-xs transition flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
+                    class="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
                   >
                     <i class="fa-solid fa-plus text-xs"></i>
                     <span>Novo Aluno</span>
                   </button>
+                  <button
+                    type="button"
+                    id="btn-toggle-filtros-avancados"
+                    onclick="window.toggleFiltrosAvancadosAlunos()"
+                    class="px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+                    title="Mostrar ou ocultar filtros secundários e ferramentas de exportação"
+                  >
+                    <i class="fa-solid fa-sliders text-xs text-slate-500"></i>
+                    <span>Mais filtros &amp; ações</span>
+                  </button>
                 </div>
               </div>
 
-              <!-- Barra de Filtros Dinâmicos e Classificação (Central de Gestão Avançada) -->
-              <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 pt-3 border-t border-slate-100">
-                <div>
-                  <label for="filter-turma" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Filtrar por Turma</label>
-                  <select id="filter-turma" onchange="if(window.carregarAlunosPorTurma){window.carregarAlunosPorTurma(this.value)}else{window.applyStudentFilters()}" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-cyan-300 uppercase">
+              <!-- Linha 2: Filtros Rápidos de Presença + Segmento + Turma + Ordenação -->
+              <div class="flex flex-col xl:flex-row xl:items-center justify-between gap-3 pt-3 border-t border-slate-100">
+                <!-- Controle Segmentado de Status de Presença -->
+                <div class="flex items-center gap-1 p-1 bg-slate-100 rounded-lg overflow-x-auto max-w-full" role="tablist" aria-label="Filtros rápidos de presença">
+                  <button
+                    type="button"
+                    id="btn-filtro-presenca-TODOS"
+                    data-presenca-filter="TODOS"
+                    onclick="window.selecionarFiltroPresencaAlunos('TODOS')"
+                    class="px-3 py-1.5 rounded-md text-xs font-semibold bg-white text-slate-900 shadow-2xs transition cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5"
+                  >
+                    <span>Todos</span>
+                    <span id="count-presenca-todos" class="font-mono tabular-nums text-[11px] text-slate-500">0</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-filtro-presenca-REGULAR"
+                    data-presenca-filter="REGULAR"
+                    onclick="window.selecionarFiltroPresencaAlunos('REGULAR')"
+                    class="px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5"
+                  >
+                    <span>Presença Regular</span>
+                    <span id="count-presenca-regular" class="font-mono tabular-nums text-[11px] text-emerald-700">0</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-filtro-presenca-BUSCA_ATIVA"
+                    data-presenca-filter="BUSCA_ATIVA"
+                    onclick="window.selecionarFiltroPresencaAlunos('BUSCA_ATIVA')"
+                    class="px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5"
+                  >
+                    <span>Faltas / Busca Ativa</span>
+                    <span id="count-presenca-ba" class="font-mono tabular-nums text-[11px] text-rose-700">0</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-filtro-presenca-FALTAS_CONSECUTIVAS"
+                    data-presenca-filter="FALTAS_CONSECUTIVAS"
+                    onclick="window.selecionarFiltroPresencaAlunos('FALTAS_CONSECUTIVAS')"
+                    class="px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5"
+                  >
+                    <span>Faltas Consecutivas</span>
+                    <span id="count-presenca-consec" class="font-mono tabular-nums text-[11px] text-rose-700">0</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-filtro-presenca-ATRASOS"
+                    data-presenca-filter="ATRASOS"
+                    onclick="window.selecionarFiltroPresencaAlunos('ATRASOS')"
+                    class="px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5"
+                  >
+                    <span>Maiores Atrasos</span>
+                    <span id="count-presenca-atrasos" class="font-mono tabular-nums text-[11px] text-amber-700">0</span>
+                  </button>
+                </div>
+
+                <!-- Filtros Combináveis: Segmento, Turma e Ordenação -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 xl:w-auto">
+                  <select id="filter-segmento" onchange="window.applyStudentFilters()" aria-label="Filtrar por Segmento" class="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/30">
+                    <option value="">Todos os Segmentos</option>
+                    <option value="ENSINO FUNDAMENTAL">Ensino Fundamental</option>
+                    <option value="ENSINO MÉDIO">Ensino Médio</option>
+                  </select>
+                  <select id="filter-turma" onchange="if(window.carregarAlunosPorTurma){window.carregarAlunosPorTurma(this.value)}else{window.applyStudentFilters()}" aria-label="Filtrar por Turma" class="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/30 uppercase">
                     <option value="">Todas as Turmas</option>
                   </select>
-                </div>
-                <div>
-                  <label for="filter-status" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Filtrar por Status</label>
-                  <select id="filter-status" onchange="window.applyStudentFilters()" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-cyan-300 uppercase">
-                    <option value="ATIVO" selected>Ativos (Padrão)</option>
-                    <option value="">Todos os Status</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="filter-pj" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Filtrar por PJ</label>
-                  <select id="filter-pj" onchange="window.applyStudentFilters()" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-cyan-300 uppercase">
-                    <option value="">Todos os PJ</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="filter-clube" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Filtrar por Clube</label>
-                  <select id="filter-clube" onchange="window.applyStudentFilters()" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-cyan-300 uppercase">
-                    <option value="">Todos os Clubes</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="filter-tutor" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Filtrar por Tutor</label>
-                  <select id="filter-tutor" onchange="window.applyStudentFilters()" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-cyan-300 uppercase">
-                    <option value="">Todos os Tutores</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="filter-eletiva" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Filtrar por Eletiva</label>
-                  <select id="filter-eletiva" onchange="window.applyStudentFilters()" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-cyan-300 uppercase">
-                    <option value="">Todas as Eletivas</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="filter-pv" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Filtrar por Projeto de Vida</label>
-                  <select id="filter-pv" onchange="window.applyStudentFilters()" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:ring-2 focus:ring-cyan-300 uppercase">
-                    <option value="">Todos os Projetos de Vida</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="sort-order" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Classificação / Ordenação</label>
-                  <select id="sort-order" onchange="window.applyStudentFilters()" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-cyan-300 uppercase">
-                    <option value="freq-asc" selected>🚨 Menor Frequência Primeiro (Maior Risco)</option>
-                    <option value="ocorrencias-desc">⚠️ Maior Nº de Ocorrências Primeiro</option>
-                    <option value="media-asc">📉 Menor Média de Notas Primeiro</option>
-                    <option value="media-desc">📈 Maior Média de Notas Primeiro</option>
+                  <select id="sort-order" onchange="window.applyStudentFilters()" aria-label="Ordenação" class="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/30">
+                    <option value="freq-asc" selected>Menor Frequência (Prioridade)</option>
+                    <option value="faltas-consec-desc">Faltas Consecutivas (Maior → Menor)</option>
+                    <option value="atrasos-desc">Maiores Atrasos Registrados</option>
+                    <option value="ocorrencias-desc">Mais Ocorrências Primeiro</option>
+                    <option value="media-asc">Menor Média Primeiro</option>
+                    <option value="media-desc">Maior Média Primeiro</option>
                     <option value="nome-asc">Ordem Alfabética (A-Z)</option>
                     <option value="nome-desc">Ordem Alfabética (Z-A)</option>
                     <option value="turma-asc">Por Turma / Série</option>
@@ -2023,30 +1999,99 @@
                   </select>
                 </div>
               </div>
+
+              <!-- Painel Recolhível: Filtros Secundários & Utilitários -->
+              <div id="painel-filtros-avancados-alunos" class="hidden pt-3 border-t border-slate-100 space-y-3">
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+                  <div>
+                    <label for="filter-status" class="block text-[11px] font-medium text-slate-500 mb-1">Matrícula</label>
+                    <select id="filter-status" onchange="window.applyStudentFilters()" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none">
+                      <option value="ATIVO" selected>Ativos (Padrão)</option>
+                      <option value="">Todos os Status</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="filter-tutor" class="block text-[11px] font-medium text-slate-500 mb-1">Tutor 2026</label>
+                    <select id="filter-tutor" onchange="window.applyStudentFilters()" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none">
+                      <option value="">Todos os Tutores</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="filter-pj" class="block text-[11px] font-medium text-slate-500 mb-1">Protagonismo (PJ)</label>
+                    <select id="filter-pj" onchange="window.applyStudentFilters()" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none">
+                      <option value="">Todos os PJ</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="filter-clube" class="block text-[11px] font-medium text-slate-500 mb-1">Clube Juvenil</label>
+                    <select id="filter-clube" onchange="window.applyStudentFilters()" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none">
+                      <option value="">Todos os Clubes</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="filter-eletiva" class="block text-[11px] font-medium text-slate-500 mb-1">Eletiva</label>
+                    <select id="filter-eletiva" onchange="window.applyStudentFilters()" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none">
+                      <option value="">Todas as Eletivas</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="filter-pv" class="block text-[11px] font-medium text-slate-500 mb-1">Projeto de Vida</label>
+                    <select id="filter-pv" onchange="window.applyStudentFilters()" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none">
+                      <option value="">Todos os PV</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+                  <button type="button" onclick="window.abrirModalGestaoAEE()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0">
+                    <i class="fa-solid fa-hands-holding-child text-amber-600 text-xs"></i>
+                    <span>Gestão AEE</span>
+                  </button>
+                  <button type="button" onclick="window.abrirModalGestaoRecomposicao()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0">
+                    <i class="fa-solid fa-arrows-rotate text-purple-600 text-xs"></i>
+                    <span>Recomposição</span>
+                  </button>
+                  <button type="button" onclick="window.imprimirListaAlunosFiltrada()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0">
+                    <i class="fa-solid fa-print text-slate-600 text-xs"></i>
+                    <span>Imprimir Lista</span>
+                  </button>
+                  <button id="btn-exportar-csv" type="button" onclick="if(window.exportarBaseAlunosCSV) window.exportarBaseAlunosCSV(event)" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0">
+                    <i class="fa-solid fa-file-excel text-emerald-600 text-xs"></i>
+                    <span>Exportar CSV</span>
+                  </button>
+                  <button id="btn-modo-planilha" type="button" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0">
+                    <i class="fa-solid fa-table-cells text-blue-600 text-xs"></i>
+                    <span id="btn-modo-planilha-text">Modo Planilha</span>
+                  </button>
+                  <button id="btn-atribuir-lote" type="button" onclick="window.abrirModalAtribuicaoMassa()" class="hidden secao-direcao-massa px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0">
+                    <i class="fa-solid fa-layer-group text-xs"></i>
+                    <span id="btn-atribuir-lote-text">Atribuir Lote (0)</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
-            <!-- Listagem de Alunos com Congelamento (Excel Style) -->
-            <div class="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden w-full max-w-full">
-              <div class="overflow-auto max-h-[calc(100vh-280px)] min-h-[400px] w-full relative custom-table-scrollbar">
-                <table class="w-full text-left border-collapse min-w-[1300px]">
-                  <thead class="bg-slate-100 text-slate-600 text-[10px] uppercase font-bold tracking-widest border-b border-slate-200 sticky top-0 z-20 shadow-sm">
+            <!-- Listagem de Alunos Limpa e Direta -->
+            <div class="bg-white rounded-xl border border-slate-200 overflow-hidden w-full max-w-full">
+              <div class="overflow-auto max-h-[calc(100vh-290px)] min-h-[400px] w-full relative custom-table-scrollbar">
+                <table class="w-full text-left border-collapse min-w-[1220px]">
+                  <thead class="bg-slate-50 text-slate-600 text-[11px] font-semibold border-b border-slate-200 sticky top-0 z-20">
                     <tr id="tabela-alunos-head-row">
-                      <th class="px-3 py-3.5 sticky top-0 left-0 z-30 bg-slate-100 min-w-[48px] w-[48px] max-w-[48px] text-center border-b border-slate-200 shadow-sm">
-                        <input type="checkbox" id="checkbox-selecionar-todos-alunos" onchange="window.toggleSelecionarTodosAlunos(this)" class="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" title="Selecionar Todos" />
+                      <th class="px-3 py-3 sticky top-0 left-0 z-30 bg-slate-50 min-w-[44px] w-[44px] text-center border-b border-slate-200">
+                        <input type="checkbox" id="checkbox-selecionar-todos-alunos" onchange="window.toggleSelecionarTodosAlunos(this)" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" title="Selecionar Todos" />
                       </th>
-                      <th class="px-4 py-3.5 sticky top-0 left-[48px] z-30 bg-slate-100 min-w-[200px] w-[200px] max-w-[200px] border-b border-slate-200 shadow-sm">NOME DO ALUNO</th>
-                      <th class="px-4 py-3.5 sticky top-0 left-[248px] z-30 bg-slate-100 min-w-[120px] w-[120px] max-w-[120px] border-b border-slate-200 shadow-sm">RA</th>
-                      <th class="px-4 py-3.5 sticky top-0 left-[368px] z-30 bg-slate-100 min-w-[100px] w-[100px] max-w-[100px] border-r-2 border-r-slate-300 border-b border-slate-200 shadow-sm">TURMA</th>
-                      <th class="px-4 py-3.5 min-w-[150px]">PJ</th>
-                      <th class="px-4 py-3.5 min-w-[140px]">TUTOR 2026</th>
-                      <th class="px-4 py-3.5 min-w-[120px]">CLUBE</th>
-                      <th class="px-4 py-3.5 min-w-[130px]">ELETIVA</th>
-                      <th class="px-4 py-3.5 text-center min-w-[130px]">FREQ. ATUAL (SED)</th>
-                      <th class="px-4 py-3.5 text-center min-w-[150px]">EVOLUÇÃO / TENDÊNCIA</th>
-                      <th class="px-4 py-3.5 text-center min-w-[150px]">DOSSIÊ / AÇÕES</th>
+                      <th class="px-4 py-3 sticky top-0 left-[44px] z-30 bg-slate-50 min-w-[230px] border-b border-slate-200">Estudante &amp; Segmento</th>
+                      <th class="px-3 py-3 sticky top-0 left-[274px] z-30 bg-slate-50 min-w-[115px] border-b border-slate-200">RA</th>
+                      <th class="px-3 py-3 sticky top-0 left-[389px] z-30 bg-slate-50 min-w-[90px] border-r border-slate-200 border-b border-slate-200">Turma</th>
+                      <th class="px-3 py-3 min-w-[130px]">Tutor 2026</th>
+                      <th class="px-3 py-3 min-w-[120px]">Clube / Eletiva</th>
+                      <th class="px-3 py-3 text-center min-w-[115px]">Frequência SED</th>
+                      <th class="px-3 py-3 text-center min-w-[155px]">Situação de Presença</th>
+                      <th class="px-3 py-3 text-center min-w-[135px]">Evolução</th>
+                      <th class="px-3 py-3 text-right min-w-[175px]">Dossiê &amp; Busca Ativa</th>
                     </tr>
                   </thead>
-                  <tbody id="tabela-alunos-body" class="text-sm text-slate-600 divide-y divide-slate-100"></tbody>
+                  <tbody id="tabela-alunos-body" class="text-sm text-slate-700 divide-y divide-slate-100"></tbody>
                 </table>
               </div>
 
@@ -2993,1158 +3038,7 @@
           </div>
 
 
-          <!-- ABA BUSCA ATIVA -->
-          <div id="content-busca-ativa" class="tab-content hidden space-y-6">
-            <!-- Painel Principal de Busca Ativa -->
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 space-y-6">
-              <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-                <div class="flex items-center gap-3">
-                  <div class="w-10 h-10 rounded-lg bg-amber-500 text-white flex items-center justify-center font-bold shadow-sm">
-                    <i class="fa-solid fa-magnifying-glass-location text-lg"></i>
-                  </div>
-                  <div>
-                    <h3 class="text-sm font-bold text-blue-900 uppercase tracking-wide">Módulo de Busca Ativa Escolar (Resolução SEDUC-SP)</h3>
-                    <p class="text-xs text-slate-400">Combate à evasão, acompanhamento de faltas, busca ativa de atrasos e registro legal de encaminhamentos</p>
-                  </div>
-                </div>
-                <button 
-                  type="button" 
-                  id="btn-abrir-modal-contato-ba" 
-                  onclick="document.getElementById('form-novo-contato-ba')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); document.getElementById('ba-input-desc')?.focus();"
-                  class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider shadow-md transition flex items-center gap-2 cursor-pointer shrink-0"
-                >
-                  <i class="fa-solid fa-phone-volume text-sm"></i>
-                  <span>Registrar Tentativa de Contato</span>
-                </button>
-              </div>
-
-              <!-- Seletor de Abas Internas da Busca Ativa: 1) Infrequência & Evasão (Faltas) | 2) Atrasos & Pontualidade -->
-              <div class="p-1.5 bg-slate-100 border border-slate-200 rounded-xl grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  id="btn-subaba-ba-faltas"
-                  onclick="window.alternarSubAbaBuscaAtiva('faltas')"
-                  class="py-3 px-4 rounded-lg font-extrabold text-xs uppercase tracking-wider transition flex items-center justify-between gap-2 cursor-pointer bg-blue-900 text-white shadow-sm"
-                >
-                  <span class="flex items-center gap-2">
-                    <i class="fa-solid fa-user-xmark text-amber-300 text-sm"></i>
-                    <span>1. Busca Ativa de Faltas &amp; Infrequência (≤ 75% ou 3+ Seguidas)</span>
-                  </span>
-                  <span id="badge-subaba-ba-faltas" class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-white/20 text-white">0</span>
-                </button>
-
-                <button
-                  type="button"
-                  id="btn-subaba-ba-atrasos"
-                  onclick="window.alternarSubAbaBuscaAtiva('atrasos')"
-                  class="py-3 px-4 rounded-lg font-extrabold text-xs uppercase tracking-wider transition flex items-center justify-between gap-2 cursor-pointer bg-white text-slate-700 hover:bg-amber-50 hover:text-amber-900 border border-slate-200"
-                >
-                  <span class="flex items-center gap-2">
-                    <i class="fa-solid fa-clock-rotate-left text-amber-600 text-sm"></i>
-                    <span>2. Busca Ativa de Atrasos &amp; Pontualidade (Gatilho 3+)</span>
-                  </span>
-                  <span id="badge-subaba-ba-atrasos" class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300">0</span>
-                </button>
-              </div>
-
-              <div id="ba-secao-topo-faltas" class="space-y-4">
-                <!-- KPIs de Busca Ativa de Faltas & Gatilho de 3+ Faltas Consecutivas (Espelho do Módulo de Atrasos) -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div class="bg-white p-4 rounded-xl border border-blue-200 shadow-xs flex items-center justify-between">
-                    <div>
-                      <span class="text-[10px] font-black text-blue-900 uppercase tracking-wider block">Alunos em Busca Ativa</span>
-                      <div class="flex items-baseline gap-2 mt-1">
-                        <span id="kpi-ba-faltas-total" class="text-2xl font-black text-blue-950">0</span>
-                        <span class="text-[10px] font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">≤ 75% ou 3+ Faltas</span>
-                      </div>
-                      <span class="text-[10px] text-slate-400 block mt-0.5">Monitorados por infrequência/gatilho</span>
-                    </div>
-                    <div class="w-10 h-10 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center text-lg font-bold shrink-0">
-                      <i class="fa-solid fa-users-viewfinder"></i>
-                    </div>
-                  </div>
-
-                  <div class="bg-red-50/90 p-4 rounded-xl border border-red-200 shadow-xs flex items-center justify-between">
-                    <div>
-                      <span class="text-[10px] font-black text-red-900 uppercase tracking-wider block">Gatilho Crítico (≥ 3 Faltas Seguidas)</span>
-                      <div class="flex items-baseline gap-2 mt-1">
-                        <span id="kpi-ba-faltas-gatilho3" class="text-2xl font-black text-red-700">0</span>
-                        <span class="text-[10px] font-extrabold text-white bg-red-600 px-2 py-0.5 rounded-full uppercase">Termo + Tutoria</span>
-                      </div>
-                      <span class="text-[10px] text-red-800 font-medium block mt-0.5">3 faltas consecutivas = busca ativa</span>
-                    </div>
-                    <div class="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center text-lg font-bold shrink-0">
-                      <i class="fa-solid fa-bell"></i>
-                    </div>
-                  </div>
-
-                  <div class="bg-amber-50/80 p-4 rounded-xl border border-amber-300 shadow-xs flex items-center justify-between">
-                    <div>
-                      <span class="text-[10px] font-black text-amber-900 uppercase tracking-wider block">Alerta Preventivo (2 Faltas Seguidas)</span>
-                      <div class="flex items-baseline gap-2 mt-1">
-                        <span id="kpi-ba-faltas-alerta2" class="text-2xl font-black text-amber-800">0</span>
-                        <span class="text-[10px] font-bold text-amber-900 bg-amber-200/70 px-2 py-0.5 rounded-full uppercase">Pré-Gatilho</span>
-                      </div>
-                      <span class="text-[10px] text-amber-800 block mt-0.5">A 1 falta do gatilho de Busca Ativa</span>
-                    </div>
-                    <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center text-lg font-bold shrink-0">
-                      <i class="fa-solid fa-triangle-exclamation"></i>
-                    </div>
-                  </div>
-
-                  <div class="bg-emerald-50/80 p-4 rounded-xl border border-emerald-200 shadow-xs flex items-center justify-between">
-                    <div>
-                      <span class="text-[10px] font-black text-emerald-900 uppercase tracking-wider block">Famílias Cientes (Gatilho 3+)</span>
-                      <div class="flex items-baseline gap-2 mt-1">
-                        <span id="kpi-ba-faltas-cientes" class="text-2xl font-black text-emerald-700">0</span>
-                        <span id="kpi-ba-faltas-pendentes" class="text-[10px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full">0 pendentes</span>
-                      </div>
-                      <span class="text-[10px] text-emerald-800 block mt-0.5">Ciência registrada no gatilho 3+</span>
-                    </div>
-                    <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-lg font-bold shrink-0">
-                      <i class="fa-solid fa-check-double"></i>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Painel de Gestão por Exceção: Gatilho Automático de 3+ Faltas Consecutivas -->
-                <div class="bg-white p-5 rounded-xl border border-rose-300 shadow-sm space-y-3">
-                  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-rose-100 pb-3">
-                    <div class="flex items-center gap-2.5">
-                      <span class="w-3 h-3 rounded-full bg-rose-600 animate-ping shrink-0"></span>
-                      <div>
-                        <h4 class="text-xs font-black text-rose-900 uppercase tracking-wider flex items-center gap-1.5">
-                          <i class="fa-solid fa-calendar-xmark text-rose-600"></i>
-                          <span>Gatilho Automático de Busca Ativa — 3+ Faltas Consecutivas (Termo de Ciência + Pauta na Tutoria)</span>
-                        </h4>
-                        <p class="text-[11px] text-slate-500">Estudantes com 3 ou mais faltas seguidas entram automaticamente em Busca Ativa (mesmo se frequência anual &gt; 75%). Acione em 1 clique:</p>
-                      </div>
-                    </div>
-                    <span id="ba-faltas-gatilho-badge" class="px-3 py-1 bg-rose-600 text-white font-extrabold text-[10px] rounded-full uppercase tracking-wider shrink-0">
-                      0 No Gatilho (3+)
-                    </span>
-                  </div>
-
-                  <div id="lista-casos-gatilho-faltas-ba" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-60 overflow-y-auto custom-scrollbar pt-1">
-                    <div class="col-span-full p-3.5 text-center text-xs text-slate-400 italic bg-slate-50 rounded-lg border border-slate-200">
-                      Verificando faltas consecutivas na chamada diária e auditoria SED...
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Painel de Gestão por Exceção: Casos Críticos Urgentes (< 75% Frequência ou 3+ Faltas) -->
-                <div class="p-4 bg-red-50/80 border border-red-200 rounded-xl space-y-3 shadow-sm">
-                  <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-2">
-                      <span class="w-2.5 h-2.5 rounded-full bg-red-600 animate-ping"></span>
-                      <h4 class="text-xs font-black text-red-900 uppercase tracking-wider flex items-center gap-1.5">
-                        <i class="fa-solid fa-triangle-exclamation text-red-600"></i>
-                        <span>Casos Críticos para Busca Ativa Urgente (Frequência ≤ 75% ou 3+ Faltas Seguidas)</span>
-                      </h4>
-                    </div>
-                    <span id="ba-criticos-count" class="px-2.5 py-0.5 bg-red-600 text-white font-extrabold text-[10px] rounded-full uppercase tracking-wider">
-                      0 Em Situação Crítica
-                    </span>
-                  </div>
-                  <p class="text-[11px] text-red-800 font-medium">Estudantes ordenados do maior risco para o menor. Clique em qualquer estudante para iniciar o acolhimento imediatamente:</p>
-                  <div id="lista-casos-criticos-busca-ativa" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-56 overflow-y-auto custom-scrollbar pt-1">
-                    <div class="col-span-full p-3 text-center text-xs text-slate-400 italic bg-white rounded-lg border border-slate-200">
-                      Carregando estudantes em situação crítica...
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Pílulas de Filtro Rápido por Faixa de Frequência e Gatilho de Faltas Consecutivas -->
-                <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                  <div class="flex items-center justify-between flex-wrap gap-2">
-                    <div class="flex items-center gap-1.5">
-                      <i class="fa-solid fa-filter text-amber-500 text-xs"></i>
-                      <span class="text-xs font-black text-slate-700 uppercase tracking-wider">Filtro Rápido por Faixa de Frequência &amp; Gatilho Consecutivo (Tempo Real)</span>
-                    </div>
-                    <span class="text-[10px] text-slate-400 font-medium">Inclui frequência ≤ 75% ou gatilho de 3+ faltas consecutivas (e pré-gatilho 2 faltas quando selecionado)</span>
-                  </div>
-                  <div class="flex items-center gap-2 flex-wrap">
-                    <button 
-                      type="button" 
-                      id="btn-filtro-freq-todos" 
-                      onclick="window.setFiltroFaixaFreqBa('TODOS')" 
-                      class="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-blue-900 text-white shadow-xs"
-                    >
-                      <span>⚪ Todos em Busca Ativa</span>
-                      <span id="count-filtro-todos" class="px-2 py-0.5 bg-white/20 text-white text-[10px] rounded-full font-black">0</span>
-                    </button>
-                    <button 
-                      type="button" 
-                      id="btn-filtro-freq-gatilho3" 
-                      onclick="window.setFiltroFaixaFreqBa('GATILHO_FALTAS_3')" 
-                      class="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-white text-slate-700 border border-slate-200 hover:bg-red-50 hover:text-red-700"
-                    >
-                      <span>🚨 Gatilho 3+ Faltas Seguidas (Termo + Tutoria)</span>
-                      <span id="count-filtro-gatilho3" class="px-2 py-0.5 bg-red-100 text-red-800 text-[10px] rounded-full font-black">0</span>
-                    </button>
-                    <button 
-                      type="button" 
-                      id="btn-filtro-freq-alerta2" 
-                      onclick="window.setFiltroFaixaFreqBa('ALERTA_FALTAS_2')" 
-                      class="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-white text-slate-700 border border-slate-200 hover:bg-amber-50 hover:text-amber-800"
-                    >
-                      <span>⚠️ Alerta Preventivo (2 Faltas Seguidas)</span>
-                      <span id="count-filtro-alerta2" class="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] rounded-full font-black">0</span>
-                    </button>
-                    <button 
-                      type="button" 
-                      id="btn-filtro-freq-pendente-ciencia" 
-                      onclick="window.setFiltroFaixaFreqBa('PENDENTE_CIENCIA_FALTAS')" 
-                      class="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-white text-slate-700 border border-slate-200 hover:bg-rose-50 hover:text-rose-700"
-                    >
-                      <span>⏳ Pendentes Ciência (3+ Faltas)</span>
-                      <span id="count-filtro-pendente-ciencia" class="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] rounded-full font-black">0</span>
-                    </button>
-                    <button 
-                      type="button" 
-                      id="btn-filtro-freq-critico" 
-                      onclick="window.setFiltroFaixaFreqBa('CRITICO')" 
-                      class="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-white text-slate-700 border border-slate-200 hover:bg-red-50 hover:text-red-700"
-                    >
-                      <span>🔴 Risco Crítico (&lt; 50%)</span>
-                      <span id="count-filtro-critico" class="px-2 py-0.5 bg-red-100 text-red-800 text-[10px] rounded-full font-black">0</span>
-                    </button>
-                    <button 
-                      type="button" 
-                      id="btn-filtro-freq-atencao" 
-                      onclick="window.setFiltroFaixaFreqBa('ATENCAO')" 
-                      class="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-white text-slate-700 border border-slate-200 hover:bg-amber-50 hover:text-amber-800"
-                    >
-                      <span>🟡 Risco Alerta (50% a 75%)</span>
-                      <span id="count-filtro-atencao" class="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] rounded-full font-black">0</span>
-                    </button>
-                    <button 
-                      type="button" 
-                      id="btn-filtro-freq-parou-faltar" 
-                      onclick="window.setFiltroFaixaFreqBa('PAROU_FALTAR')" 
-                      class="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-50"
-                      title="Estudantes com faltas anteriores que retomaram frequência e pararam de faltar recentemente"
-                    >
-                      <span>✓ Parou de Faltar (Retomou)</span>
-                      <span id="count-filtro-parou-faltar" class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] rounded-full font-black">0</span>
-                    </button>
-                    <button 
-                      type="button" 
-                      id="btn-filtro-freq-continua-faltando" 
-                      onclick="window.setFiltroFaixaFreqBa('CONTINUA_FALTANDO')" 
-                      class="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-white text-rose-800 border border-rose-300 hover:bg-rose-50"
-                      title="Estudantes que continuam faltando ativamente nas últimas aulas apuradas"
-                    >
-                      <span>⚠️ Continua Faltando</span>
-                      <span id="count-filtro-continua-faltando" class="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] rounded-full font-black">0</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Busca Inteligente de Alunos para Busca Ativa (Live Search / Autocomplete) -->
-              <div class="relative w-full">
-                <label for="ba-buscar-aluno-input" class="block text-xs font-semibold text-slate-600 uppercase mb-1">
-                  Buscar Estudante (Nome, RA ou Turma) <span class="text-red-500">*</span>
-                </label>
-                <div class="relative flex items-center">
-                  <span class="absolute left-3 text-slate-400 pointer-events-none">
-                    <i class="fa-solid fa-magnifying-glass text-xs"></i>
-                  </span>
-                  <input 
-                    type="text" 
-                    id="ba-buscar-aluno-input" 
-                    placeholder="Digite Nome, RA ou Turma do aluno para iniciar a busca ativa..." 
-                    autocomplete="off"
-                    class="w-full pl-9 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-amber-400 font-medium text-slate-800 transition uppercase" 
-                  />
-                  <button 
-                    type="button" 
-                    id="btn-limpar-ba-busca" 
-                    class="hidden absolute right-3 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
-                    title="Limpar busca"
-                  >
-                    <i class="fa-solid fa-xmark text-xs"></i>
-                  </button>
-                </div>
-
-                <!-- Dropdown de Resultados da Busca -->
-                <div 
-                  id="dropdown-ba-alunos-resultados" 
-                  class="hidden absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 max-h-64 overflow-y-auto divide-y divide-slate-100 text-xs custom-scrollbar"
-                >
-                </div>
-              </div>
-
-              <!-- Card do Aluno Selecionado -->
-              <div id="card-ba-aluno-selecionado" class="hidden p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-4">
-                <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-3 border-b border-amber-200/60 pb-3">
-                  <div>
-                    <div class="flex items-center gap-2 flex-wrap mb-1">
-                      <span class="text-[10px] font-extrabold text-amber-800 uppercase tracking-wider">Estudante Selecionado para Busca Ativa</span>
-                      
-                      <!-- SLA Semáforo Indicador Visual -->
-                      <div id="ba-sla-badge-container" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase border shadow-sm">
-                        <span id="ba-sla-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                        <span id="ba-sla-text">🟢 MONITORANDO</span>
-                      </div>
-                    </div>
-
-                    <h4 id="ba-selected-nome" class="text-base font-black text-blue-900 uppercase">ALUNO</h4>
-                    <p class="text-xs text-slate-600 mt-0.5">
-                      RA: <span id="ba-selected-ra" class="font-mono font-bold text-blue-800"></span> | 
-                      Turma: <span id="ba-selected-turma" class="font-bold text-slate-800"></span> | 
-                      Freq. Anual: <span id="ba-selected-freq" class="font-extrabold text-amber-700"></span>
-                    </p>
-                  </div>
-
-                  <div class="flex items-center gap-2 flex-wrap shrink-0">
-                    <!-- Controle do SLA Semáforo -->
-                    <div class="flex items-center gap-1 bg-white p-1 rounded-lg border border-amber-300">
-                      <label for="ba-sla-status-select" class="text-[10px] font-bold text-slate-500 uppercase px-1">SLA:</label>
-                      <select 
-                        id="ba-sla-status-select" 
-                        onchange="window.salvarSlaStatusBa(this.value)"
-                        class="p-1 bg-slate-50 border border-slate-200 rounded text-[11px] font-bold text-slate-800 outline-none cursor-pointer"
-                      >
-                        <option value="SEM_ACOES">⚪ Sem Ações Feitas</option>
-                        <option value="MONITORANDO">🟢 Monitorando</option>
-                        <option value="CONTATO_REALIZADO">🟡 Contato Realizado (Aguardando Retorno)</option>
-                        <option value="ENCAMINHADO_CONSELHO">🔴 Encaminhado ao Conselho/DE</option>
-                      </select>
-                    </div>
-
-                    <!-- Atalho para o Dossiê Completo do Aluno -->
-                    <button 
-                      type="button" 
-                      id="btn-ba-abrir-dossie"
-                      onclick="if(alunoBuscaAtivaSelecionado) window.abrirModalFichaAluno(alunoBuscaAtivaSelecionado.ra)" 
-                      class="px-3 py-2 bg-blue-900 hover:bg-blue-950 text-white font-extrabold rounded-lg text-xs uppercase tracking-wider shadow-sm transition flex items-center gap-1.5 cursor-pointer"
-                      title="Abrir Dossiê / Ficha Completa do Aluno"
-                    >
-                      <i class="fa-solid fa-address-card text-xs"></i>
-                      <span>Abrir Dossiê</span>
-                    </button>
-
-                    <button 
-                      type="button" 
-                      id="btn-desfazer-ba-selecao" 
-                      class="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-lg text-xs uppercase border border-slate-300 transition cursor-pointer"
-                    >
-                      Trocar
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Alerta Visual de Reincidência (Exibido se aluno possui histórico prévio) -->
-                <div id="ba-alerta-reincidencia" class="hidden p-3.5 bg-red-100 border-2 border-red-300 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-red-900 shadow-sm">
-                  <div class="flex items-center gap-3">
-                    <div class="w-8 h-8 rounded-xl bg-red-600 text-white flex items-center justify-center font-bold shrink-0 shadow-sm">
-                      <i class="fa-solid fa-triangle-exclamation text-base"></i>
-                    </div>
-                    <div>
-                      <span class="text-[10px] font-black uppercase tracking-widest text-red-700 block">Alerta do Sistema</span>
-                      <h5 class="text-xs font-black uppercase">⚠️ ESTUDANTE REINCIDENTE EM BUSCA ATIVA / ENCAMINHAMENTOS PRÉVIOS</h5>
-                      <p class="text-[11px] font-medium text-red-800">Estudante possui histórico prévio de encaminhamentos ou fichas do Conselho Tutelar em períodos anteriores.</p>
-                    </div>
-                  </div>
-                  <button 
-                    type="button" 
-                    onclick="if(alunoBuscaAtivaSelecionado) window.abrirModalFichaAluno(alunoBuscaAtivaSelecionado.ra)"
-                    class="px-3 py-1.5 bg-red-700 hover:bg-red-800 text-white font-extrabold text-[10px] uppercase rounded-lg shadow-sm transition shrink-0 self-start sm:self-center"
-                  >
-                    Ver Dossiê Prévio
-                  </button>
-                </div>
-
-                <!-- Painel de Evolução da Frequência do Aluno -->
-                <div id="ba-painel-evolucao-freq" class="p-3.5 bg-white border border-amber-300 rounded-xl space-y-2 shadow-sm">
-                  <div class="flex items-center justify-between">
-                    <h5 class="text-xs font-extrabold text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
-                      <i class="fa-solid fa-chart-line text-emerald-600"></i>
-                      <span>Evolução da Frequência Escolar do Estudante</span>
-                    </h5>
-                    <span id="ba-freq-tendencia-badge" class="px-2 py-0.5 bg-slate-100 text-slate-700 font-bold text-[10px] rounded uppercase border">
-                      Calculando Tendência...
-                    </span>
-                  </div>
-                  
-                  <div id="ba-freq-evolucao-grid" class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 text-xs">
-                    <!-- Injetado dinamicamente via JS -->
-                  </div>
-                </div>
-
-                <!-- Grid com Ações Rápidas (WhatsApp) e Form de Registro -->
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-1">
-                  
-                  <!-- Painel de Ações Rápidas (WhatsApp & Modelos Oficiais com IA - Resolução SEDUC nº 39/2023) -->
-                  <div class="bg-white p-4 rounded-xl border border-amber-200 shadow-xs space-y-3.5 flex flex-col justify-between">
-                    <div class="space-y-3">
-                      <!-- Cabeçalho Oficial -->
-                      <div class="flex flex-wrap items-center justify-between gap-1.5 border-b border-slate-100 pb-2">
-                        <div class="flex items-center gap-2">
-                          <i class="fa-brands fa-whatsapp text-emerald-500 text-lg"></i>
-                          <h5 class="text-xs font-extrabold text-blue-900 uppercase tracking-wider">Modelos de Comunicação Oficial</h5>
-                        </div>
-                        <span class="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-800 border border-blue-200 rounded text-[9.5px] font-extrabold uppercase">
-                          <i class="fa-solid fa-scale-balanced text-blue-600"></i> Res. SEDUC nº 39/2023
-                        </span>
-                      </div>
-
-                      <!-- Painel de Geração com Inteligência Artificial (Individualizada Caso a Caso) -->
-                      <div class="p-3 bg-gradient-to-br from-indigo-50/70 via-white to-amber-50/60 border border-indigo-200 rounded-xl space-y-2.5 shadow-2xs">
-                        <div class="flex items-center justify-between">
-                          <div class="flex items-center gap-1.5">
-                            <span class="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs shadow-xs">
-                              <i class="fa-solid fa-wand-magic-sparkles"></i>
-                            </span>
-                            <div>
-                              <h6 class="text-xs font-extrabold text-indigo-950 uppercase tracking-wide">Mensagem Individualizada com IA</h6>
-                              <p class="text-[10px] text-slate-500 font-medium">Diagnóstico individual dos dados, faltas, contatos e instâncias legais</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        <!-- Seletor do Estágio Legal da Resolução SEDUC nº 39/2023 -->
-                        <div class="space-y-1">
-                          <label for="ba-ia-estagio-select" class="block text-[10px] font-extrabold text-slate-700 uppercase tracking-wider">
-                            Diretriz / Estágio Legal da Mensagem:
-                          </label>
-                          <select 
-                            id="ba-ia-estagio-select" 
-                            class="w-full p-2 bg-white border border-indigo-200 rounded-lg text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition shadow-2xs"
-                          >
-                            <option value="auto">🤖 Diagnóstico Automático por IA (Recomendado - Analisa todo o histórico do aluno)</option>
-                            <option value="familiar">🟢 1. Contato Familiar &amp; Acolhimento (Primeiras faltas / Apoio pedagógico)</option>
-                            <option value="convocacao">🟡 2. Convocação Presencial &amp; Advertência Formal (ECA Art. 56 / LDB Art. 12)</option>
-                            <option value="conselho_tutelar">🟠 3. Encaminhamento Conselho Tutelar (Excesso de contatos sem retorno / Ficha FICAI)</option>
-                            <option value="ministerio_publico">🔴 4. Encaminhamento Ministério Público (Último caso / Omissão reiterada - CP Art. 246)</option>
-                          </select>
-                        </div>
-
-                        <!-- Botão de Ação Principal: Gerar com IA -->
-                        <button 
-                          type="button" 
-                          id="btn-ba-gerar-ia" 
-                          onclick="window.gerarMensagemIaBuscaAtiva()"
-                          class="w-full py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-extrabold text-xs uppercase tracking-wider rounded-lg shadow-sm hover:shadow transition flex items-center justify-center gap-2 cursor-pointer"
-                        >
-                          <i class="fa-solid fa-wand-magic-sparkles text-amber-300 text-sm"></i>
-                          <span>Gerar Mensagem Individualizada com IA</span>
-                        </button>
-                      </div>
-
-                      <!-- Modelos Rápidos Pré-Definidos (Unissex) -->
-                      <div>
-                        <div class="flex items-center justify-between mb-1.5">
-                          <span class="text-[10px] font-extrabold text-slate-600 uppercase tracking-wider">Ou Selecione um Modelo Pré-Definido:</span>
-                          <span class="text-[9.5px] font-semibold text-slate-400">Padrão Geral</span>
-                        </div>
-                        <div class="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
-                          <button 
-                            type="button" 
-                            id="btn-ba-msg-leve" 
-                            onclick="window.selecionarModeloMsgBa('leve')"
-                            class="py-1.5 px-2 rounded-lg border text-[10px] font-extrabold uppercase transition cursor-pointer flex flex-col items-center justify-center gap-0.5 bg-emerald-100 text-emerald-900 border-emerald-300 shadow-sm text-center"
-                            title="Modelo Leve: Primeiras ausências, avisando com acolhimento"
-                          >
-                            <i class="fa-solid fa-seedling text-emerald-600 text-xs"></i>
-                            <span>1. Leve</span>
-                          </button>
-
-                          <button 
-                            type="button" 
-                            id="btn-ba-msg-moderada" 
-                            onclick="window.selecionarModeloMsgBa('moderada')"
-                            class="py-1.5 px-2 rounded-lg border text-[10px] font-extrabold uppercase transition cursor-pointer flex flex-col items-center justify-center gap-0.5 bg-slate-100 text-slate-700 border-slate-300 hover:bg-amber-100 hover:text-amber-900 shadow-sm text-center"
-                            title="Modelo Moderado: Reincidência de faltas, cobrando comparecimento"
-                          >
-                            <i class="fa-solid fa-circle-exclamation text-amber-600 text-xs"></i>
-                            <span>2. Moderada</span>
-                          </button>
-
-                          <button 
-                            type="button" 
-                            id="btn-ba-msg-final" 
-                            onclick="window.selecionarModeloMsgBa('final')"
-                            class="py-1.5 px-2 rounded-lg border text-[10px] font-extrabold uppercase transition cursor-pointer flex flex-col items-center justify-center gap-0.5 bg-slate-100 text-slate-700 border-slate-300 hover:bg-red-100 hover:text-red-900 shadow-sm text-center"
-                            title="Modelo Final: Notificação legal de encaminhamento ao Conselho Tutelar"
-                          >
-                            <i class="fa-solid fa-gavel text-red-600 text-xs"></i>
-                            <span>3. Final (CT)</span>
-                          </button>
-
-                          <button 
-                            type="button" 
-                            id="btn-ba-msg-atrasos" 
-                            onclick="window.selecionarModeloMsgBa('atrasos')"
-                            class="py-1.5 px-2 rounded-lg border text-[10px] font-extrabold uppercase transition cursor-pointer flex flex-col items-center justify-center gap-0.5 bg-slate-100 text-slate-700 border-slate-300 hover:bg-purple-100 hover:text-purple-900 shadow-sm text-center"
-                            title="Modelo Atrasos: Notificação de atrasos reiterados e Termo de Ciência de Pontualidade"
-                          >
-                            <i class="fa-solid fa-clock text-purple-600 text-xs"></i>
-                            <span>4. Atrasos</span>
-                          </button>
-
-                          <button 
-                            type="button" 
-                            id="btn-ba-msg-faltas-consecutivas" 
-                            onclick="window.selecionarModeloMsgBa('faltas_consecutivas')"
-                            class="py-1.5 px-2 rounded-lg border text-[10px] font-extrabold uppercase transition cursor-pointer flex flex-col items-center justify-center gap-0.5 bg-slate-100 text-slate-700 border-slate-300 hover:bg-rose-100 hover:text-rose-900 shadow-sm text-center"
-                            title="Modelo 3+ Faltas Seguidas: Notificação de faltas consecutivas, Termo de Ciência e Tutoria"
-                          >
-                            <i class="fa-solid fa-calendar-xmark text-rose-600 text-xs"></i>
-                            <span>5. 3+ Faltas</span>
-                          </button>
-                        </div>
-                      </div>
-
-                      <!-- Painel de Diagnóstico Legal & Fundamentação da IA (Gerado dinamicamente) -->
-                      <div id="ba-ia-resultado-box" class="hidden p-3 bg-amber-50/80 border border-amber-300 rounded-xl space-y-2 text-xs">
-                        <div class="flex items-center justify-between">
-                          <span id="ba-ia-badge-estagio" class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-900 border border-indigo-200">
-                            Estágio Legal
-                          </span>
-                          <span id="ba-ia-base-legal" class="text-[9.5px] font-bold text-slate-600 text-right">
-                            Resolução SEDUC nº 39/2023
-                          </span>
-                        </div>
-                        <p id="ba-ia-diagnostico-txt" class="text-[11px] text-slate-700 leading-snug">
-                          <!-- Diagnóstico resumido preenchido via JS -->
-                        </p>
-                        <div id="ba-ia-proxima-acao-wrap" class="pt-1 border-t border-amber-200/80 text-[10.5px] text-amber-900 font-semibold flex items-start gap-1.5">
-                          <i class="fa-solid fa-compass text-amber-600 text-xs mt-0.5 shrink-0"></i>
-                          <span id="ba-ia-proxima-acao-txt"></span>
-                        </div>
-                      </div>
-
-                      <!-- Textarea da Mensagem Oficial (Editável pelo Operador) -->
-                      <div class="space-y-1">
-                        <div class="flex items-center justify-between text-[10px] text-slate-500 font-bold uppercase">
-                          <span>Texto da Mensagem (Editável):</span>
-                          <span id="ba-msg-contador-chars" class="font-mono">Pronta</span>
-                        </div>
-                        <textarea 
-                          id="ba-whatsapp-textarea" 
-                          rows="6" 
-                          placeholder="A mensagem individualizada do estudante aparecerá aqui para envio ou edição..."
-                          class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium text-slate-800 outline-none focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y leading-relaxed shadow-inner"
-                        ></textarea>
-                      </div>
-                    </div>
-
-                    <!-- Botões de Ação Rápida: Copiar, WhatsApp Web e Preencher Registro -->
-                    <div class="space-y-2 pt-1">
-                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <button 
-                          type="button" 
-                          id="btn-copiar-whatsapp-msg" 
-                          class="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-extrabold rounded-lg text-xs uppercase tracking-wider shadow-sm transition flex items-center justify-center gap-2 cursor-pointer"
-                        >
-                          <i class="fa-solid fa-copy"></i>
-                          <span>Copiar Mensagem</span>
-                        </button>
-
-                        <button 
-                          type="button" 
-                          id="btn-abrir-whatsapp-web" 
-                          onclick="window.abrirWhatsAppWebBuscaAtiva()"
-                          class="py-2.5 px-3 bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-900 border border-emerald-300 font-extrabold rounded-lg text-xs uppercase tracking-wider shadow-2xs transition flex items-center justify-center gap-1.5 cursor-pointer"
-                          title="Enviar mensagem diretamente no WhatsApp do responsável"
-                        >
-                          <i class="fa-brands fa-whatsapp text-emerald-600 text-sm"></i>
-                          <span>Abrir WhatsApp Web</span>
-                        </button>
-                      </div>
-
-                      <button 
-                        type="button" 
-                        id="btn-preencher-form-contato" 
-                        onclick="window.usarMensagemNoRegistroBa()"
-                        class="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 border border-slate-300 font-bold rounded-lg text-[11px] uppercase tracking-wide transition flex items-center justify-center gap-1.5 cursor-pointer"
-                        title="Preenche o formulário de tentativa de contato abaixo com esta mensagem"
-                      >
-                        <i class="fa-solid fa-arrow-down text-slate-500"></i>
-                        <span>Usar esta Notificação no Formulário de Registro Abaixo</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <!-- Formulário de Histórico de Contatos (Campos Flexíveis / Opcionais) -->
-                  <form id="form-novo-contato-ba" class="bg-white p-4 rounded-xl border border-amber-200 shadow-xs space-y-3">
-                    <input type="hidden" id="ba-input-id" value="" />
-                    <div class="flex items-center justify-between mb-1">
-                      <div class="flex items-center gap-2">
-                        <i class="fa-solid fa-pen-to-square text-amber-600 text-sm"></i>
-                        <h5 class="text-xs font-extrabold text-blue-900 uppercase tracking-wider">Registrar Tentativa de Contato</h5>
-                      </div>
-                      <span class="text-[10px] font-semibold text-slate-400 uppercase">Campos Flexíveis</span>
-                    </div>
-
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div>
-                        <label for="ba-input-data" class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Data <span class="text-red-500">*</span></label>
-                        <input type="date" id="ba-input-data" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-amber-400" required />
-                      </div>
-
-                      <div>
-                        <label for="ba-input-tipo" class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Canal <span class="text-red-500">*</span></label>
-                        <select id="ba-input-tipo" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-amber-400" required>
-                          <option value="WhatsApp">WhatsApp</option>
-                          <option value="Ligação Telefônica">Ligação Telefônica</option>
-                          <option value="Reunião Presencial">Reunião Presencial</option>
-                          <option value="Visita Domiciliar">Visita Domiciliar</option>
-                          <option value="Carta / Notificação / Ofício">Carta / Notificação / Ofício</option>
-                          <option value="Outros">Outros</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label for="ba-input-resposta" class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Houve Resposta?</label>
-                        <select id="ba-input-resposta" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-amber-400">
-                          <option value="Aguardando Retorno dos Pais">🟡 Aguardando Retorno dos Pais</option>
-                          <option value="Sim - Responsável Atendeu / Respondeu">🟢 Sim - Atendeu / Respondeu</option>
-                          <option value="Não - Sem Resposta / Não Atendeu">🔴 Não - Sem Resposta / Não Atendeu</option>
-                          <option value="Compareceu à Escola">🔵 Compareceu à Escola</option>
-                          <option value="Recusou Atendimento">⛔ Recusou Atendimento</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label for="ba-input-desc" class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Posicionamento / Retorno dos Responsáveis &amp; Observações</label>
-                      <textarea id="ba-input-desc" rows="2" placeholder="Digite o retorno dos pais se houver, ou deixe em branco se enviado e aguardando resposta..." class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-amber-400"></textarea>
-                    </div>
-
-                    <button 
-                      type="submit" 
-                      id="btn-salvar-contato-ba" 
-                      class="w-full py-2.5 bg-blue-700 hover:bg-blue-800 text-white font-extrabold rounded-lg text-xs uppercase tracking-wider shadow-sm transition flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <i class="fa-solid fa-floppy-disk text-xs"></i>
-                      <span>Registrar Tentativa e Integrar ao Dossiê</span>
-                    </button>
-                  </form>
-                </div>
-
-                <!-- Histórico de Contatos do Estudante -->
-                <div class="bg-white p-4 rounded-xl border border-amber-200 shadow-xs space-y-3">
-                  <div class="flex items-center justify-between flex-wrap gap-2">
-                    <h5 class="text-xs font-extrabold text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
-                      <i class="fa-solid fa-timeline text-amber-600"></i>
-                      <span>Linha do Tempo de Tentativas de Busca Ativa &amp; Dossiê</span>
-                    </h5>
-                    <div class="flex items-center gap-1.5 flex-wrap">
-                      <span id="ba-atrasos-count-badge" class="hidden text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full items-center gap-1 shadow-2xs">
-                        <i class="fa-solid fa-clock-rotate-left text-amber-600"></i>
-                        <span id="ba-atrasos-count-val">0 Atrasos</span>
-                      </span>
-                      <span id="ba-historico-count" class="text-[10px] font-bold bg-blue-100 text-blue-900 border border-blue-200 px-2 py-0.5 rounded-full">0 Registros</span>
-                    </div>
-                  </div>
-
-                  <div id="container-historico-ba-lista" class="space-y-2 max-h-72 overflow-y-auto custom-scrollbar pr-1">
-                    <p class="text-xs text-slate-400 italic text-center py-4">Nenhum registro de busca ativa cadastrado para este aluno.</p>
-                  </div>
-                </div>
-
-                <!-- Seção Encaminhamentos Legais (Ofícios e Conselho Tutelar) -->
-                <div class="bg-white p-4 rounded-xl border border-red-200 shadow-xs space-y-3">
-                  <div>
-                    <h5 class="text-xs font-extrabold text-red-900 uppercase tracking-wider flex items-center gap-2">
-                      <i class="fa-solid fa-scale-balanced text-red-600"></i>
-                      <span>Encaminhamentos Legais (Evasão / Infrequência Grave)</span>
-                    </h5>
-                    <p class="text-[11px] text-slate-500 mt-0.5">Se as tentativas de contato e mediação pedagógica não obtiverem êxito, gere as notificações legais para os órgãos competentes:</p>
-                  </div>
-
-                  <div class="flex flex-col sm:flex-row items-center gap-3 pt-1">
-                    <button 
-                      type="button" 
-                      id="btn-gerar-oficio-demp" 
-                      class="w-full sm:w-auto flex-1 py-2.5 px-4 bg-red-700 hover:bg-red-800 text-white font-extrabold rounded-lg text-xs uppercase tracking-wider shadow-sm transition flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <i class="fa-solid fa-file-shield"></i>
-                      <span>Gerar Ofício DE / MP</span>
-                    </button>
-
-                    <button 
-                      type="button" 
-                      id="btn-gerar-ficha-ct" 
-                      class="w-full sm:w-auto flex-1 py-2.5 px-4 bg-blue-900 hover:bg-blue-950 text-white font-extrabold rounded-lg text-xs uppercase tracking-wider shadow-sm transition flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <i class="fa-solid fa-id-card"></i>
-                      <span>Gerar Ficha Conselho Tutelar</span>
-                    </button>
-
-                    <button 
-                      type="button" 
-                      id="btn-gerar-termo-frequencia-ba" 
-                      class="w-full sm:w-auto flex-1 py-2.5 px-4 bg-purple-800 hover:bg-purple-900 text-white font-extrabold rounded-lg text-xs uppercase tracking-wider shadow-sm transition flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <i class="fa-solid fa-file-signature"></i>
-                      <span>Termo de Compromisso e Frequência</span>
-                    </button>
-                  </div>
-                </div>
-
-              </div>
-            </div>
-
-            <!-- VISÃO GERAL GLOBAL DA BUSCA ATIVA (Exibida na tela principal do módulo quando nenhum aluno está selecionado) -->
-            <div id="ba-visao-geral-container" class="space-y-6">
-              <!-- Central Geral de Todos os Contatos Registrados (Painel Unificado) -->
-              <div id="panel-geral-contatos-ba" class="bg-white p-6 rounded-xl border border-amber-300 shadow-sm space-y-4">
-                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-amber-200 pb-3">
-                  <div class="flex items-center gap-2.5">
-                    <div class="p-2 bg-amber-100 text-amber-900 rounded-lg border border-amber-300">
-                      <i class="fa-solid fa-address-book text-base"></i>
-                    </div>
-                    <div>
-                      <h4 class="text-xs font-black text-blue-950 uppercase tracking-wider">Painel Geral de Todos os Contatos de Busca Ativa</h4>
-                      <p class="text-[11px] text-slate-500">Acompanhamento centralizado e controle unificado de todas as tentativas de contato registradas na escola</p>
-                    </div>
-                  </div>
-
-                  <button 
-                    type="button" 
-                    onclick="window.carregarTodosOsContatosGeralBa()"
-                    class="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-lg text-xs uppercase tracking-wider transition shadow-sm flex items-center gap-1.5 cursor-pointer shrink-0"
-                  >
-                    <i class="fa-solid fa-arrows-rotate text-xs"></i>
-                    <span>Carregar / Atualizar Painel Geral</span>
-                  </button>
-                </div>
-
-                <!-- Filtros e Pesquisa no Painel Geral -->
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
-                  <div class="sm:col-span-2">
-                    <label for="input-busca-painel-geral-contatos" class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Buscar por Estudante, RA, Turma ou Anotação</label>
-                    <div class="relative flex items-center">
-                      <i class="fa-solid fa-magnifying-glass absolute left-3 text-slate-400 text-xs"></i>
-                      <input 
-                        type="text" 
-                        id="input-busca-painel-geral-contatos"
-                        oninput="window.filtrarPainelGeralContatosBa()"
-                        placeholder="Digite para filtrar em tempo real..."
-                        class="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-amber-400 font-medium"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label for="select-filtro-status-painel-geral" class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Filtrar por Status do Retorno / SLA</label>
-                    <select 
-                      id="select-filtro-status-painel-geral" 
-                      onchange="window.filtrarPainelGeralContatosBa()"
-                      class="w-full p-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"
-                    >
-                      <option value="TODOS">Todos os Registros e Alunos</option>
-                      <option value="SEM_ACOES">⚪ Sem Ações Feitas (Críticos sem registro)</option>
-                      <option value="MONITORANDO">🟢 Monitorando</option>
-                      <option value="AGUARDANDO">🟡 Contato Realizado (Aguardando Retorno)</option>
-                      <option value="ENCAMINHADO">🔴 Encaminhado ao Conselho/DE</option>
-                      <option value="SIM">🟢 Atendeu / Respondeu / Compareceu</option>
-                      <option value="NAO">🔴 Não Atendeu / Recusou</option>
-                    </select>
-                  </div>
-                </div>
-
-                <!-- Listagem de Resultados do Painel Geral -->
-                <div id="container-painel-geral-contatos-ba" class="space-y-2.5 max-h-80 overflow-y-auto custom-scrollbar pr-1">
-                  <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center text-xs text-slate-500">
-                    Clique em <strong>"Carregar / Atualizar Painel Geral"</strong> acima para visualizar todas as tentativas de contato registradas na escola.
-                  </div>
-                </div>
-              </div>
-
-              <!-- Tabela Adicional: Alunos em Risco de Abandono Geral (Visão Geral) -->
-              <div class="bg-white p-6 rounded-xl shadow-sm border border-red-100 space-y-4">
-                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-red-100 pb-3">
-                  <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-lg bg-red-100 text-red-600 flex items-center justify-center font-bold shrink-0">
-                      <i class="fa-solid fa-triangle-exclamation text-lg"></i>
-                    </div>
-                    <div>
-                      <h3 class="text-base font-bold text-red-900 uppercase tracking-wide">Alunos em Busca Ativa (Frequência ≤ 75% ou Gatilho 3+ Faltas Seguidas)</h3>
-                      <p class="text-xs text-slate-500">Monitoramento prioritário de infrequência acumulada e faltas consecutivas para ações imediatas da Busca Ativa</p>
-                    </div>
-                  </div>
-                  <span id="badge-count-risco" class="px-3 py-1 bg-red-100 text-red-700 font-bold rounded-full text-xs shrink-0">0 Alunos</span>
-                </div>
-
-                <!-- Filtros e Pesquisa Dinâmica para a Lista de Alunos em Risco -->
-                <div class="space-y-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
-                  <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
-                    <div class="md:col-span-5">
-                      <label for="input-busca-risco-aluno" class="block text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
-                        <i class="fa-solid fa-magnifying-glass text-slate-400"></i>
-                        <span>Filtro Dinâmico por Nome / RA / Turma / Tutor</span>
-                      </label>
-                      <div class="relative flex items-center">
-                        <input 
-                          type="text" 
-                          id="input-busca-risco-aluno"
-                          oninput="window.filtrarAlunosRiscoBa()"
-                          placeholder="Digite o nome, RA ou turma para filtrar em tempo real..."
-                          class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-amber-400 font-medium text-slate-800"
-                        />
-                      </div>
-                    </div>
-
-                    <div class="md:col-span-3">
-                      <label for="select-filtro-status-retorno-risco" class="block text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
-                        <i class="fa-solid fa-filter text-slate-400"></i>
-                        <span>Status de Retorno / SLA</span>
-                      </label>
-                      <select 
-                        id="select-filtro-status-retorno-risco" 
-                        onchange="window.filtrarAlunosRiscoBa()"
-                        class="w-full p-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"
-                      >
-                        <option value="TODOS">Todos os Status de Retorno</option>
-                        <option value="SEM_ACOES">⚪ Sem Ações Feitas (Sem registro)</option>
-                        <option value="MONITORANDO">🟢 Monitorando</option>
-                        <option value="CONTATO_REALIZADO">🟡 Contato Realizado (Aguardando Retorno)</option>
-                        <option value="ENCAMINHADO_CONSELHO">🔴 Encaminhado ao Conselho / DE</option>
-                        <option value="SIM">🟢 Respondeu / Atendeu / Compareceu</option>
-                        <option value="NAO">🔴 Sem Resposta / Não Atendeu / Recusou</option>
-                      </select>
-                    </div>
-
-                    <div class="md:col-span-4">
-                      <label for="select-filtro-evolucao-faltas-ba" class="block text-[10px] font-black text-rose-700 uppercase mb-1 flex items-center gap-1">
-                        <i class="fa-solid fa-arrow-trend-down text-rose-600"></i>
-                        <span>Evolução de Faltas (Backup pro Outro)</span>
-                      </label>
-                      <select 
-                        id="select-filtro-evolucao-faltas-ba" 
-                        onchange="window.filtrarAlunosRiscoBa()"
-                        class="w-full p-1.5 bg-white border border-rose-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer shadow-2xs"
-                      >
-                        <option value="TODOS">Todas as Situações de Evolução</option>
-                        <option value="MAIOR_QUEDA_PRIMEIRO">📉 Maior Queda de Presença (Mais Acentuada ➔ Menor)</option>
-                        <option value="SOMENTE_QUEDA">⚠️ Apenas Alunos com Queda na Presença</option>
-                        <option value="TODOS_ORDEM_QUEDA">📊 Todos os Alunos (Ordenados por Maior Queda)</option>
-                        <option value="QUEDA_SEVERA">🚨 Queda Severa (Perda &gt; 5% entre backups)</option>
-                        <option value="QUEDA_CRITICA">💥 Queda Crítica (Perda &gt; 10% entre backups)</option>
-                        <option value="ESTAVEIS">➖ Presença Estável (0% de variação)</option>
-                        <option value="RECUPERACAO">📈 Recuperação (Evolução Positiva)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <!-- Barra de Gestão do Comparativo de Backups -->
-                  <div class="pt-2 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
-                    <div class="flex items-center gap-2 flex-wrap">
-                      <span class="text-[11px] font-bold text-slate-600 flex items-center gap-1">
-                        <i class="fa-solid fa-clock-rotate-left text-blue-700"></i>
-                        <span>Base de Comparação:</span>
-                      </span>
-                      <span id="ba-comparativo-fonte-badge" class="px-2.5 py-0.5 bg-blue-50 text-blue-900 border border-blue-200 font-extrabold text-[11px] rounded-md shadow-2xs flex items-center gap-1.5">
-                        <i class="fa-solid fa-database text-[10px] text-blue-600"></i>
-                        <span id="ba-comparativo-fonte-texto">Backup / Histórico SED Anterior do Sistema</span>
-                      </span>
-                      <button 
-                        type="button" 
-                        id="btn-limpar-backup-comparativo-ba" 
-                        onclick="window.limparBackupComparativoBa()" 
-                        class="hidden px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-[10px] rounded transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                        title="Restaurar base de comparação padrão registrada no banco"
-                      >
-                        <i class="fa-solid fa-xmark text-[9px]"></i>
-                        <span>Restaurar Histórico Padrão</span>
-                      </button>
-                    </div>
-
-                    <div class="flex items-center gap-2 flex-wrap">
-                      <input 
-                        type="file" 
-                        id="input-backup-comparativo-ba" 
-                        accept=".json" 
-                        class="hidden" 
-                        onchange="window.carregarArquivoBackupComparativoBa(event)" 
-                      />
-                      <button 
-                        type="button" 
-                        onclick="document.getElementById('input-backup-comparativo-ba').click()" 
-                        class="px-2.5 py-1 bg-white hover:bg-slate-100 text-blue-900 border border-blue-300 font-bold text-[11px] rounded-lg transition shadow-2xs cursor-pointer flex items-center gap-1.5"
-                        title="Carregar um arquivo JSON de backup exportado anteriormente para comparar a evolução exata de presença e faltas aluno por aluno"
-                      >
-                        <i class="fa-solid fa-file-arrow-up text-blue-700 text-xs"></i>
-                        <span>📂 Comparar c/ Arquivo de Backup (.json)</span>
-                      </button>
-
-                      <button 
-                        type="button" 
-                        onclick="window.ativarFiltroMaiorQuedaBa()" 
-                        class="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-[11px] rounded-lg transition shadow-2xs cursor-pointer flex items-center gap-1"
-                        title="Listar entre os estourados em faltas quem teve a queda na presença mais acentuada para a menos acentuada"
-                      >
-                        <i class="fa-solid fa-arrow-trend-down text-rose-200 text-xs"></i>
-                        <span>Pior Queda de Presença Primeiro</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <!-- Mensagem informativa dinâmica da filtragem de evolução -->
-                  <div id="ba-evolucao-resumo-banner" class="hidden p-2 bg-rose-50 border border-rose-200 rounded-lg text-[11px] text-rose-900 font-semibold flex items-center justify-between gap-2">
-                    <span id="ba-evolucao-resumo-texto"></span>
-                    <button type="button" onclick="document.getElementById('select-filtro-evolucao-faltas-ba').value='TODOS'; window.filtrarAlunosRiscoBa();" class="text-[10px] text-rose-700 underline font-bold cursor-pointer hover:text-rose-950">Limpar filtro de evolução</button>
-                  </div>
-                </div>
-
-                <div class="overflow-x-auto">
-                  <table class="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider">
-                        <th class="p-3 font-bold">Nome do Aluno</th>
-                        <th class="p-3 font-bold">RA</th>
-                        <th class="p-3 font-bold">Turma</th>
-                        <th class="p-3 font-bold">Tutor</th>
-                        <th class="p-3 font-bold text-center">Status / SLA Retorno</th>
-                        <th class="p-3 font-bold text-center">% Presença &amp; Evolução Backup</th>
-                        <th class="p-3 font-bold text-right">Ação</th>
-                      </tr>
-                    </thead>
-                    <tbody id="tabela-busca-ativa-risco-body" class="divide-y divide-slate-100">
-                      <tr><td colspan="7" class="p-4 text-center text-slate-400">Carregando dados de busca ativa...</td></tr>
-                    </tbody>
-                  </table>
-                </div>
-                <div id="ba-risco-paginacao-footer" class="hidden pt-2 flex items-center justify-between gap-2 text-xs text-slate-500"></div>
-              </div>
-            </div>
-
-            <!-- ABA 2 DA BUSCA ATIVA: BUSCA ATIVA DE ATRASOS & PONTUALIDADE (GATILHO 3+ NO MÊS) -->
-            <div id="ba-aba-atrasos-container" class="hidden space-y-6">
-              <!-- KPIs de Busca Ativa de Atrasos -->
-              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="bg-white p-4 rounded-xl border border-amber-200 shadow-xs flex items-center justify-between">
-                  <div>
-                    <span class="text-[10px] font-black text-amber-800 uppercase tracking-wider block">Alunos c/ Atrasos no Período</span>
-                    <div class="flex items-baseline gap-2 mt-1">
-                      <span id="kpi-ba-atrasos-mes-alunos" class="text-2xl font-black text-blue-950">0</span>
-                      <span id="kpi-ba-atrasos-mes-ocorrencias" class="text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">0 registros</span>
-                    </div>
-                    <span class="text-[10px] text-slate-400 block mt-0.5">Monitorados pela Busca Ativa</span>
-                  </div>
-                  <div class="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center text-lg font-bold shrink-0">
-                    <i class="fa-solid fa-clock"></i>
-                  </div>
-                </div>
-
-                <div class="bg-red-50/90 p-4 rounded-xl border border-red-200 shadow-xs flex items-center justify-between">
-                  <div>
-                    <span class="text-[10px] font-black text-red-900 uppercase tracking-wider block">Gatilho Crítico (≥ 3 Atrasos)</span>
-                    <div class="flex items-baseline gap-2 mt-1">
-                      <span id="kpi-ba-atrasos-gatilho" class="text-2xl font-black text-red-700">0</span>
-                      <span class="text-[10px] font-extrabold text-white bg-red-600 px-2 py-0.5 rounded-full uppercase">Termo + Tutoria</span>
-                    </div>
-                    <span class="text-[10px] text-red-800 font-medium block mt-0.5">Emissão imediata obrigatória</span>
-                  </div>
-                  <div class="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center text-lg font-bold shrink-0">
-                    <i class="fa-solid fa-bell"></i>
-                  </div>
-                </div>
-
-                <div class="bg-amber-50/80 p-4 rounded-xl border border-amber-300 shadow-xs flex items-center justify-between">
-                  <div>
-                    <span class="text-[10px] font-black text-amber-900 uppercase tracking-wider block">Alerta Preventivo (2 Atrasos)</span>
-                    <div class="flex items-baseline gap-2 mt-1">
-                      <span id="kpi-ba-atrasos-alerta" class="text-2xl font-black text-amber-800">0</span>
-                      <span class="text-[10px] font-bold text-amber-900 bg-amber-200/70 px-2 py-0.5 rounded-full uppercase">Pré-Gatilho</span>
-                    </div>
-                    <span class="text-[10px] text-amber-800 block mt-0.5">A 1 atraso do Termo de Ciência</span>
-                  </div>
-                  <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center text-lg font-bold shrink-0">
-                    <i class="fa-solid fa-triangle-exclamation"></i>
-                  </div>
-                </div>
-
-                <div class="bg-emerald-50/80 p-4 rounded-xl border border-emerald-200 shadow-xs flex items-center justify-between">
-                  <div>
-                    <span class="text-[10px] font-black text-emerald-900 uppercase tracking-wider block">Famílias Cientes / Contatadas</span>
-                    <div class="flex items-baseline gap-2 mt-1">
-                      <span id="kpi-ba-atrasos-cientes" class="text-2xl font-black text-emerald-700">0</span>
-                      <span id="kpi-ba-atrasos-pendentes" class="text-[10px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-full">0 pendentes</span>
-                    </div>
-                    <span class="text-[10px] text-emerald-800 block mt-0.5">Ciência registrada no sistema</span>
-                  </div>
-                  <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center text-lg font-bold shrink-0">
-                    <i class="fa-solid fa-check-double"></i>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Painel de Gestão por Exceção: Estudantes no Gatilho Automático de Atrasos (≥ 3 Atrasos) -->
-              <div class="bg-white p-5 rounded-xl border border-red-200 shadow-sm space-y-3">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-red-100 pb-3">
-                  <div class="flex items-center gap-2.5">
-                    <span class="w-3 h-3 rounded-full bg-red-600 animate-ping shrink-0"></span>
-                    <div>
-                      <h4 class="text-xs font-black text-red-900 uppercase tracking-wider flex items-center gap-1.5">
-                        <i class="fa-solid fa-file-signature text-red-600"></i>
-                        <span>Gatilho Automático de Busca Ativa de Atrasos (≥ 3 Atrasos — Termo de Ciência + Pauta na Tutoria)</span>
-                      </h4>
-                      <p class="text-[11px] text-slate-500">Acionamento rápido em 1 clique: envie WhatsApp aos pais, emita o Termo de Ciência de Frequência ou registre o contato familiar</p>
-                    </div>
-                  </div>
-                  <span id="ba-atrasos-criticos-badge" class="px-3 py-1 bg-red-600 text-white font-extrabold text-[10px] rounded-full uppercase tracking-wider shrink-0">
-                    0 No Gatilho (3+)
-                  </span>
-                </div>
-
-                <div id="lista-casos-criticos-ba-atrasos" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-60 overflow-y-auto custom-scrollbar pt-1">
-                  <div class="col-span-full p-4 text-center text-xs text-slate-400 italic bg-slate-50 rounded-lg border border-slate-200">
-                    Analisando registros de atraso...
-                  </div>
-                </div>
-              </div>
-
-              <!-- Tabela Principal e Filtros da Busca Ativa de Atrasos -->
-              <div class="bg-white p-6 rounded-xl shadow-sm border border-amber-200 space-y-4">
-                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-amber-100 pb-3">
-                  <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-bold shrink-0">
-                      <i class="fa-solid fa-user-clock text-lg"></i>
-                    </div>
-                    <div>
-                      <h3 class="text-base font-bold text-blue-950 uppercase tracking-wide">Central Operacional — Busca Ativa de Atrasos &amp; Pontualidade</h3>
-                      <p class="text-xs text-slate-500">Controle de reincidência mensal, ciência da família, encaminhamento ao Tutor PEI e contato direto via WhatsApp</p>
-                    </div>
-                  </div>
-                  <div class="flex items-center gap-2 flex-wrap">
-                    <button
-                      type="button"
-                      onclick="window.renderBuscaAtivaAtrasos(true)"
-                      class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold rounded-lg text-xs uppercase tracking-wider transition shadow-2xs flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <i class="fa-solid fa-arrows-rotate text-xs"></i>
-                      <span>Atualizar Atrasos</span>
-                    </button>
-                    <span id="badge-count-ba-atrasos" class="px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 font-extrabold rounded-full text-xs shrink-0">0 Alunos</span>
-                  </div>
-                </div>
-
-                <!-- Pílulas de Filtro Rápido da Busca Ativa de Atrasos -->
-                <div class="flex items-center gap-2 flex-wrap bg-slate-50 p-3 rounded-xl border border-slate-200">
-                  <button
-                    type="button"
-                    id="btn-ba-atrasos-pilula-todos"
-                    onclick="window.setFiltroFaixaBaAtrasos('TODOS')"
-                    class="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-blue-900 text-white shadow-xs"
-                  >
-                    <span>🔥 Todos c/ Atrasos</span>
-                    <span id="count-ba-atrasos-todos" class="px-2 py-0.5 bg-white/20 text-white text-[10px] rounded-full font-black">0</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    id="btn-ba-atrasos-pilula-gatilho"
-                    onclick="window.setFiltroFaixaBaAtrasos('GATILHO_3')"
-                    class="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-white text-slate-700 border border-slate-200 hover:bg-red-50 hover:text-red-700"
-                  >
-                    <span>🚨 Gatilho 3+ Atrasos (Termo + Tutoria)</span>
-                    <span id="count-ba-atrasos-gatilho" class="px-2 py-0.5 bg-red-100 text-red-800 text-[10px] rounded-full font-black">0</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    id="btn-ba-atrasos-pilula-alerta"
-                    onclick="window.setFiltroFaixaBaAtrasos('ALERTA_2')"
-                    class="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-white text-slate-700 border border-slate-200 hover:bg-amber-50 hover:text-amber-800"
-                  >
-                    <span>⚠️ Alerta Preventivo (2 Atrasos)</span>
-                    <span id="count-ba-atrasos-alerta" class="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] rounded-full font-black">0</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    id="btn-ba-atrasos-pilula-pendente"
-                    onclick="window.setFiltroFaixaBaAtrasos('PENDENTE_CIENCIA')"
-                    class="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-white text-slate-700 border border-slate-200 hover:bg-rose-50 hover:text-rose-700"
-                  >
-                    <span>⏳ Pendentes de Ciência Familiar</span>
-                    <span id="count-ba-atrasos-pendente" class="px-2 py-0.5 bg-rose-100 text-rose-800 text-[10px] rounded-full font-black">0</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    id="btn-ba-atrasos-pilula-ciente"
-                    onclick="window.setFiltroFaixaBaAtrasos('CIENTE')"
-                    class="px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer bg-white text-slate-700 border border-slate-200 hover:bg-emerald-50 hover:text-emerald-700"
-                  >
-                    <span>✅ Família Ciente / Contatada</span>
-                    <span id="count-ba-atrasos-ciente" class="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] rounded-full font-black">0</span>
-                  </button>
-                </div>
-
-                <!-- Filtros de Busca por Nome/RA/Turma/Tutor e Mês de Referência -->
-                <div class="grid grid-cols-1 md:grid-cols-12 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
-                  <div class="md:col-span-5">
-                    <label for="input-busca-ba-atrasos" class="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                      <i class="fa-solid fa-magnifying-glass text-slate-400 mr-1"></i>Buscar por Nome, RA, Turma ou Tutor PEI
-                    </label>
-                    <input
-                      type="text"
-                      id="input-busca-ba-atrasos"
-                      oninput="window.filtrarBuscaAtivaAtrasos()"
-                      placeholder="Digite nome, RA, turma ou tutor para filtrar instantaneamente..."
-                      class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-amber-400 font-medium text-slate-800 uppercase"
-                    />
-                  </div>
-
-                  <div class="md:col-span-4">
-                    <label for="select-mes-ba-atrasos" class="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                      <i class="fa-solid fa-calendar-days text-amber-600 mr-1"></i>Período / Mês de Apuração do Gatilho
-                    </label>
-                    <select
-                      id="select-mes-ba-atrasos"
-                      onchange="window.renderBuscaAtivaAtrasos()"
-                      class="w-full p-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"
-                    >
-                      <option value="MES_ATUAL">📅 Mês Vigente (Gatilho Mensal Oficial)</option>
-                      <option value="TODOS">📊 Acumulado Geral do Ano Letivo</option>
-                    </select>
-                  </div>
-
-                  <div class="md:col-span-3">
-                    <label for="select-turma-ba-atrasos" class="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                      <i class="fa-solid fa-users-rectangle text-blue-600 mr-1"></i>Filtrar por Turma
-                    </label>
-                    <select
-                      id="select-turma-ba-atrasos"
-                      onchange="window.filtrarBuscaAtivaAtrasos()"
-                      class="w-full p-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer"
-                    >
-                      <option value="TODAS">Todas as Turmas</option>
-                    </select>
-                  </div>
-                </div>
-
-                <!-- Tabela de Busca Ativa de Atrasos -->
-                <div class="overflow-x-auto">
-                  <table class="w-full text-left text-xs border-collapse">
-                    <thead>
-                      <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider">
-                        <th class="p-3 font-bold">Estudante / RA</th>
-                        <th class="p-3 font-bold">Turma &amp; Tutor PEI</th>
-                        <th class="p-3 font-bold text-center">Atrasos (Mês / Ano)</th>
-                        <th class="p-3 font-bold">Últimos Registros &amp; Chegada</th>
-                        <th class="p-3 font-bold text-center">Ciência Familiar &amp; SLA</th>
-                        <th class="p-3 font-bold text-right">Ações de Busca Ativa</th>
-                      </tr>
-                    </thead>
-                    <tbody id="tabela-busca-ativa-atrasos-body" class="divide-y divide-slate-100">
-                      <tr><td colspan="6" class="p-4 text-center text-slate-400">Carregando dados da Busca Ativa de Atrasos...</td></tr>
-                    </tbody>
-                  </table>
-                </div>
-                <div id="ba-atrasos-paginacao-footer" class="hidden pt-2 flex items-center justify-between gap-2 text-xs text-slate-500"></div>
-              </div>
-            </div>
-          </div>
-
+          <!-- Busca Ativa unificada no Módulo Alunos & Dossiê (#content-alunos e #modal-ficha-aluno) -->
 
           <!-- Agenda PEI é renderizada pelo componente React AgendaPEI dentro de #content-inicio (#root) -->
 
@@ -5214,13 +4108,7 @@
               <span class="text-[11px] font-bold text-slate-700 truncate w-full">Auditoria</span>
             </button>
 
-            <!-- Busca Ativa -->
-            <button type="button" onclick="window.switchTab('busca-ativa'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-busca-ativa">
-              <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-600 to-yellow-600 text-white flex items-center justify-center text-lg shadow-sm">
-                <i class="fa-solid fa-binoculars"></i>
-              </div>
-              <span class="text-[11px] font-bold text-slate-700 truncate w-full">Busca Ativa</span>
-            </button>
+            <!-- Busca Ativa unificada no módulo Alunos & Dossiê -->
 
             <!-- Configurações -->
             <button type="button" onclick="window.switchTab('admin'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-admin">
@@ -5258,53 +4146,57 @@
       </div>
     </div>
 
-    <!-- Modal da Ficha do Aluno (Dossiê Completo & Histórico de Ações Pedagógicas) -->
-    <div id="modal-ficha-aluno" class="fixed inset-0 bg-slate-900/60  z-50 hidden flex items-center justify-center p-4">
-      <div class="bg-white rounded-2xl shadow-xl border border-slate-100 w-full max-w-3xl overflow-hidden flex flex-col max-h-[92vh]">
-        <div class="bg-blue-900 px-6 py-4 text-white flex flex-wrap items-center justify-between gap-3 shrink-0">
-          <div>
-            <span class="text-[10px] font-bold uppercase tracking-widest text-cyan-300 block">Central de Gestão • Dossiê do Estudante</span>
-            <h3 id="modal-aluno-nome-header" class="text-base font-bold text-white">Ficha do Aluno</h3>
+    <!-- Modal da Ficha do Aluno (Dossiê Completo, Busca Ativa & Histórico) -->
+    <div id="modal-ficha-aluno" class="fixed inset-0 bg-slate-900/60 z-50 hidden flex items-center justify-center p-3 sm:p-4">
+      <div class="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh]">
+        <div class="bg-slate-900 px-5 py-3.5 text-white flex flex-wrap items-center justify-between gap-3 shrink-0">
+          <div class="min-w-0">
+            <span class="text-[11px] font-medium text-slate-300 block">Dossiê do Estudante &amp; Busca Ativa</span>
+            <h3 id="modal-aluno-nome-header" class="text-sm sm:text-base font-bold text-white leading-snug">Ficha do Aluno</h3>
           </div>
-          <div class="flex flex-wrap items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2 shrink-0">
             <button 
               type="button" 
               onclick="window.imprimirDossieAluno()" 
-              class="px-3.5 py-1.5 bg-cyan-400 hover:bg-cyan-300 text-blue-950 font-extrabold rounded-lg text-xs uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-              title="Imprimir Dossiê Completo em formato de Relatório Oficial (window.print)"
+              class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-lg text-xs transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+              title="Imprimir Dossiê Completo"
             >
               <i class="fa-solid fa-print text-xs"></i>
-              <span>Imprimir Dossiê</span>
+              <span>Imprimir</span>
             </button>
             <button 
               type="button" 
               data-btn-salvar-dossie-pdf
               onclick="window.salvarDossieAlunoPdf(this)" 
-              class="px-3.5 py-1.5 bg-emerald-400 hover:bg-emerald-300 text-emerald-950 font-extrabold rounded-lg text-xs uppercase tracking-wider transition flex items-center gap-1.5 cursor-pointer shadow-sm"
-              title="Gerar e baixar diretamente o arquivo PDF do Dossiê do Estudante"
+              class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg text-xs transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+              title="Salvar Dossiê diretamente em PDF"
             >
               <i class="fa-solid fa-file-pdf text-xs"></i>
               <span>Salvar PDF</span>
             </button>
-            <button id="btn-fechar-modal" type="button" class="text-blue-200 hover:text-white text-xl font-bold p-1 cursor-pointer transition ml-1">
+            <button id="btn-fechar-modal" type="button" class="text-slate-300 hover:text-white text-lg font-bold p-1.5 cursor-pointer transition ml-1" aria-label="Fechar dossiê">
               <i class="fa-solid fa-xmark"></i>
             </button>
           </div>
         </div>
 
-        <!-- Navegação Interna do Modal (Abas) -->
-        <div class="flex border-b border-slate-200 bg-slate-50 px-6 pt-2 shrink-0 gap-2">
-          <button type="button" id="tab-btn-dossie" onclick="switchModalTab('dossie')" class="px-4 py-2 border-b-2 border-blue-700 font-bold text-xs text-blue-900 flex items-center gap-2 cursor-pointer transition">
-            <i class="fa-solid fa-address-card"></i>
+        <!-- Navegação Interna do Modal (Abas Limpas e Enxutas) -->
+        <div class="flex border-b border-slate-200 bg-slate-50 px-5 pt-2 shrink-0 gap-1 overflow-x-auto">
+          <button type="button" id="tab-btn-dossie" onclick="switchModalTab('dossie')" class="px-3.5 py-2 border-b-2 border-blue-700 font-semibold text-xs text-blue-900 flex items-center gap-1.5 cursor-pointer transition whitespace-nowrap shrink-0">
+            <i class="fa-solid fa-address-card text-xs"></i>
             <span>Dossiê Cadastral</span>
           </button>
-          <button type="button" id="tab-btn-boletim" onclick="switchModalTab('boletim')" class="px-4 py-2 border-b-2 border-transparent font-medium text-xs text-slate-500 hover:text-slate-800 flex items-center gap-2 cursor-pointer transition">
-            <i class="fa-solid fa-graduation-cap text-indigo-600"></i>
-            <span>Boletim & Rendimento Bimestral</span>
+          <button type="button" id="tab-btn-busca-ativa" onclick="switchModalTab('busca-ativa')" class="px-3.5 py-2 border-b-2 border-transparent font-medium text-xs text-slate-600 hover:text-slate-900 flex items-center gap-1.5 cursor-pointer transition whitespace-nowrap shrink-0">
+            <i class="fa-solid fa-user-check text-amber-600 text-xs"></i>
+            <span>Busca Ativa &amp; Frequência (<span id="modal-badge-count-ba" class="font-mono tabular-nums">0</span>)</span>
           </button>
-          <button type="button" id="tab-btn-acoes" onclick="switchModalTab('acoes')" class="px-4 py-2 border-b-2 border-transparent font-medium text-xs text-slate-500 hover:text-slate-800 flex items-center gap-2 cursor-pointer transition">
-            <i class="fa-solid fa-clock-rotate-left text-cyan-600"></i>
-            <span>Histórico Geral (Ocorrências e Busca Ativa) (<span id="modal-badge-count-acoes">0</span>)</span>
+          <button type="button" id="tab-btn-boletim" onclick="switchModalTab('boletim')" class="px-3.5 py-2 border-b-2 border-transparent font-medium text-xs text-slate-600 hover:text-slate-900 flex items-center gap-1.5 cursor-pointer transition whitespace-nowrap shrink-0">
+            <i class="fa-solid fa-graduation-cap text-indigo-600 text-xs"></i>
+            <span>Boletim</span>
+          </button>
+          <button type="button" id="tab-btn-acoes" onclick="switchModalTab('acoes')" class="px-3.5 py-2 border-b-2 border-transparent font-medium text-xs text-slate-600 hover:text-slate-900 flex items-center gap-1.5 cursor-pointer transition whitespace-nowrap shrink-0">
+            <i class="fa-solid fa-clock-rotate-left text-slate-500 text-xs"></i>
+            <span>Histórico Geral (<span id="modal-badge-count-acoes" class="font-mono tabular-nums">0</span>)</span>
           </button>
         </div>
 
@@ -5387,7 +4279,7 @@
 
                 <div>
                   <label for="modal-edit-turma" class="block text-xs font-semibold text-slate-600 uppercase mb-1">Turma / Série <span class="text-red-500">*</span></label>
-                  <input type="text" id="modal-edit-turma" placeholder="Ex: 2A, 3A, 1B" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-cyan-300 font-bold text-blue-900 uppercase" required />
+                  <input type="text" id="modal-edit-turma" oninput="window.atualizarSegmentoAutomaticoModalTurma?.(this.value)" onchange="window.atualizarSegmentoAutomaticoModalTurma?.(this.value)" placeholder="Ex: 6A, 9B, 1A, 3B" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-cyan-300 font-bold text-blue-900 uppercase" required />
                 </div>
               </div>
             </div>
@@ -5592,6 +4484,116 @@
                 <i class="fa-solid fa-calendar-check text-xs"></i>
                 <span>Registrar Dispensa e Afastar na Presença</span>
               </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Conteúdo Aba: Busca Ativa & Frequência (Integrada ao Dossiê) -->
+        <div id="modal-content-busca-ativa" class="modal-tab-content p-5 sm:p-6 overflow-y-auto custom-scrollbar hidden flex-1 space-y-5">
+          <!-- Indicadores Objetivos de Frequência e SLA -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pb-4 border-b border-slate-200">
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <span class="text-[11px] font-medium text-slate-500 block">Frequência SED</span>
+              <span id="dossie-ba-kpi-freq" class="text-lg font-bold font-mono tabular-nums text-slate-900">—</span>
+            </div>
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <span class="text-[11px] font-medium text-slate-500 block">Faltas Consecutivas</span>
+              <span id="dossie-ba-kpi-faltas-consec" class="text-lg font-bold font-mono tabular-nums text-slate-900">0</span>
+            </div>
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <span class="text-[11px] font-medium text-slate-500 block">Atrasos Registrados</span>
+              <span id="dossie-ba-kpi-atrasos" class="text-lg font-bold font-mono tabular-nums text-slate-900">0</span>
+            </div>
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <label for="dossie-ba-sla-select" class="text-[11px] font-medium text-slate-500 block mb-1">Status Busca Ativa</label>
+              <select id="dossie-ba-sla-select" onchange="window.salvarSlaStatusPeloDossie(this.value)" class="w-full px-2 py-1 bg-white border border-slate-300 rounded-md text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/30">
+                <option value="SEM_ACOES">Sem ações</option>
+                <option value="CONTATO_REALIZADO">Contato realizado</option>
+                <option value="MONITORANDO">Monitorando / Família ciente</option>
+                <option value="ENCAMINHADO_CONSELHO">Encaminhado (CT / Ofício)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Formulário Enxuto de Registro Rápido (Contato, Atraso, Falta ou Encaminhamento) -->
+          <form id="form-dossie-busca-ativa-rapida" class="space-y-3.5 pb-5 border-b border-slate-200">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h4 class="text-sm font-semibold text-slate-900">Registro Rápido de Frequência e Busca Ativa</h4>
+              <div class="flex items-center gap-1 p-1 bg-slate-100 rounded-lg" role="group" aria-label="Tipo de registro rápido">
+                <button type="button" data-dossie-ba-mode="CONTATO" onclick="window.setModoRegistroBaDossie('CONTATO')" class="px-2.5 py-1 rounded-md text-xs font-semibold bg-white text-slate-900 shadow-2xs transition cursor-pointer whitespace-nowrap shrink-0">Contato / Busca Ativa</button>
+                <button type="button" data-dossie-ba-mode="ATRASO" onclick="window.setModoRegistroBaDossie('ATRASO')" class="px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer whitespace-nowrap shrink-0">Atraso</button>
+                <button type="button" data-dossie-ba-mode="FALTA" onclick="window.setModoRegistroBaDossie('FALTA')" class="px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer whitespace-nowrap shrink-0">Falta / Justificativa</button>
+                <button type="button" data-dossie-ba-mode="ENCAMINHAMENTO" onclick="window.setModoRegistroBaDossie('ENCAMINHAMENTO')" class="px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer whitespace-nowrap shrink-0">Encaminhamento</button>
+              </div>
+              <input type="hidden" id="dossie-ba-modo-input" value="CONTATO" />
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label for="dossie-ba-data" class="block text-[11px] font-medium text-slate-600 mb-1">Data *</label>
+                <input type="date" id="dossie-ba-data" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/30" required />
+              </div>
+
+              <!-- Campos específicos para Contato Busca Ativa -->
+              <div id="dossie-ba-campo-canal">
+                <label for="dossie-ba-canal" class="block text-[11px] font-medium text-slate-600 mb-1">Canal de Contato</label>
+                <select id="dossie-ba-canal" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/30">
+                  <option value="WhatsApp">WhatsApp</option>
+                  <option value="Ligação Telefônica">Ligação Telefônica</option>
+                  <option value="Reunião Presencial">Reunião Presencial</option>
+                  <option value="Visita Domiciliar">Visita Domiciliar</option>
+                  <option value="Carta / Notificação / Ofício">Carta / Notificação / Ofício</option>
+                  <option value="Outros">Outros</option>
+                </select>
+              </div>
+              <div id="dossie-ba-campo-retorno">
+                <label for="dossie-ba-retorno" class="block text-[11px] font-medium text-slate-600 mb-1">Retorno do Responsável</label>
+                <select id="dossie-ba-retorno" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/30">
+                  <option value="Aguardando Retorno dos Pais">Aguardando Retorno dos Pais</option>
+                  <option value="Sim - Responsável Atendeu / Respondeu">Sim - Responsável Atendeu / Respondeu</option>
+                  <option value="Não - Sem Resposta / Não Atendeu">Não - Sem Resposta / Não Atendeu</option>
+                  <option value="Compareceu à Escola">Compareceu à Escola</option>
+                  <option value="Recusou Atendimento">Recusou Atendimento</option>
+                </select>
+              </div>
+
+              <!-- Campo específico para Atraso -->
+              <div id="dossie-ba-campo-hora" class="hidden sm:col-span-2">
+                <label for="dossie-ba-hora" class="block text-[11px] font-medium text-slate-600 mb-1">Horário de Chegada</label>
+                <input type="time" id="dossie-ba-hora" class="w-full sm:w-44 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/30" />
+              </div>
+
+              <!-- Campo específico para Encaminhamento -->
+              <div id="dossie-ba-campo-orgao" class="hidden sm:col-span-2">
+                <label for="dossie-ba-orgao" class="block text-[11px] font-medium text-slate-600 mb-1">Tipo de Encaminhamento</label>
+                <select id="dossie-ba-orgao" class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/30">
+                  <option value="Encaminhamento - Conselho Tutelar">Conselho Tutelar / FICAI</option>
+                  <option value="Encaminhamento - Ministério Público">Ministério Público / Ofício DE</option>
+                  <option value="Registro na SED">Registro na SED</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-end">
+              <div class="flex-1">
+                <label for="dossie-ba-descricao" class="block text-[11px] font-medium text-slate-600 mb-1">Observações / Retorno / Providências</label>
+                <input type="text" id="dossie-ba-descricao" placeholder="Descreva brevemente o contato, justificativa ou encaminhamento..." class="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/30" />
+              </div>
+              <button type="submit" id="btn-salvar-dossie-ba-rapida" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white font-semibold rounded-lg text-xs transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0">
+                <i class="fa-solid fa-floppy-disk text-xs"></i>
+                <span>Registrar no Dossiê</span>
+              </button>
+            </div>
+          </form>
+
+          <!-- Histórico Recente de Busca Ativa, Faltas e Atrasos do Estudante -->
+          <div class="space-y-2.5">
+            <div class="flex items-center justify-between gap-2">
+              <h4 class="text-sm font-semibold text-slate-900">Histórico Recente de Busca Ativa, Faltas e Atrasos</h4>
+              <span id="dossie-ba-historico-resumo" class="text-xs text-slate-500 font-mono tabular-nums">0 registros</span>
+            </div>
+            <div id="dossie-ba-historico-lista" class="space-y-2">
+              <p class="text-xs text-slate-500 py-4 text-center">Nenhum registro de busca ativa, falta ou atraso encontrado para este estudante.</p>
             </div>
           </div>
         </div>
@@ -7602,6 +6604,76 @@
             </button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Modal de Análise Inteligente por Segmento (Gemini: Ensino Fundamental vs. Ensino Médio) -->
+    <div id="modal-analise-ia-segmentos" class="hidden fixed inset-0 z-[115] bg-slate-900/60 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+      <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-4 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3 shrink-0">
+          <div>
+            <span class="text-[11px] font-medium text-slate-300 block">Inteligência de Frequência &amp; Busca Ativa</span>
+            <h3 class="text-base font-bold text-white">Análise por Segmento — Ensino Fundamental vs. Ensino Médio</h3>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" id="btn-reanalisar-ia-segmentos" onclick="window.executarAnaliseIaSegmentos()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0">
+              <i class="fa-solid fa-arrows-rotate text-xs"></i>
+              <span>Atualizar Análise</span>
+            </button>
+            <button type="button" id="btn-copiar-ia-segmentos" onclick="window.copiarRelatorioIaSegmentos()" class="hidden px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0">
+              <i class="fa-regular fa-copy text-xs"></i>
+              <span>Copiar Relatório</span>
+            </button>
+            <button type="button" onclick="document.getElementById('modal-analise-ia-segmentos')?.classList.add('hidden')" class="text-slate-300 hover:text-white p-1.5 text-lg cursor-pointer transition" aria-label="Fechar análise IA">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+        </div>
+
+        <div id="barra-pdf-ia-segmentos" class="hidden px-6 py-3 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5 mr-1">
+              <i class="fa-solid fa-file-pdf text-rose-600"></i>
+              <span>Relatório PDF:</span>
+            </span>
+            <select id="ia-pdf-segmento" aria-label="Selecionar segmento do relatório PDF" class="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/30">
+              <option value="GERAL">Geral (Fundamental + Médio)</option>
+              <option value="ENSINO FUNDAMENTAL">Somente Ensino Fundamental</option>
+              <option value="ENSINO MÉDIO">Somente Ensino Médio</option>
+            </select>
+            <select id="ia-pdf-tipo" aria-label="Selecionar tipo do relatório PDF" class="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/30">
+              <option value="GERAL">Relatório Geral (Faltas + Atrasos)</option>
+              <option value="FALTAS">Somente Faltas &amp; Presença</option>
+              <option value="ATRASOS">Somente Atrasos</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              id="btn-baixar-pdf-ia-segmentos"
+              onclick="window.exportarRelatorioIaSegmentosPdf({ modo: 'download' })"
+              class="px-3 py-1.5 bg-rose-700 hover:bg-rose-800 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <i class="fa-solid fa-file-arrow-down text-xs"></i>
+              <span>Baixar PDF</span>
+            </button>
+            <button
+              type="button"
+              id="btn-imprimir-pdf-ia-segmentos"
+              onclick="window.exportarRelatorioIaSegmentosPdf({ modo: 'print' })"
+              class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <i class="fa-solid fa-print text-xs"></i>
+              <span>Imprimir PDF</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="conteudo-analise-ia-segmentos" class="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-5 bg-slate-50/50">
+          <div class="p-8 text-center text-slate-500 text-sm">
+            Clique em "Atualizar Análise" para processar os dados reais de frequência e busca ativa por segmento.
+          </div>
+        </div>
       </div>
     </div>
 
