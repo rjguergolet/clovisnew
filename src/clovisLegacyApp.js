@@ -4317,20 +4317,29 @@
 
         // Adaptação da Interface do Módulo de Registros (Tabs e Atrasos em Massa)
         const btnLancarAtrasosMassa = document.getElementById("btn-lancar-atrasos-massa");
+        const btnTodosReg = document.getElementById("tab-registros-todos");
         const btnDisciplina = document.getElementById("tab-registros-disciplina");
         const btnAtraso = document.getElementById("tab-registros-atraso");
+        const btnSaidasDispensas = document.getElementById("tab-registros-saidas-dispensas");
+        const btnEncaminhamentos = document.getElementById("tab-registros-encaminhamentos");
         const btnRotina = document.getElementById("tab-registros-rotina");
 
         if (isPerfilPedagogico) {
           if (btnLancarAtrasosMassa) btnLancarAtrasosMassa.classList.add("hidden");
+          if (btnTodosReg) btnTodosReg.classList.add("hidden");
           if (btnDisciplina) btnDisciplina.classList.add("hidden");
           if (btnAtraso) btnAtraso.classList.add("hidden");
+          if (btnSaidasDispensas) btnSaidasDispensas.classList.add("hidden");
+          if (btnEncaminhamentos) btnEncaminhamentos.classList.add("hidden");
           if (btnRotina) btnRotina.classList.remove("hidden");
           window.abaAtivaRegistros = 'rotina';
         } else {
           if (btnLancarAtrasosMassa) btnLancarAtrasosMassa.classList.remove("hidden");
+          if (btnTodosReg) btnTodosReg.classList.remove("hidden");
           if (btnDisciplina) btnDisciplina.classList.remove("hidden");
           if (btnAtraso) btnAtraso.classList.remove("hidden");
+          if (btnSaidasDispensas) btnSaidasDispensas.classList.remove("hidden");
+          if (btnEncaminhamentos) btnEncaminhamentos.classList.remove("hidden");
           if (btnRotina) btnRotina.classList.remove("hidden");
         }
 
@@ -5070,30 +5079,38 @@
         widgetContainer.innerHTML = html;
       }
 
-      // Preencher Select de Turmas nos Filtros de Ocorrência
+      // Preencher Select de Turmas reais nos Filtros de Ocorrência (respeitando Segmento selecionado)
       function atualizarSelectTurmasFiltroOcorrencias() {
         const selectTurmaFiltro = document.getElementById("filter-historico-turma");
         if (!selectTurmaFiltro) return;
 
-        const turmasPadrao = [
-          "6A", "6B", "7A", "7B", "8A", "8B", "9A", "9B",
-          "1A", "1B", "2A", "2B", "3A", "3B",
-          "6º ANO A", "6º ANO B", "7º ANO A", "7º ANO B", "8º ANO A", "8º ANO B", "9º ANO A", "9º ANO B",
-          "1ª SÉRIE A EM", "1ª SÉRIE B EM", "2ª SÉRIE A EM", "2ª SÉRIE B EM", "3ª SÉRIE A EM", "3ª SÉRIE B EM"
-        ];
+        const segFiltro = (document.getElementById("filter-historico-segmento")?.value || "").trim().toUpperCase();
+        const turmasSet = new Set();
 
-        const turmasSet = new Set(turmasPadrao);
         ((window.allStudentsData || [])).forEach(s => {
-          if (s?.turma) turmasSet.add(String(s.turma).toUpperCase().trim());
+          const t = String(s?.turma || "").toUpperCase().trim();
+          if (!t || t === "EGRESSO" || t === "SEM TURMA") return;
+          if (segFiltro && typeof window.obterSegmentoAlunoNormalizado === "function") {
+            if (window.obterSegmentoAlunoNormalizado(s) !== segFiltro) return;
+          }
+          turmasSet.add(t);
         });
         ((window.ocorrenciasCache || [])).forEach(o => {
-          if (o?.turma) turmasSet.add(String(o.turma).toUpperCase().trim());
+          const t = String(o?.turma || "").toUpperCase().trim();
+          if (!t || t === "-" || t === "SEM TURMA") return;
+          if (segFiltro && typeof window.inferirSegmentoPorTurma === "function") {
+            const segT = window.inferirSegmentoPorTurma(t);
+            if (segT && segT !== segFiltro) return;
+          }
+          turmasSet.add(t);
         });
 
-        const turmasOrdenadas = Array.from(turmasSet).filter(Boolean).sort();
+        const turmasOrdenadas = Array.from(turmasSet)
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true, sensitivity: "base" }));
         const valAtual = (selectTurmaFiltro.value || "").trim();
 
-        let htmlOptions = `<option value="Todas as Turmas">Todas as Turmas (${turmasOrdenadas.length})</option>`;
+        let htmlOptions = `<option value="">Todas as Turmas (${turmasOrdenadas.length})</option>`;
         turmasOrdenadas.forEach(t => {
           htmlOptions += `<option value="${t}">${t}</option>`;
         });
@@ -5102,7 +5119,41 @@
         if (valAtual && valAtual.toUpperCase() !== "TODAS AS TURMAS" && turmasOrdenadas.includes(valAtual.toUpperCase())) {
           selectTurmaFiltro.value = valAtual.toUpperCase();
         } else {
-          selectTurmaFiltro.value = "Todas as Turmas";
+          selectTurmaFiltro.value = "";
+        }
+      }
+
+      // Preencher Select de Autores / Responsáveis nos Filtros de Ocorrência
+      function atualizarSelectAutoresFiltroOcorrencias() {
+        const selectAutorFiltro = document.getElementById("filter-historico-autor");
+        if (!selectAutorFiltro) return;
+
+        const autoresSet = new Set();
+        (window.ocorrenciasCache || []).forEach(oc => {
+          if (!oc) return;
+          const rawAutor = oc.usuario || oc.autor || oc.registradoPor || oc.autor_nome || "";
+          const nomeFmt = (typeof window.formatarAutorOcorrencia === "function"
+            ? window.formatarAutorOcorrencia(rawAutor, oc)
+            : String(rawAutor || "")).trim();
+          if (nomeFmt && nomeFmt !== "-" && nomeFmt.toLowerCase() !== "usuário registrado") {
+            autoresSet.add(nomeFmt);
+          }
+        });
+
+        const autoresOrdenados = Array.from(autoresSet).sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
+        const valAtual = (selectAutorFiltro.value || "").trim();
+
+        let html = `<option value="">Todos os Responsáveis (${autoresOrdenados.length})</option>`;
+        autoresOrdenados.forEach(a => {
+          const safe = a.replace(/"/g, "&quot;");
+          html += `<option value="${safe}">${a}</option>`;
+        });
+        selectAutorFiltro.innerHTML = html;
+
+        if (valAtual && autoresOrdenados.includes(valAtual)) {
+          selectAutorFiltro.value = valAtual;
+        } else {
+          selectAutorFiltro.value = "";
         }
       }
 
@@ -5483,8 +5534,8 @@
           }
         });
 
-        // 3. Ordenação Cronológica Estrita (Mais recente para mais antigo)
-        feedGlobal.sort((a, b) => new Date(b.data || b.createdAt || 0) - new Date(a.data || a.createdAt || 0));
+        // 3. Ordenação Cronológica Estrita (Mais novo para o mais velho)
+        feedGlobal.sort((a, b) => extrairTimestampOcorrencia(b) - extrairTimestampOcorrencia(a));
 
         // 4. Contabiliza reincidência e agrupa por RA em O(M) sem loops aninhados
         const countMap = {};
@@ -5520,6 +5571,9 @@
         // 5. Atualiza a UI do Módulo Ocorrências e Dashboard de Atrasos
         if (typeof atualizarSelectTurmasFiltroOcorrencias === "function") {
           atualizarSelectTurmasFiltroOcorrencias();
+        }
+        if (typeof atualizarSelectAutoresFiltroOcorrencias === "function") {
+          atualizarSelectAutoresFiltroOcorrencias();
         }
         if (typeof window.filtrarHistoricoOcorrencias === "function") {
           window.filtrarHistoricoOcorrencias();
@@ -5741,16 +5795,17 @@
 
       function renderHistoricoOcorrencias(lista) {
         if (!tabelaHistoricoBody) return;
-        window._ultimaListaHistoricoOcorrencias = lista || [];
+        const listaOrdenada = [...(lista || [])].sort((a, b) => extrairTimestampOcorrencia(b) - extrairTimestampOcorrencia(a));
+        window._ultimaListaHistoricoOcorrencias = listaOrdenada;
 
-        if (!lista || lista.length === 0) {
+        if (!listaOrdenada || listaOrdenada.length === 0) {
           tabelaHistoricoBody.innerHTML = window.getMascoteSaraEmptyStateHtml('Nenhuma ocorrência ou registro localizado!', 'Sua escola está com o ambiente tranquilo ou ajuste a busca por aluno/turma.', 10);
           return;
         }
 
         const limite = window.limiteRenderHistoricoOcorrencias || 60;
-        const totalRegistros = lista.length;
-        const fatiaRender = lista.slice(0, limite);
+        const totalRegistros = listaOrdenada.length;
+        const fatiaRender = listaOrdenada.slice(0, limite);
 
         let html = "";
         fatiaRender.forEach(oc => {
@@ -5912,7 +5967,7 @@
       }
 
       // =========================================================
-      // LÓGICA DE ABAS DO MÓDULO DE REGISTROS (TODOS vs DISCIPLINA vs ATRASO vs ROTINA/PEDAGÓGICO)
+      // LÓGICA DE ABAS E FILTROS COMPLETOS DO MÓDULO DE REGISTROS
       // =========================================================
       window.abaAtivaRegistros = 'todos';
 
@@ -5924,30 +5979,33 @@
           window.abaAtivaRegistros = aba || 'todos';
         }
 
-        const btnTodos = document.getElementById("tab-registros-todos");
-        const btnDisciplina = document.getElementById("tab-registros-disciplina");
-        const btnAtraso = document.getElementById("tab-registros-atraso");
-        const btnRotina = document.getElementById("tab-registros-rotina");
-
-        const activeClass = "px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-2 bg-white text-indigo-900 border border-indigo-200 shadow-2xs";
-        const inactiveClass = "px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-2 bg-transparent text-slate-600 hover:bg-slate-200 border border-transparent";
-
-        if (isPerfilPedagogico) {
-          if (btnTodos) btnTodos.classList.add("hidden");
-          if (btnDisciplina) btnDisciplina.classList.add("hidden");
-          if (btnAtraso) btnAtraso.classList.add("hidden");
-          if (btnRotina) btnRotina.classList.remove("hidden");
-        } else {
-          if (btnTodos) btnTodos.classList.remove("hidden");
-          if (btnDisciplina) btnDisciplina.classList.remove("hidden");
-          if (btnAtraso) btnAtraso.classList.remove("hidden");
-          if (btnRotina) btnRotina.classList.remove("hidden");
+        // Ao alternar de aba rápida, limpa eventual categoria específica no dropdown para não conflitar com a aba selecionada
+        const selTipoEl = document.getElementById("filter-historico-tipo");
+        if (selTipoEl && selTipoEl.value && selTipoEl.value !== "Todos") {
+          selTipoEl.value = "Todos";
         }
 
-        if (btnTodos) btnTodos.className = window.abaAtivaRegistros === 'todos' ? activeClass : inactiveClass;
-        if (btnDisciplina) btnDisciplina.className = window.abaAtivaRegistros === 'disciplina' ? activeClass : inactiveClass;
-        if (btnAtraso) btnAtraso.className = window.abaAtivaRegistros === 'atraso' ? activeClass : inactiveClass;
-        if (btnRotina) btnRotina.className = window.abaAtivaRegistros === 'rotina' ? activeClass : inactiveClass;
+        const tabsMap = {
+          todos: document.getElementById("tab-registros-todos"),
+          disciplina: document.getElementById("tab-registros-disciplina"),
+          atraso: document.getElementById("tab-registros-atraso"),
+          saidas_dispensas: document.getElementById("tab-registros-saidas-dispensas"),
+          encaminhamentos: document.getElementById("tab-registros-encaminhamentos"),
+          rotina: document.getElementById("tab-registros-rotina")
+        };
+
+        const activeClass = "px-3 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 bg-white text-slate-900 shadow-xs";
+        const inactiveClass = "px-3 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 text-slate-600 hover:text-slate-900";
+
+        Object.entries(tabsMap).forEach(([key, el]) => {
+          if (!el) return;
+          if (isPerfilPedagogico && key !== 'rotina') {
+            el.classList.add("hidden");
+          } else {
+            el.classList.remove("hidden");
+            el.className = window.abaAtivaRegistros === key ? activeClass : inactiveClass;
+          }
+        });
 
         window.filtrarHistoricoOcorrencias();
       };
@@ -5967,18 +6025,55 @@
         return oc?.isAtraso === true;
       };
 
+      window.isOcorrenciaSaidaAntecipada = function(oc) {
+        if (!oc) return false;
+        const tipoStr = String(oc?.tipo || "").trim().toUpperCase();
+        const catStr = String(oc?.categoria || "").trim().toUpperCase();
+        return tipoStr.includes("SAÍDA ANTECIPADA") || tipoStr.includes("SAIDA ANTECIPADA") || catStr.includes("SAÍDA ANTECIPADA") || catStr.includes("SAIDA ANTECIPADA");
+      };
+
+      window.isOcorrenciaSaidaOuDispensa = function(oc) {
+        if (!oc) return false;
+        const isDisp = typeof window.isOcorrenciaDispensa === "function"
+          ? window.isOcorrenciaDispensa(oc)
+          : (oc?.isDispensa === true || String(oc?.tipo || oc?.categoria || "").toUpperCase().includes("DISPENSA") || String(oc?.tipo || oc?.categoria || "").toUpperCase().includes("AFASTAMENTO"));
+        return isDisp || window.isOcorrenciaSaidaAntecipada(oc);
+      };
+
+      window.isOcorrenciaEncaminhamentoOuContato = function(oc) {
+        if (!oc) return false;
+        if (window.isOcorrenciaAtraso(oc) || window.isOcorrenciaSaidaOuDispensa(oc)) return false;
+        const origem = String(oc?.origem || "").trim().toUpperCase();
+        const tipoStr = String(oc?.tipo || "").trim().toUpperCase();
+        const catStr = String(oc?.categoria || "").trim().toUpperCase();
+        const combined = `${tipoStr} ${catStr}`;
+        return (
+          origem === "BUSCA_ATIVA" ||
+          combined.includes("CONSELHO TUTELAR") ||
+          combined.includes("MINISTÉRIO PÚBLICO") ||
+          combined.includes("MINISTERIO PUBLICO") ||
+          combined.includes("ENCAMINHAMENTO") ||
+          combined.includes("REGISTRO NA SED") ||
+          combined.includes("WHATSAPP") ||
+          combined.includes("LIGAÇÃO") ||
+          combined.includes("LIGACAO") ||
+          combined.includes("CONTATO") ||
+          combined.includes("BUSCA ATIVA")
+        );
+      };
+
       window.isOcorrenciaDisciplinarOuConviva = function(oc) {
         if (!oc) return false;
         if (window.isOcorrenciaAtraso(oc)) return false;
 
         const isConviva = Boolean(
-          oc?.protocoloConviva || 
-          oc?.codigoConviva || 
-          oc?.codigo_conviva || 
-          oc?.registradoConviva || 
-          oc?.registrado_conviva || 
-          oc?.isConviva || 
-          oc?.conviva || 
+          oc?.protocoloConviva ||
+          oc?.codigoConviva ||
+          oc?.codigo_conviva ||
+          oc?.registradoConviva ||
+          oc?.registrado_conviva ||
+          oc?.isConviva ||
+          oc?.conviva ||
           (oc?.tags && Array.isArray(oc.tags) && oc.tags.includes('CONVIVA')) ||
           (oc?.tipo && String(oc.tipo).toUpperCase().includes("CONVIVA")) ||
           (oc?.categoria && String(oc.categoria).toUpperCase().includes("CONVIVA"))
@@ -5988,18 +6083,184 @@
 
         const tipoStr = String(oc?.tipo || "").toUpperCase();
         const catStr = String(oc?.categoria || "").toUpperCase();
-        const descStr = String(oc?.descricao || "").toUpperCase();
 
-        const isDisciplinar = tipoStr.includes("DISCIPLINAR") ||
-                              tipoStr.includes("NEGATIVA") ||
-                              tipoStr.includes("SUSPENSÃO") ||
-                              tipoStr.includes("ADVERTÊNCIA") ||
-                              catStr.includes("DISCIPLINAR") ||
-                              catStr.includes("NEGATIVA") ||
-                              descStr.includes("AÇÃO DISCIPLINAR") ||
-                              descStr.includes("QUESTÃO DISCIPLINAR");
+        return (
+          tipoStr.includes("DISCIPLINAR") ||
+          tipoStr.includes("NEGATIVA") ||
+          tipoStr.includes("SUSPENSÃO") ||
+          tipoStr.includes("ADVERTÊNCIA") ||
+          catStr.includes("DISCIPLINAR") ||
+          catStr.includes("NEGATIVA")
+        );
+      };
 
-        return isDisciplinar;
+      function parseTimestampOcorrenciaRaw(raw) {
+        if (raw === null || raw === undefined || raw === "") return 0;
+        if (raw instanceof Date) {
+          const t = raw.getTime();
+          return Number.isNaN(t) ? 0 : t;
+        }
+        if (typeof raw === "number") {
+          return Number.isFinite(raw) ? raw : 0;
+        }
+        if (typeof raw === "object" && typeof raw.seconds === "number") {
+          return raw.seconds * 1000 + Math.floor((raw.nanoseconds || 0) / 1e6);
+        }
+        const str = String(raw).trim();
+        if (!str) return 0;
+
+        // Formato brasileiro: DD/MM/YYYY ou DD/MM/YYYY[,] HH:mm[:ss]
+        const brMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})(?:[,\sT]+(\d{2}):(\d{2})(?::(\d{2}))?)?/);
+        if (brMatch) {
+          const dt = new Date(
+            Number(brMatch[3]),
+            Number(brMatch[2]) - 1,
+            Number(brMatch[1]),
+            Number(brMatch[4] || 0),
+            Number(brMatch[5] || 0),
+            Number(brMatch[6] || 0)
+          );
+          return Number.isNaN(dt.getTime()) ? 0 : dt.getTime();
+        }
+
+        // Formato ISO apenas data: YYYY-MM-DD (em horário local)
+        const isoDateOnly = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (isoDateOnly) {
+          const dt = new Date(Number(isoDateOnly[1]), Number(isoDateOnly[2]) - 1, Number(isoDateOnly[3]), 12, 0, 0);
+          return Number.isNaN(dt.getTime()) ? 0 : dt.getTime();
+        }
+
+        const parsed = Date.parse(str);
+        return Number.isNaN(parsed) ? 0 : parsed;
+      }
+
+      function extrairDataIsoOcorrencia(oc) {
+        const raw = oc?.data || oc?.dataOcorrencia || oc?.dataRegistro || oc?.createdAt || "";
+        if (!raw) return "";
+        if (typeof raw === "object" && typeof raw.seconds === "number") {
+          return formatarDataLocalIso(new Date(raw.seconds * 1000));
+        }
+        const str = String(raw).trim();
+        const isoDateOnly = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (isoDateOnly) return `${isoDateOnly[1]}-${isoDateOnly[2]}-${isoDateOnly[3]}`;
+        const brMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+        if (brMatch) return `${brMatch[3]}-${brMatch[2]}-${brMatch[1]}`;
+        const dt = new Date(str);
+        if (!isNaN(dt.getTime())) {
+          return formatarDataLocalIso(dt);
+        }
+        const isoPrefix = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (isoPrefix) return `${isoPrefix[1]}-${isoPrefix[2]}-${isoPrefix[3]}`;
+        return "";
+      }
+
+      function extrairTimestampOcorrencia(oc) {
+        if (!oc) return 0;
+        const rawData = oc.data || oc.dataOcorrencia || "";
+        const rawCreated = oc.dataRegistro || oc.createdAt || oc.updatedAt || "";
+
+        const strData = String(rawData || "").trim();
+        const isSemHora = /^\d{4}-\d{2}-\d{2}$/.test(strData) || /^\d{2}\/\d{2}\/\d{4}$/.test(strData);
+        if (isSemHora && rawCreated) {
+          const isoData = extrairDataIsoOcorrencia({ data: rawData });
+          const isoCreated = extrairDataIsoOcorrencia({ data: rawCreated });
+          if (isoData && isoCreated && isoData === isoCreated) {
+            const tsCreated = parseTimestampOcorrenciaRaw(rawCreated);
+            if (tsCreated > 0) return tsCreated;
+          }
+        }
+
+        const tsData = parseTimestampOcorrenciaRaw(rawData);
+        if (tsData > 0) return tsData;
+        return parseTimestampOcorrenciaRaw(rawCreated);
+      }
+
+      function formatarDataLocalIso(dateObj) {
+        const y = dateObj.getFullYear();
+        const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+        const d = String(dateObj.getDate()).padStart(2, "0");
+        return `${y}-${m}-${d}`;
+      }
+
+      window.aplicarPeriodoRapidoHistoricoOcorrencias = function(periodo) {
+        const inicioEl = document.getElementById("filter-historico-data-inicio");
+        const fimEl = document.getElementById("filter-historico-data-fim");
+        const hoje = new Date();
+        const hojeIso = formatarDataLocalIso(hoje);
+
+        if (periodo === "todos") {
+          if (inicioEl) inicioEl.value = "";
+          if (fimEl) fimEl.value = "";
+        } else if (periodo === "hoje") {
+          if (inicioEl) inicioEl.value = hojeIso;
+          if (fimEl) fimEl.value = hojeIso;
+        } else if (periodo === "hoje_ontem") {
+          const ontem = new Date(hoje);
+          ontem.setDate(ontem.getDate() - 1);
+          if (inicioEl) inicioEl.value = formatarDataLocalIso(ontem);
+          if (fimEl) fimEl.value = hojeIso;
+        } else if (periodo === "7d") {
+          const d7 = new Date(hoje);
+          d7.setDate(d7.getDate() - 6);
+          if (inicioEl) inicioEl.value = formatarDataLocalIso(d7);
+          if (fimEl) fimEl.value = hojeIso;
+        } else if (periodo === "30d") {
+          const d30 = new Date(hoje);
+          d30.setDate(d30.getDate() - 29);
+          if (inicioEl) inicioEl.value = formatarDataLocalIso(d30);
+          if (fimEl) fimEl.value = hojeIso;
+        } else if (periodo === "mes") {
+          const primDia = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+          if (inicioEl) inicioEl.value = formatarDataLocalIso(primDia);
+          if (fimEl) fimEl.value = hojeIso;
+        }
+
+        window.filtrarHistoricoOcorrencias();
+      };
+
+      window.aoAlterarDataManualHistoricoOcorrencias = function() {
+        const inicioVal = document.getElementById("filter-historico-data-inicio")?.value || "";
+        const fimVal = document.getElementById("filter-historico-data-fim")?.value || "";
+        const perEl = document.getElementById("filter-historico-periodo");
+        if (perEl) {
+          perEl.value = (inicioVal || fimVal) ? "personalizado" : "todos";
+        }
+        window.filtrarHistoricoOcorrencias();
+      };
+
+      window.aoAlterarSegmentoHistoricoOcorrencias = function() {
+        if (typeof atualizarSelectTurmasFiltroOcorrencias === "function") {
+          atualizarSelectTurmasFiltroOcorrencias();
+        }
+        window.filtrarHistoricoOcorrencias();
+      };
+
+      window.limparFiltrosHistoricoOcorrencias = function() {
+        const setVal = (id, v) => {
+          const el = document.getElementById(id);
+          if (el) el.value = v;
+        };
+        const hoje = new Date();
+        const d7 = new Date(hoje);
+        d7.setDate(d7.getDate() - 6);
+        setVal("search-historico-ocorrencias", "");
+        setVal("filter-historico-segmento", "");
+        setVal("filter-historico-turma", "");
+        setVal("filter-historico-tipo", "Todos");
+        setVal("filter-historico-periodo", "7d");
+        setVal("filter-historico-data-inicio", formatarDataLocalIso(d7));
+        setVal("filter-historico-data-fim", formatarDataLocalIso(hoje));
+        setVal("filter-historico-ciencia", "");
+        setVal("filter-historico-conviva", "");
+        setVal("filter-historico-autor", "");
+        const chkNotif = document.getElementById("filter-historico-notificados");
+        if (chkNotif) chkNotif.checked = false;
+
+        if (typeof atualizarSelectTurmasFiltroOcorrencias === "function") {
+          atualizarSelectTurmasFiltroOcorrencias();
+        }
+        const isPerfilPedagogico = typeof window.checarIsPerfilPedagogico === "function" ? window.checarIsPerfilPedagogico() : false;
+        window.setAbaAtivaRegistros(isPerfilPedagogico ? "rotina" : "todos");
       };
 
       // Função de filtro no frontend para a tabela do histórico de ocorrências
@@ -6009,62 +6270,88 @@
           window.abaAtivaRegistros = 'rotina';
         }
 
-        const inputSearch = document.getElementById("inputSearchHistorico") || 
-                            document.getElementById("search-ocorrencia-input") || 
-                            document.getElementById("search-historico-ocorrencias");
+        const inputSearch = document.getElementById("search-historico-ocorrencias") ||
+                            document.getElementById("inputSearchHistorico") ||
+                            document.getElementById("search-ocorrencia-input");
         const queryText = (inputSearch ? inputSearch.value : "").trim().toLowerCase();
 
-        const filterTurmaEl = document.getElementById("filter-historico-turma");
-        const filtroTurmaRaw = (filterTurmaEl ? filterTurmaEl.value : "").trim();
+        const selSegmento = (document.getElementById("filter-historico-segmento")?.value || "").trim().toUpperCase();
+        const filtroTurmaRaw = (document.getElementById("filter-historico-turma")?.value || "").trim();
         const selTurmaUpper = filtroTurmaRaw.toUpperCase();
+        const isTodasTurmas = !filtroTurmaRaw || selTurmaUpper === "" || selTurmaUpper.includes("TODAS");
+        const selTipo = (document.getElementById("filter-historico-tipo")?.value || "Todos").trim();
+        const selConviva = (document.getElementById("filter-historico-conviva")?.value || "").trim();
+        const selCiencia = (document.getElementById("filter-historico-ciencia")?.value || "").trim();
+        const selAutor = (document.getElementById("filter-historico-autor")?.value || "").trim().toLowerCase();
+        const selPeriodoEl = document.getElementById("filter-historico-periodo");
+        const selPeriodo = selPeriodoEl ? selPeriodoEl.value : "7d";
+        const inicioEl = document.getElementById("filter-historico-data-inicio");
+        const fimEl = document.getElementById("filter-historico-data-fim");
 
-        const filterTipoEl = document.getElementById("filter-historico-tipo");
-        const selTipo = (filterTipoEl ? filterTipoEl.value : "Todos").trim();
+        // Padrão inicial: Últimos 7 dias (preenche automaticamente se ainda não preenchido)
+        if (selPeriodo === "7d" && inicioEl && fimEl && !inicioEl.value && !fimEl.value) {
+          const hojeInit = new Date();
+          const d7Init = new Date(hojeInit);
+          d7Init.setDate(d7Init.getDate() - 6);
+          inicioEl.value = formatarDataLocalIso(d7Init);
+          fimEl.value = formatarDataLocalIso(hojeInit);
+        }
 
-        const filterConvivaEl = document.getElementById("filter-historico-conviva");
-        const selConviva = (filterConvivaEl ? filterConvivaEl.value : "").trim();
-
-        const filterCienciaEl = document.getElementById("filter-historico-ciencia");
-        const selCiencia = (filterCienciaEl ? filterCienciaEl.value : "").trim();
+        const dataInicio = (inicioEl?.value || "").trim();
+        const dataFim = (fimEl?.value || "").trim();
+        const somenteNotificados = Boolean(document.getElementById("filter-historico-notificados")?.checked);
 
         const ocorrenciasGlobaisRaw = (window.ocorrenciasCache || []);
 
-        // Supressão de Dados na Fonte: Perfis pedagógicos (CGPG, PAAC, PROFESSOR) veem Tutoria e Pedagógica; CGPG também vê Dispensa / Afastamento Legal
+        // Índice rápido de alunos por RA para resolver segmento quando a ocorrência não tiver turma preenchida
+        const alunosPorRa = new Map();
+        (window.allStudentsData || []).forEach(s => {
+          const raKey = String(s?.ra || s?.id || "").replace(/\D/g, "");
+          if (raKey) alunosPorRa.set(raKey, s);
+        });
+
+        // Supressão de Dados na Fonte: Perfis pedagógicos (PAAC, PROFESSOR) veem Tutoria e Pedagógica; CGPG também vê Dispensa / Afastamento Legal
         const podeVerDispensa = typeof window.podeRegistrarDispensa === "function" ? window.podeRegistrarDispensa() : false;
         const ocorrenciasGlobais = (ocorrenciasGlobaisRaw || []).filter(registro => {
           if (!registro) return false;
-          if (!isPerfilPedagogico) return true; // Diretor, Vice e Secretaria veem tudo
-          const tipo = (registro.tipo || registro.categoria || registro.descricao || '').toUpperCase();
+          if (!isPerfilPedagogico) return true;
+          const tipo = (registro.tipo || registro.categoria || '').toUpperCase();
           if (podeVerDispensa && (registro.isDispensa === true || tipo.includes('DISPENSA') || tipo.includes('AFASTAMENTO'))) {
             return true;
           }
           return tipo.includes('TUTORIA') || tipo.includes('PEDAGÓGICA') || tipo.includes('PEDAGOGICA');
         });
 
-        const isAtrasoFn = typeof window.isOcorrenciaAtraso === "function" 
-          ? window.isOcorrenciaAtraso 
-          : (oc) => {
-              const t = String(oc?.tipo || '').trim().toUpperCase();
-              const c = String(oc?.categoria || '').trim().toUpperCase();
-              return (t || c) ? (t.includes('ATRASO') || c.includes('ATRASO')) : oc?.isAtraso === true;
-            };
-
-        const isDiscOrConvivaFn = typeof window.isOcorrenciaDisciplinarOuConviva === "function" 
-          ? window.isOcorrenciaDisciplinarOuConviva 
-          : (oc) => !isAtrasoFn(oc) && String(oc?.tipo || oc?.categoria || oc?.descricao || '').toUpperCase().includes('DISCIPLINAR');
+        const isAtrasoFn = typeof window.isOcorrenciaAtraso === "function" ? window.isOcorrenciaAtraso : () => false;
+        const isDiscOrConvivaFn = typeof window.isOcorrenciaDisciplinarOuConviva === "function" ? window.isOcorrenciaDisciplinarOuConviva : () => false;
+        const isSaidaDispFn = typeof window.isOcorrenciaSaidaOuDispensa === "function" ? window.isOcorrenciaSaidaOuDispensa : () => false;
+        const isEncamContatoFn = typeof window.isOcorrenciaEncaminhamentoOuContato === "function" ? window.isOcorrenciaEncaminhamentoOuContato : () => false;
 
         const comFiltrosGlobais = (ocorrenciasGlobais || []).filter(oc => {
           if (!oc) return false;
 
-          const textFull = `${oc?.nomeAluno || ''} ${oc?.ra || ''} ${oc?.turma || ''} ${oc?.tipo || ''} ${oc?.categoria || ''} ${oc?.descricao || ''} ${oc?.observacao || ''} ${oc?.motivoDispensa || ''} ${oc?.codigoConviva || ''} ${oc?.protocoloConviva || ''} ${oc?.usuario || ''} ${oc?.autor || ''} ${oc?.autor_nome || ''}`.toLowerCase();
-          if (queryText && !textFull.includes(queryText)) return false;
+          const rawAutor = oc.usuario || oc.autor || oc.registradoPor || oc.autor_nome || "";
+          const autorFmt = (typeof window.formatarAutorOcorrencia === "function"
+            ? window.formatarAutorOcorrencia(rawAutor, oc)
+            : String(rawAutor || "")).trim();
 
-          // Filtro por Turma com normalização de tokens (ex: "6A" casa com "6º ANO A")
+          if (queryText) {
+            const textFull = `${oc?.nomeAluno || ''} ${oc?.ra || ''} ${oc?.turma || ''} ${oc?.tipo || ''} ${oc?.categoria || ''} ${oc?.descricao || ''} ${oc?.observacao || ''} ${oc?.motivoDispensa || ''} ${oc?.codigoConviva || ''} ${oc?.protocoloConviva || ''} ${autorFmt}`.toLowerCase();
+            if (!textFull.includes(queryText)) return false;
+          }
+
+          // Filtro por Segmento (Ensino Fundamental 6º-9º vs Ensino Médio 1ª-3ª)
+          if (selSegmento) {
+            const raClean = String(oc?.ra || "").replace(/\D/g, "");
+            const alunoRef = raClean ? alunosPorRa.get(raClean) : null;
+            const turmaParaSeg = oc?.turma || alunoRef?.turma || "";
+            const segOc = (typeof window.inferirSegmentoPorTurma === "function" && window.inferirSegmentoPorTurma(turmaParaSeg))
+              || (alunoRef && typeof window.obterSegmentoAlunoNormalizado === "function" ? window.obterSegmentoAlunoNormalizado(alunoRef) : "");
+            if (segOc !== selSegmento) return false;
+          }
+
+          // Filtro por Turma com normalização de tokens
           const ocTurma = String(oc?.turma || "").trim();
-          const isTodasTurmas = !filtroTurmaRaw || 
-                                selTurmaUpper === "" || 
-                                selTurmaUpper.includes("TODAS");
-
           if (!isTodasTurmas) {
             const tokenSel = selTurmaUpper.replace(/[^0-9A-Z]/g, '');
             const tokenOc = ocTurma.toUpperCase().replace(/[^0-9A-Z]/g, '');
@@ -6073,45 +6360,66 @@
             }
           }
 
+          // Filtro por Período / Intervalo de Datas
+          if (dataInicio || dataFim) {
+            const dtIso = extrairDataIsoOcorrencia(oc);
+            if (!dtIso) return false;
+            if (dataInicio && dtIso < dataInicio) return false;
+            if (dataFim && dtIso > dataFim) return false;
+          }
+
           const isConviva = Boolean(
             oc?.protocoloConviva ||
             oc?.codigoConviva ||
             oc?.codigo_conviva ||
-            oc?.registradoConviva || 
-            oc?.registrado_conviva || 
-            oc?.isConviva || 
+            oc?.registradoConviva ||
+            oc?.registrado_conviva ||
+            oc?.isConviva ||
             oc?.conviva ||
             (oc?.tags && Array.isArray(oc.tags) && oc.tags.includes('CONVIVA')) ||
             (oc?.tipo && String(oc.tipo).toUpperCase().includes("CONVIVA")) ||
             (oc?.categoria && String(oc.categoria).toUpperCase().includes("CONVIVA"))
           );
 
+          // Filtro estrito por Categoria do Registro (baseado em tipo/categoria/origem, sem falsos positivos na descrição)
           if (selTipo && selTipo !== "Todos" && selTipo !== "") {
             const selTipoUpper = selTipo.toUpperCase();
             const ocTipo = String(oc?.tipo || "").toUpperCase();
             const ocCat = String(oc?.categoria || "").toUpperCase();
-            const ocDesc = String(oc?.descricao || "").toUpperCase();
+            const ocOrigem = String(oc?.origem || "").toUpperCase();
+            const ocPair = `${ocTipo} ${ocCat}`;
 
-            if (selTipoUpper.includes("PEDAGÓGICA") || selTipoUpper.includes("PEDAGOGICA")) {
-              if (!ocTipo.includes("PEDAG") && !ocCat.includes("PEDAG") && !ocDesc.includes("PEDAG")) return false;
-            } else if (selTipoUpper.includes("DISCIPLINAR")) {
-              if (!ocTipo.includes("DISCIPLINAR") && !ocCat.includes("DISCIPLINAR") && !ocDesc.includes("DISCIPLINAR")) return false;
-            } else if (selTipoUpper.includes("TUTORIA") || selTipoUpper.includes("ACOLHIMENTO")) {
-              if (!ocTipo.includes("TUTORIA") && !ocTipo.includes("ACOLHIMENTO") && !ocCat.includes("TUTORIA") && !ocDesc.includes("TUTORIA")) return false;
-            } else if (selTipoUpper.includes("ATRASO")) {
+            if (selTipoUpper === "ATRASO") {
               if (!isAtrasoFn(oc)) return false;
+            } else if (selTipoUpper.includes("SAÍDA ANTECIPADA") || selTipoUpper.includes("SAIDA ANTECIPADA")) {
+              if (!window.isOcorrenciaSaidaAntecipada(oc)) return false;
             } else if (selTipoUpper.includes("DISPENSA")) {
-              if (!(oc?.isDispensa === true || ocTipo.includes("DISPENSA") || ocCat.includes("DISPENSA"))) return false;
-            } else if (selTipoUpper === "CONVIVA") {
-              if (!isConviva) return false;
-            } else if (selTipoUpper === "POSITIVA") {
-              const isPositiva = ocTipo.includes("POSITIVA") || ocTipo.includes("ELOGIO") || ocTipo.includes("TUTORIA") || ocTipo.includes("ACOLHIMENTO") || ocDesc.includes("ELOGIO") || ocDesc.includes("DESTAQUE");
-              if (!isPositiva) return false;
-            } else if (selTipoUpper === "NEGATIVA") {
-              const isNegativa = ocTipo.includes("NEGATIVA") || ocTipo.includes("DISCIPLINAR") || ocTipo.includes("ATRASO") || ocTipo.includes("SUSPENSÃO") || ocDesc.includes("DISCIPLINAR");
-              if (!isNegativa) return false;
+              const isDisp = typeof window.isOcorrenciaDispensa === "function"
+                ? window.isOcorrenciaDispensa(oc)
+                : (oc?.isDispensa === true || ocPair.includes("DISPENSA") || ocPair.includes("AFASTAMENTO"));
+              if (!isDisp) return false;
+            } else if (selTipoUpper.includes("PEDAGÓGICA") || selTipoUpper.includes("PEDAGOGICA")) {
+              if (!ocPair.includes("PEDAG")) return false;
+            } else if (selTipoUpper.includes("DISCIPLINAR")) {
+              if (!ocPair.includes("DISCIPLINAR") && !ocPair.includes("SUSPENS") && !ocPair.includes("ADVERT") && !isConviva) return false;
+            } else if (selTipoUpper.includes("TUTORIA") || selTipoUpper.includes("ACOLHIMENTO")) {
+              if (!ocPair.includes("TUTORIA") && !ocPair.includes("ACOLHIMENTO")) return false;
+            } else if (selTipoUpper.includes("WHATSAPP") || selTipoUpper.includes("LIGAÇÃO") || selTipoUpper.includes("LIGACAO")) {
+              if (!ocPair.includes("WHATSAPP") && !ocPair.includes("LIGAÇÃO") && !ocPair.includes("LIGACAO") && !ocPair.includes("CONTATO")) return false;
+            } else if (selTipoUpper.includes("REGISTRO NA SED")) {
+              if (!ocPair.includes("SED")) return false;
+            } else if (selTipoUpper.includes("CONSELHO TUTELAR")) {
+              if (!ocPair.includes("CONSELHO TUTELAR")) return false;
+            } else if (selTipoUpper.includes("MINISTÉRIO PÚBLICO") || selTipoUpper.includes("MINISTERIO PUBLICO")) {
+              if (!ocPair.includes("MINISTÉRIO PÚBLICO") && !ocPair.includes("MINISTERIO PUBLICO")) return false;
+            } else if (selTipoUpper.includes("BUSCA ATIVA")) {
+              if (ocOrigem !== "BUSCA_ATIVA" && !ocPair.includes("BUSCA ATIVA")) return false;
+            } else if (selTipoUpper.includes("ATA ESCOLAR")) {
+              if (ocOrigem !== "ATA_ESCOLAR" && !ocPair.includes("ATA")) return false;
+            } else if (selTipoUpper === "OUTROS") {
+              if (!ocPair.includes("OUTRO")) return false;
             } else {
-              if (!ocTipo.includes(selTipoUpper) && !ocCat.includes(selTipoUpper) && !ocDesc.includes(selTipoUpper)) return false;
+              if (!ocPair.includes(selTipoUpper)) return false;
             }
           }
 
@@ -6122,42 +6430,69 @@
           if (selCiencia === "sim" && !temCiencia) return false;
           if (selCiencia === "nao" && temCiencia) return false;
 
+          if (selAutor && autorFmt.toLowerCase() !== selAutor) return false;
+
+          if (somenteNotificados) {
+            const isNotif = Boolean(oc?.notificarDirecao || oc?.notificarGestao || oc?.notificacaoDirecao || oc?.alertaGestao);
+            if (!isNotif) return false;
+          }
+
           return true;
         });
 
-        // Contadores Dinâmicos
-        const countTodos = (comFiltrosGlobais || []).length;
-        const countDisciplina = (comFiltrosGlobais || []).filter(oc => isDiscOrConvivaFn(oc)).length;
-        const countAtraso = (comFiltrosGlobais || []).filter(oc => isAtrasoFn(oc)).length;
-        const countRotina = (comFiltrosGlobais || []).filter(oc => !isDiscOrConvivaFn(oc) && !isAtrasoFn(oc)).length;
+        // Contadores Dinâmicos para todas as 6 Abas
+        const countTodos = comFiltrosGlobais.length;
+        const countDisciplina = comFiltrosGlobais.filter(oc => isDiscOrConvivaFn(oc)).length;
+        const countAtraso = comFiltrosGlobais.filter(oc => isAtrasoFn(oc)).length;
+        const countSaidasDisp = comFiltrosGlobais.filter(oc => isSaidaDispFn(oc)).length;
+        const countEncam = comFiltrosGlobais.filter(oc => isEncamContatoFn(oc)).length;
+        const countRotina = comFiltrosGlobais.filter(oc => !isDiscOrConvivaFn(oc) && !isAtrasoFn(oc) && !isSaidaDispFn(oc) && !isEncamContatoFn(oc)).length;
 
-        const badgeTodos = document.getElementById("badge-count-todos");
-        const badgeDisciplina = document.getElementById("badge-count-disciplina");
-        const badgeAtraso = document.getElementById("badge-count-atraso");
-        const badgeRotina = document.getElementById("badge-count-rotina");
-
-        if (badgeTodos) badgeTodos.textContent = String(countTodos);
-        if (badgeDisciplina) badgeDisciplina.textContent = String(countDisciplina);
-        if (badgeAtraso) badgeAtraso.textContent = String(countAtraso);
-        if (badgeRotina) badgeRotina.textContent = String(countRotina);
+        const setCount = (id, n) => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = String(n);
+        };
+        setCount("badge-count-todos", countTodos);
+        setCount("badge-count-disciplina", countDisciplina);
+        setCount("badge-count-atraso", countAtraso);
+        setCount("badge-count-saidas-dispensas", countSaidasDisp);
+        setCount("badge-count-encaminhamentos", countEncam);
+        setCount("badge-count-rotina", countRotina);
 
         const abaAtiva = window.abaAtivaRegistros || 'todos';
-
-        // Se o usuário selecionou uma categoria específica ou se a aba ativa for 'todos', exibe tudo que bateu no filtro
         const temFiltroCategoriaExplicito = selTipo && selTipo !== "Todos" && selTipo !== "";
-        const dadosParaRenderizar = (comFiltrosGlobais || []).filter(registro => {
+
+        const dadosParaRenderizar = comFiltrosGlobais.filter(registro => {
           if (!registro) return false;
           if (temFiltroCategoriaExplicito || abaAtiva === 'todos') {
             return true;
           }
-          if (abaAtiva === 'disciplina') {
-            return isDiscOrConvivaFn(registro);
-          } else if (abaAtiva === 'atraso') {
-            return isAtrasoFn(registro);
-          } else {
-            return !isDiscOrConvivaFn(registro) && !isAtrasoFn(registro);
-          }
+          if (abaAtiva === 'disciplina') return isDiscOrConvivaFn(registro);
+          if (abaAtiva === 'atraso') return isAtrasoFn(registro);
+          if (abaAtiva === 'saidas_dispensas') return isSaidaDispFn(registro);
+          if (abaAtiva === 'encaminhamentos') return isEncamContatoFn(registro);
+          return !isDiscOrConvivaFn(registro) && !isAtrasoFn(registro) && !isSaidaDispFn(registro) && !isEncamContatoFn(registro);
         });
+
+        // Ordenação cronológica estrita: mais novo para o mais velho
+        dadosParaRenderizar.sort((a, b) => extrairTimestampOcorrencia(b) - extrairTimestampOcorrencia(a));
+
+        // Mostra/oculta botão Limpar Filtros e atualiza contador de exibição
+        const temAlgumFiltroAtivo = Boolean(
+          queryText || selSegmento || !isTodasTurmas || temFiltroCategoriaExplicito ||
+          selConviva || selCiencia || selAutor || selPeriodo !== "7d" || somenteNotificados ||
+          (!isPerfilPedagogico && abaAtiva !== 'todos')
+        );
+        const btnLimpar = document.getElementById("btn-limpar-filtros-ocorrencias");
+        if (btnLimpar) btnLimpar.classList.toggle("hidden", !temAlgumFiltroAtivo);
+
+        const elContadorTop = document.getElementById("ocorrencias-filtradas-contador");
+        if (elContadorTop) {
+          elContadorTop.textContent = `Exibindo ${dadosParaRenderizar.length} de ${ocorrenciasGlobais.length} registro(s)`;
+        }
+        if (typeof window.atualizarStatusPaginacaoOcorrencias === "function") {
+          window.atualizarStatusPaginacaoOcorrencias(dadosParaRenderizar.length);
+        }
 
         if (typeof renderHistoricoOcorrencias === "function") {
           renderHistoricoOcorrencias(dadosParaRenderizar || []);
