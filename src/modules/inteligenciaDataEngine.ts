@@ -21,7 +21,8 @@ export type DashboardInteligenciaTab =
   | 'dash-convivencia'
   | 'dash-pei'
   | 'dash-docente'
-  | 'dash-governanca';
+  | 'dash-governanca'
+  | 'dash-aprovacao';
 
 export interface GlobalDashboardFilters {
   segmento: string;

@@ -166,6 +166,7 @@ export default function App() {
       case 'dash-pei':
       case 'dash-docente':
       case 'dash-governanca':
+      case 'dash-aprovacao':
       case 'dashboard':
       case 'dashboard-geral':
       case 'dashboard-atrasos':

@@ -3222,15 +3222,15 @@
 
       // Matrix de Permissão de Abas por Nível de Acesso (RBAC - Presença Diária & IA liberada para todos os perfis)
       window.PERMISSOES_ABAS = {
-        DIRETOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria"],
-        VICE_DIRETOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria"],
-        "VICE-DIRETOR": ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria"],
-        CGPG: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas"],
-        CGPCG: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas"],
-        PROFESSOR_PAAC: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei"],
-        PAAC: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei"],
-        PROFESSOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "registros", "agenda", "admin", "horarios"],
-        SECRETARIA: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-docente", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "horarios", "substituicao-pei"]
+        DIRETOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria"],
+        VICE_DIRETOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria"],
+        "VICE-DIRETOR": ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria"],
+        CGPG: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas"],
+        CGPCG: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas"],
+        PROFESSOR_PAAC: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei"],
+        PAAC: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei"],
+        PROFESSOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-aprovacao", "registros", "agenda", "admin", "horarios"],
+        SECRETARIA: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-docente", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "horarios", "substituicao-pei"]
       };
 
       // Normaliza qualquer string de cargo/nível para um dos perfis oficiais
@@ -4229,7 +4229,7 @@
         const role = String(roleRaw || "").toUpperCase().trim();
         const abasPermitidas = (window.PERMISSOES_ABAS && (window.PERMISSOES_ABAS[role] || window.PERMISSOES_ABAS[window.normalizarUserRole(role)])) || ["mural", "alunos", "registros"];
 
-        const todasAbas = ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "rotina-pdca", "agenda", "registros", "horarios", "substituicao-pei", "gerador-atas", "secretaria", "admin", "auditoria"];
+        const todasAbas = ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "rotina-pdca", "agenda", "registros", "horarios", "substituicao-pei", "gerador-atas", "secretaria", "admin", "auditoria"];
 
         todasAbas.forEach(tab => {
           const ehPermitida = abasPermitidas.includes(tab);
@@ -25577,7 +25577,8 @@ Yasmin Seline`;
         "dash-convivencia",
         "dash-pei",
         "dash-docente",
-        "dash-governanca"
+        "dash-governanca",
+        "dash-aprovacao"
       ];
       const UNIFIED_DASHBOARD_TABS = [
         "dash-evasao",
@@ -25586,7 +25587,8 @@ Yasmin Seline`;
         "dash-convivencia",
         "dash-pei",
         "dash-docente",
-        "dash-governanca"
+        "dash-governanca",
+        "dash-aprovacao"
       ];
       const LEGACY_DASHBOARD_ALIASES = {
         dashboard: "dash-evasao",
@@ -25625,7 +25627,7 @@ Yasmin Seline`;
         contents.forEach(el => el.classList.add("hidden"));
 
         // Atualizar estilos dos botões e manter a ocultação visual estrita (RBAC)
-        const todasAbas = ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "horarios", "substituicao-pei", "gerador-atas", "admin", "rotina-pdca", "auditoria"];
+        const todasAbas = ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "horarios", "substituicao-pei", "gerador-atas", "admin", "rotina-pdca", "auditoria"];
         const isDashboardUnificadoAtivo = UNIFIED_DASHBOARD_TABS.includes(tabName);
         todasAbas.forEach(tab => {
           const ehPermitida = abasPermitidas.includes(tab);
@@ -25690,6 +25692,7 @@ Yasmin Seline`;
           "dash-pei": "Central BI · 5. Gestão Pedagógica PEI",
           "dash-docente": "Central BI · 6. Operacional Docente & Janelas",
           "dash-governanca": "Central BI · 7. Governança da Gestão & Auditoria",
+          "dash-aprovacao": "Central BI · 8. Critérios de Aprovação SP & Risco de Retenção",
           registros: "Registros Acadêmicos & Ocorrências",
           secretaria: "Secretaria & Documentação",
           auditoria: "Auditoria do Sistema (Direção e Vice-Direção)",

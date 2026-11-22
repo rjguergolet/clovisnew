@@ -23,6 +23,7 @@ import Dashboard4Convivencia from './Dashboard4Convivencia';
 import Dashboard5PEI from './Dashboard5PEI';
 import Dashboard6Docente from './Dashboard6Docente';
 import Dashboard7Governanca from './Dashboard7Governanca';
+import Dashboard8AprovacaoSP from './Dashboard8AprovacaoSP';
 
 interface CentralInteligenciaDashboardsProps {
   activeTab: string;
@@ -94,6 +95,14 @@ const DASHBOARD_TABS: TabMeta[] = [
     subtitulo: 'PDCA, Agenda & Saúde da Base',
     icon: 'fa-solid fa-list-check',
     rolesPermitidos: ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC']
+  },
+  {
+    id: 'dash-aprovacao',
+    numero: '8',
+    titulo: 'Aprovação & Retenção SP',
+    subtitulo: 'LDB 75% · Nota 5,0 · Risco Iminente',
+    icon: 'fa-solid fa-scale-balanced',
+    rolesPermitidos: ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'PROFESSOR', 'SECRETARIA']
   }
 ];
 
@@ -119,6 +128,8 @@ function mapLegacyToNewTab(tab: string): DashboardInteligenciaTab {
       return 'dash-docente';
     case 'dash-governanca':
       return 'dash-governanca';
+    case 'dash-aprovacao':
+      return 'dash-aprovacao';
     default:
       return 'dash-evasao';
   }
@@ -488,8 +499,8 @@ export default function CentralInteligenciaDashboards({
         </div>
       </div>
 
-      {/* Navegação dos 7 Dashboards em Ordem de Prioridade */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 print:hidden">
+      {/* Navegação dos 8 Dashboards em Ordem de Prioridade */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 print:hidden">
         {abasPermitidas.map((tab) => {
           const ativo = tabAtivaValida === tab.id;
           return (
@@ -666,6 +677,14 @@ export default function CentralInteligenciaDashboards({
           tarefas={tarefas}
           eventosAgenda={eventosAgenda}
           auditLogs={auditLogs}
+        />
+      )}
+
+      {tabAtivaValida === 'dash-aprovacao' && (
+        <Dashboard8AprovacaoSP
+          alunos={alunosFiltrados}
+          userRoleNorm={roleNorm}
+          onAbrirBuscaAtiva={(al) => setAlunoBuscaAtivaModal(al)}
         />
       )}
 
