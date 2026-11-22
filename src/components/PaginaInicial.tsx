@@ -739,8 +739,8 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
   // Índice real de frequência diária e cálculos sem dados mockados
   const indiceFrequenciaDiaria = useMemo(() => {
-    return construirIndiceFrequenciaDiaria(frequenciaDiaria);
-  }, [frequenciaDiaria]);
+    return construirIndiceFrequenciaDiaria(frequenciaDiaria, alunos);
+  }, [frequenciaDiaria, alunos]);
 
   const getRealStudentFreq = useCallback((aluno: any): number | null => {
     if (!aluno) return null;
@@ -771,7 +771,27 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
   const getFaltasConsecutivas = useCallback((aluno: any): number => {
     if (!aluno) return 0;
     const daily = indiceFrequenciaDiaria.get(normalizarRa(aluno.ra));
-    return Math.max(Number(aluno.faltasConsecutivas || 0) || 0, daily?.faltasConsecutivas || 0);
+    if (daily && ((daily.totalDiasAplicaveis ?? daily.totalDias) > 0)) {
+      return daily.faltasConsecutivas || 0;
+    }
+    const fallbackVal = Number(aluno.faltasConsecutivas ?? aluno.dias_seguidos_faltando ?? aluno.faltas_consecutivas ?? 0) || 0;
+    if (fallbackVal <= 0) return 0;
+    const dataAuditIso = toIsoDate(
+      aluno.ultima_auditoria_sed ||
+      aluno.data_auditoria_sed ||
+      aluno.dataAuditoriaFreq ||
+      aluno.dataAtualizacaoFreq ||
+      aluno.atualizado_em ||
+      aluno.updatedAt
+    );
+    if (dataAuditIso) {
+      const corte = new Date();
+      corte.setHours(0, 0, 0, 0);
+      corte.setDate(corte.getDate() - 30);
+      const limite30dIso = `${corte.getFullYear()}-${String(corte.getMonth() + 1).padStart(2, '0')}-${String(corte.getDate()).padStart(2, '0')}`;
+      if (dataAuditIso < limite30dIso) return 0;
+    }
+    return fallbackVal;
   }, [indiceFrequenciaDiaria]);
 
   const alunosAtivos = useMemo(() => {

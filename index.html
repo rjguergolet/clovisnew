@@ -1890,6 +1890,17 @@
                 <div class="flex flex-wrap items-center gap-2 justify-end">
                   <button
                     type="button"
+                    id="btn-central-prioridades-ba"
+                    onclick="window.abrirCentralPrioridadesBa()"
+                    class="hidden px-3.5 py-2 bg-rose-700 hover:bg-rose-800 text-white text-xs font-semibold rounded-lg transition flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0"
+                    title="Central operacional de prioridades e estudantes sem contato — exclusivo Direção, Vice-Direção e Secretaria"
+                  >
+                    <i class="fa-solid fa-list-check text-xs"></i>
+                    <span>Fila de Busca Ativa</span>
+                    <span id="badge-count-fila-ba" class="font-mono tabular-nums text-[11px] bg-white/15 px-1.5 py-0.5 rounded">0</span>
+                  </button>
+                  <button
+                    type="button"
                     id="btn-analise-ia-segmentos"
                     onclick="window.abrirAnaliseIaSegmentos()"
                     class="px-3.5 py-2 bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
@@ -4511,8 +4522,8 @@
               <span class="text-[11px] font-medium text-slate-500 block">Frequência SED</span>
               <span id="dossie-ba-kpi-freq" class="text-lg font-bold font-mono tabular-nums text-slate-900">—</span>
             </div>
-            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <span class="text-[11px] font-medium text-slate-500 block">Faltas Consecutivas</span>
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200" title="Considera apenas os últimos 30 dias para Busca Ativa">
+              <span class="text-[11px] font-medium text-slate-500 block">Faltas Consecutivas (30d)</span>
               <span id="dossie-ba-kpi-faltas-consec" class="text-lg font-bold font-mono tabular-nums text-slate-900">0</span>
             </div>
             <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
@@ -6308,6 +6319,212 @@
             </button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- Modal: Central Operacional de Prioridades — Busca Ativa (Exclusivo DIRETOR, VICE_DIRETOR e SECRETARIA) -->
+    <div id="modal-central-prioridades-ba" onclick="if(event.target===this) window.fecharCentralPrioridadesBa()" class="hidden fixed inset-0 z-[45] bg-slate-950/65 flex items-center justify-center p-2 sm:p-4 overflow-hidden">
+      <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-7xl h-[93vh] flex flex-col overflow-hidden">
+        <!-- Cabeçalho -->
+        <div class="px-5 sm:px-6 py-4 bg-slate-900 text-white flex flex-wrap items-center justify-between gap-3 shrink-0">
+          <div class="min-w-0">
+            <h3 class="text-base font-bold text-white leading-tight">Central de Prioridades — Busca Ativa</h3>
+            <p class="text-xs text-slate-300 mt-0.5">Fila operacional de estudantes em risco, nunca contatados e sem retorno · Acesso restrito à Direção, Vice-Direção e Secretaria</p>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              id="btn-cpba-refresh"
+              onclick="window.recarregarBaseCentralPrioridadesBa()"
+              class="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold rounded-lg transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+              title="Sincronizar contatos, frequência e ocorrências do banco de dados"
+            >
+              <i class="fa-solid fa-arrows-rotate text-xs"></i>
+              <span>Atualizar Base</span>
+            </button>
+            <button
+              type="button"
+              onclick="window.fecharCentralPrioridadesBa()"
+              class="text-slate-300 hover:text-white p-1.5 text-lg cursor-pointer transition"
+              aria-label="Fechar Central de Prioridades"
+            >
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Faixa de Indicadores Operacionais (Single-Elevation, Clicáveis) -->
+        <div class="grid grid-cols-2 sm:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-slate-200 border-b border-slate-200 bg-white shrink-0">
+          <button type="button" onclick="window.selecionarAbaCentralPrioridadesBa('TODOS')" class="px-4 py-3 text-left hover:bg-slate-50 transition cursor-pointer">
+            <span class="block text-[11px] font-medium text-slate-500">Na Fila de Prioridade</span>
+            <span id="cpba-kpi-total" class="block text-xl font-bold font-mono tabular-nums text-slate-900 mt-0.5">0</span>
+            <span class="block text-[11px] text-slate-400">Faltas ou atrasos recorrentes</span>
+          </button>
+          <button type="button" onclick="window.selecionarAbaCentralPrioridadesBa('NUNCA_CONTATADOS')" class="px-4 py-3 text-left hover:bg-rose-50/50 transition cursor-pointer">
+            <span class="block text-[11px] font-medium text-rose-700">Nunca Contatados</span>
+            <span id="cpba-kpi-sem-contato" class="block text-xl font-bold font-mono tabular-nums text-rose-700 mt-0.5">0</span>
+            <span class="block text-[11px] text-slate-500">0 contatos · Prioridade de 1º contato</span>
+          </button>
+          <button type="button" onclick="window.selecionarAbaCentralPrioridadesBa('SEM_RETORNO')" class="px-4 py-3 text-left hover:bg-amber-50/50 transition cursor-pointer">
+            <span class="block text-[11px] font-medium text-amber-700">Sem Retorno / +15 dias</span>
+            <span id="cpba-kpi-sem-retorno" class="block text-xl font-bold font-mono tabular-nums text-amber-700 mt-0.5">0</span>
+            <span class="block text-[11px] text-slate-500">Aguardando família ou hiato longo</span>
+          </button>
+          <button type="button" onclick="window.selecionarAbaCentralPrioridadesBa('FALTAS_CRITICAS')" class="px-4 py-3 text-left hover:bg-rose-50/40 transition cursor-pointer" title="Considera apenas os últimos 30 dias para Busca Ativa">
+            <span class="block text-[11px] font-medium text-slate-600">Faltas Consecutivas (30d)</span>
+            <span id="cpba-kpi-faltas-consec" class="block text-xl font-bold font-mono tabular-nums text-rose-700 mt-0.5">0</span>
+            <span class="block text-[11px] text-slate-500">2+ seguidas · Alerta SEDUC 39/2023</span>
+          </button>
+          <div class="px-4 py-3 text-left col-span-2 sm:col-span-1">
+            <span class="block text-[11px] font-medium text-emerald-700">Contatados (Últimos 7d)</span>
+            <div class="flex items-baseline gap-2 mt-0.5">
+              <span id="cpba-kpi-cobertura-7d" class="text-xl font-bold font-mono tabular-nums text-emerald-700">0</span>
+              <span id="cpba-kpi-cobertura-pct" class="text-xs font-mono tabular-nums text-slate-500">0%</span>
+            </div>
+            <span class="block text-[11px] text-slate-500">Cobertura ativa nesta semana</span>
+          </div>
+        </div>
+
+        <!-- Abas de Fila + Filtros Combináveis -->
+        <div class="px-5 sm:px-6 py-3 bg-slate-50 border-b border-slate-200 space-y-2.5 shrink-0">
+          <!-- Abas Rápidas -->
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex items-center gap-1 p-1 bg-slate-200/70 rounded-lg overflow-x-auto max-w-full" role="tablist" aria-label="Filas operacionais de busca ativa">
+              <button type="button" data-cpba-tab="TODOS" onclick="window.selecionarAbaCentralPrioridadesBa('TODOS')" class="px-3 py-1.5 rounded-md text-xs font-semibold bg-white text-slate-900 shadow-2xs transition cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5">
+                <span>Todos os Prioritários</span>
+                <span id="cpba-tab-count-todos" class="font-mono tabular-nums text-[11px] text-slate-500">0</span>
+              </button>
+              <button type="button" data-cpba-tab="NUNCA_CONTATADOS" onclick="window.selecionarAbaCentralPrioridadesBa('NUNCA_CONTATADOS')" class="px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5">
+                <span>Nunca Contatados</span>
+                <span id="cpba-tab-count-nunca" class="font-mono tabular-nums text-[11px] text-rose-700">0</span>
+              </button>
+              <button type="button" data-cpba-tab="SEM_RETORNO" onclick="window.selecionarAbaCentralPrioridadesBa('SEM_RETORNO')" class="px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5">
+                <span>Sem Retorno / +15d</span>
+                <span id="cpba-tab-count-retorno" class="font-mono tabular-nums text-[11px] text-amber-700">0</span>
+              </button>
+              <button type="button" data-cpba-tab="FALTAS_CRITICAS" onclick="window.selecionarAbaCentralPrioridadesBa('FALTAS_CRITICAS')" class="px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5">
+                <span>Faltas Críticas</span>
+                <span id="cpba-tab-count-faltas" class="font-mono tabular-nums text-[11px] text-rose-700">0</span>
+              </button>
+              <button type="button" data-cpba-tab="ATRASOS_GRAVES" onclick="window.selecionarAbaCentralPrioridadesBa('ATRASOS_GRAVES')" class="px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5">
+                <span>Atrasos Graves (5+)</span>
+                <span id="cpba-tab-count-atrasos" class="font-mono tabular-nums text-[11px] text-amber-700">0</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              id="btn-cpba-limpar"
+              onclick="window.limparFiltrosCentralPrioridadesBa()"
+              class="hidden px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap shrink-0"
+            >
+              Limpar filtros
+            </button>
+          </div>
+
+          <!-- Filtros de Refinamento -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2">
+            <div class="lg:col-span-3 relative">
+              <span class="absolute inset-y-0 left-0 flex items-center pl-2.5 text-slate-400">
+                <i class="fa-solid fa-magnifying-glass text-xs"></i>
+              </span>
+              <input
+                type="text"
+                id="cpba-search"
+                oninput="window.filtrarCentralPrioridadesBa()"
+                placeholder="Buscar por nome, RA, turma ou tutor..."
+                class="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 font-medium outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
+              />
+            </div>
+            <div class="lg:col-span-2">
+              <select id="cpba-segmento" onchange="window.aoAlterarSegmentoCentralBa()" aria-label="Filtrar fila por segmento" class="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/30">
+                <option value="">Todos os Segmentos</option>
+                <option value="ENSINO FUNDAMENTAL">Ensino Fundamental (6º–9º)</option>
+                <option value="ENSINO MÉDIO">Ensino Médio (1ª–3ª)</option>
+              </select>
+            </div>
+            <div class="lg:col-span-2">
+              <select id="cpba-turma" onchange="window.filtrarCentralPrioridadesBa()" aria-label="Filtrar fila por turma" class="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 uppercase outline-none focus:ring-2 focus:ring-blue-500/30">
+                <option value="">Todas as Turmas</option>
+              </select>
+            </div>
+            <div class="lg:col-span-3">
+              <select id="cpba-status-contato" onchange="window.filtrarCentralPrioridadesBa()" aria-label="Filtrar por situação de contato" class="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/30">
+                <option value="">Situação de Contato (Todas)</option>
+                <option value="NUNCA">Sem nenhum contato registrado (0x)</option>
+                <option value="AGUARDANDO">Aguardando retorno / Sem resposta</option>
+                <option value="HIATO_15">Último contato há +15 dias</option>
+                <option value="SEM_ENCAMINHAMENTO">Sem encaminhamento formal</option>
+                <option value="COM_ENCAMINHAMENTO">Já encaminhado (Conselho / SED)</option>
+                <option value="ATENDIDO_7D">Contatado nos últimos 7 dias</option>
+              </select>
+            </div>
+            <div class="lg:col-span-2">
+              <select id="cpba-sort" onchange="window.filtrarCentralPrioridadesBa()" aria-label="Ordenar fila" class="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/30">
+                <option value="prioridade" selected>Maior Prioridade</option>
+                <option value="faltas_consec">Mais Faltas Consecutivas</option>
+                <option value="freq_asc">Menor Frequência</option>
+                <option value="atrasos_desc">Mais Atrasos Registrados</option>
+                <option value="hiato_desc">Mais Tempo Sem Contato</option>
+                <option value="turma_nome">Turma / Nome (A–Z)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabela Operacional Clicável -->
+        <div class="flex-1 overflow-auto custom-scrollbar bg-white">
+          <table class="w-full text-left border-collapse min-w-[960px]">
+            <thead class="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600 sticky top-0 z-10">
+              <tr>
+                <th class="px-4 py-2.5 w-[24%]">Estudante &amp; Turma</th>
+                <th class="px-4 py-2.5 w-[18%]">Situação &amp; Risco</th>
+                <th class="px-4 py-2.5 w-[22%]">Último Contato &amp; Encaminhamento</th>
+                <th class="px-4 py-2.5 w-[19%]">Próximo Passo</th>
+                <th class="px-4 py-2.5 w-[17%] text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody id="cpba-tbody" class="divide-y divide-slate-100 text-xs text-slate-700">
+              <tr>
+                <td colspan="5" class="px-6 py-12 text-center text-slate-400">
+                  Carregando fila operacional de busca ativa...
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Rodapé -->
+        <div class="px-5 sm:px-6 py-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <div class="flex items-center gap-3 text-xs text-slate-600">
+            <span id="cpba-footer-resumo" class="font-medium tabular-nums">Exibindo 0 estudantes</span>
+            <button
+              type="button"
+              id="btn-cpba-ver-todos"
+              onclick="window.verTodosCentralPrioridadesBa()"
+              class="hidden px-2.5 py-1 bg-white hover:bg-slate-100 text-blue-700 border border-slate-200 rounded-md text-xs font-semibold transition cursor-pointer whitespace-nowrap"
+            >
+              Mostrar todos da fila
+            </button>
+          </div>
+          <div class="flex items-center gap-2">
+            <button
+              type="button"
+              onclick="window.fecharCentralPrioridadesBa(); window.abrirAnaliseIaSegmentos();"
+              class="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <i class="fa-solid fa-file-pdf text-rose-600 text-xs"></i>
+              <span>Análise IA &amp; PDF</span>
+            </button>
+            <button
+              type="button"
+              onclick="window.fecharCentralPrioridadesBa()"
+              class="px-4 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 

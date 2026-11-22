@@ -241,37 +241,126 @@ export interface DailyAttendanceMetrics {
   faltas: number;
   justificadas: number;
   totalDias: number;
+  totalDiasAplicaveis?: number;
   percentual: number | null;
   faltasConsecutivas: number;
+  faltasConsecutivasHistorico?: number;
 }
 
 export function construirIndiceFrequenciaDiaria(
-  frequenciaDiariaDocs: any[]
+  frequenciaDiariaDocs: any[],
+  alunosRef?: any[]
 ): Map<string, DailyAttendanceMetrics> {
-  // Mapeia raNormalizado -> Map<dataIso, 'P'|'F'|'J'>
-  const porAlunoData = new Map<string, Map<string, 'P' | 'F' | 'J'>>();
+  const normalizarTurmaKey = (t: unknown) => String(t || '').trim().toUpperCase().replace(/\s+/g, ' ');
 
-  const registrar = (raRaw: unknown, dataIso: string, statusNorm: 'P' | 'F' | 'J' | null) => {
+  // Mapeia raNormalizado -> Map<dataIso, 'P'|'F'|'J'> (registros explícitos para estatísticas históricas)
+  const porAlunoData = new Map<string, Map<string, 'P' | 'F' | 'J'>>();
+  const rasConhecidos = new Set<string>();
+  const raParaTurma = new Map<string, string>();
+
+  (alunosRef || []).forEach((al) => {
+    const rk = normalizarRa(al?.ra || al?.id);
+    if (!rk) return;
+    rasConhecidos.add(rk);
+    const tNorm = normalizarTurmaKey(al?.turma);
+    if (tNorm) raParaTurma.set(rk, tNorm);
+  });
+
+  type SessaoDia = {
+    dataIso: string;
+    registrosMap: Map<string, 'P' | 'F' | 'J'>;
+    hasRealAttendance: boolean;
+    turmasConcluidas: Set<string>;
+    turmasComRegistro: Set<string>;
+    isEmAndamento: boolean;
+    isDiaGlobal: boolean;
+  };
+  const sessoesPorData = new Map<string, SessaoDia>();
+
+  const obterOuCriarSessao = (dataIso: string): SessaoDia => {
+    let s = sessoesPorData.get(dataIso);
+    if (!s) {
+      s = {
+        dataIso,
+        registrosMap: new Map(),
+        hasRealAttendance: false,
+        turmasConcluidas: new Set(),
+        turmasComRegistro: new Set(),
+        isEmAndamento: false,
+        isDiaGlobal: false
+      };
+      sessoesPorData.set(dataIso, s);
+    }
+    return s;
+  };
+
+  const registrar = (
+    raRaw: unknown,
+    dataIso: string,
+    statusNorm: 'P' | 'F' | 'J' | null,
+    docMeta?: { isConcluida: boolean; isEmAndamento: boolean; docTurma: string; turmasConcluidas: string[] }
+  ) => {
     if (!dataIso || !statusNorm) return;
     const raKey = normalizarRa(raRaw);
     if (!raKey) return;
+    rasConhecidos.add(raKey);
+
     let mapDatas = porAlunoData.get(raKey);
     if (!mapDatas) {
       mapDatas = new Map();
       porAlunoData.set(raKey, mapDatas);
     }
     mapDatas.set(dataIso, statusNorm);
+
+    const sessao = obterOuCriarSessao(dataIso);
+    sessao.registrosMap.set(raKey, statusNorm);
+    if (statusNorm === 'P' || statusNorm === 'F') {
+      sessao.hasRealAttendance = true;
+    }
+    const tAluno = raParaTurma.get(raKey);
+    if (tAluno) sessao.turmasComRegistro.add(tAluno);
+
+    if (docMeta) {
+      if (docMeta.isConcluida) {
+        sessao.isDiaGlobal = true;
+        sessao.isEmAndamento = false;
+      } else if (docMeta.isEmAndamento) {
+        if (!sessao.isDiaGlobal) sessao.isEmAndamento = true;
+        if (!docMeta.docTurma || docMeta.docTurma === 'TODAS') {
+          sessao.isDiaGlobal = true;
+        }
+      } else if (!docMeta.docTurma || docMeta.docTurma === 'TODAS') {
+        sessao.isDiaGlobal = true;
+      }
+      if (docMeta.docTurma && docMeta.docTurma !== 'TODAS') {
+        sessao.turmasComRegistro.add(docMeta.docTurma);
+      }
+      docMeta.turmasConcluidas.forEach((tc) => {
+        const tcNorm = normalizarTurmaKey(tc);
+        if (tcNorm) {
+          sessao.turmasConcluidas.add(tcNorm);
+          sessao.turmasComRegistro.add(tcNorm);
+        }
+      });
+    }
   };
 
   (frequenciaDiariaDocs || []).forEach((docItem) => {
     if (!docItem || typeof docItem !== 'object') return;
     const docDataIso = toIsoDate(docItem.data || docItem.dataChamada || docItem.id);
+    const statusChamada = String(docItem.statusChamada || '').trim().toLowerCase();
+    const docMeta = {
+      isConcluida: statusChamada === 'concluida',
+      isEmAndamento: statusChamada === 'em_andamento',
+      docTurma: normalizarTurmaKey(docItem.turma),
+      turmasConcluidas: Array.isArray(docItem.turmasConcluidas) ? docItem.turmasConcluidas : []
+    };
 
     // Formato 1: documento por dia com campo `registros: { [ra]: { status } }`
     if (docItem.registros && typeof docItem.registros === 'object' && !Array.isArray(docItem.registros)) {
       Object.entries(docItem.registros).forEach(([raKey, reg]: [string, any]) => {
         const statusVal = typeof reg === 'string' ? reg : reg?.status;
-        registrar(raKey, docDataIso, normalizarStatusChamada(statusVal));
+        registrar(raKey, docDataIso, normalizarStatusChamada(statusVal), docMeta);
       });
     }
 
@@ -282,7 +371,7 @@ export function construirIndiceFrequenciaDiaria(
         if (iso && mapa && typeof mapa === 'object') {
           Object.entries(mapa).forEach(([raKey, val]: [string, any]) => {
             const statusVal = typeof val === 'string' ? val : val?.status;
-            registrar(raKey, iso, normalizarStatusChamada(statusVal));
+            registrar(raKey, iso, normalizarStatusChamada(statusVal), docMeta);
           });
         }
       });
@@ -290,13 +379,50 @@ export function construirIndiceFrequenciaDiaria(
 
     // Formato 3: registro individual por aluno/data `{ ra, data, status }`
     if (docItem.ra && docDataIso && docItem.status) {
-      registrar(docItem.ra, docDataIso, normalizarStatusChamada(docItem.status));
+      registrar(docItem.ra, docDataIso, normalizarStatusChamada(docItem.status), docMeta);
     }
   });
 
+  const hojeDt = new Date();
+  const hojeIso = `${hojeDt.getFullYear()}-${String(hojeDt.getMonth() + 1).padStart(2, '0')}-${String(hojeDt.getDate()).padStart(2, '0')}`;
+  const dataCorte30d = new Date();
+  dataCorte30d.setHours(0, 0, 0, 0);
+  dataCorte30d.setDate(dataCorte30d.getDate() - 30);
+  const limite30dIso = `${dataCorte30d.getFullYear()}-${String(dataCorte30d.getMonth() + 1).padStart(2, '0')}-${String(dataCorte30d.getDate()).padStart(2, '0')}`;
+
+  // Apenas dias letivos reais com chamada registrada (fins de semana e feriados sem chamada são ignorados)
+  const sessoesAsc = Array.from(sessoesPorData.values())
+    .filter((s) => s.hasRealAttendance && s.dataIso <= hojeIso)
+    .sort((a, b) => a.dataIso.localeCompare(b.dataIso));
+
+  const contarConsecutivas = (raKey: string, turmaNorm: string, somente30d: boolean) => {
+    const diasAplicaveis: Array<'P' | 'F' | 'J'> = [];
+    for (let i = 0; i < sessoesAsc.length; i++) {
+      const sessao = sessoesAsc[i];
+      if (somente30d && sessao.dataIso < limite30dIso) continue;
+      const statusExplicito = sessao.registrosMap.get(raKey);
+      const turmaAplicavel = Boolean(
+        turmaNorm && (sessao.turmasConcluidas.has(turmaNorm) || sessao.turmasComRegistro.has(turmaNorm))
+      );
+      const emAndamentoHoje = sessao.isEmAndamento && sessao.dataIso === hojeIso;
+      const diaAplicavel = Boolean(statusExplicito) || turmaAplicavel || (!emAndamentoHoje && sessao.isDiaGlobal);
+      if (!diaAplicavel) continue;
+      // Em dia letivo com chamada, não constar como falta implica presença (quebra sequência)
+      diasAplicaveis.push(statusExplicito || 'P');
+    }
+
+    let seq = 0;
+    for (let i = diasAplicaveis.length - 1; i >= 0; i--) {
+      if (diasAplicaveis[i] === 'F') seq++;
+      else break;
+    }
+    return { seq, totalAplicaveis: diasAplicaveis.length };
+  };
+
   const out = new Map<string, DailyAttendanceMetrics>();
-  porAlunoData.forEach((datasMap, raKey) => {
-    const datasOrdenadas = Array.from(datasMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  rasConhecidos.forEach((raKey) => {
+    const datasMap = porAlunoData.get(raKey);
+    const datasOrdenadas = datasMap ? Array.from(datasMap.entries()).sort((a, b) => a[0].localeCompare(b[0])) : [];
     let presentes = 0;
     let faltas = 0;
     let justificadas = 0;
@@ -311,22 +437,19 @@ export function construirIndiceFrequenciaDiaria(
     const percentual =
       totalDias > 0 ? Math.round(((presentes + justificadas) / totalDias) * 1000) / 10 : null;
 
-    let faltasConsecutivas = 0;
-    for (let i = datasOrdenadas.length - 1; i >= 0; i--) {
-      if (datasOrdenadas[i][1] === 'F') {
-        faltasConsecutivas++;
-      } else {
-        break;
-      }
-    }
+    const turmaNorm = raParaTurma.get(raKey) || '';
+    const res30d = contarConsecutivas(raKey, turmaNorm, true);
+    const resHist = contarConsecutivas(raKey, turmaNorm, false);
 
     out.set(raKey, {
       presentes,
       faltas,
       justificadas,
       totalDias,
+      totalDiasAplicaveis: resHist.totalAplicaveis,
       percentual,
-      faltasConsecutivas
+      faltasConsecutivas: res30d.seq,
+      faltasConsecutivasHistorico: resHist.seq
     });
   });
 
@@ -396,7 +519,7 @@ export function normalizarAlunos(
   frequenciaDiariaDocs: any[],
   ocorrenciasUnificadas: any[]
 ): AlunoNormalizado[] {
-  const diariaIndex = construirIndiceFrequenciaDiaria(frequenciaDiariaDocs);
+  const diariaIndex = construirIndiceFrequenciaDiaria(frequenciaDiariaDocs, alunosRaw);
 
   // Índice de Busca Ativa por RA
   const baPorRa = new Map<string, any[]>();
@@ -527,12 +650,30 @@ export function normalizarAlunos(
       faltasConsecutivas: 0
     };
 
-    const faltasConsecutivasFallback = Math.max(
+    const faltasConsecutivasFallbackRaw = Math.max(
       0,
       Number(aluno?.dias_seguidos_faltando ?? aluno?.faltas_consecutivas ?? 0) || 0
     );
-    const faltasConsecutivasFinal =
-      diaria.totalDias > 0 ? diaria.faltasConsecutivas : faltasConsecutivasFallback;
+    const dataAuditoriaSedIso = toIsoDate(
+      aluno?.ultima_auditoria_sed ||
+      aluno?.data_auditoria_sed ||
+      aluno?.dataAuditoriaFreq ||
+      aluno?.dataAtualizacaoFreq ||
+      aluno?.atualizado_em ||
+      aluno?.updatedAt
+    );
+    const corte30dFallback = new Date();
+    corte30dFallback.setHours(0, 0, 0, 0);
+    corte30dFallback.setDate(corte30dFallback.getDate() - 30);
+    const limite30dFallbackIso = `${corte30dFallback.getFullYear()}-${String(corte30dFallback.getMonth() + 1).padStart(2, '0')}-${String(corte30dFallback.getDate()).padStart(2, '0')}`;
+    const faltasConsecutivasFallback =
+      !dataAuditoriaSedIso || dataAuditoriaSedIso >= limite30dFallbackIso
+        ? faltasConsecutivasFallbackRaw
+        : 0;
+    const temChamadaDiaria = (diaria.totalDiasAplicaveis ?? diaria.totalDias) > 0;
+    const faltasConsecutivasFinal = temChamadaDiaria
+      ? diaria.faltasConsecutivas
+      : faltasConsecutivasFallback;
 
     // Busca Ativa status
     const registrosBa = (baPorRa.get(raKey) || []).slice().sort((a, b) =>

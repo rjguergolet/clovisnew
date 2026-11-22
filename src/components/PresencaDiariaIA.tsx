@@ -765,15 +765,44 @@ export default function PresencaDiariaIA() {
       });
     });
 
+    const dtRefConsec = new Date(`${dataSelecionada}T12:00:00`);
+    const dtCorteConsec = isNaN(dtRefConsec.getTime()) ? new Date() : dtRefConsec;
+    dtCorteConsec.setDate(dtCorteConsec.getDate() - 30);
+    const limite30dConsecIso = `${dtCorteConsec.getFullYear()}-${String(dtCorteConsec.getMonth() + 1).padStart(2, '0')}-${String(dtCorteConsec.getDate()).padStart(2, '0')}`;
+
+    // Apenas dias letivos reais com chamada (pelo menos 1 registro de presença/atraso/falta); fins de semana e feriados sem chamada são ignorados
+    const datasLetivasJanela30dDesc = datasOrdenadasDesc.filter((dataIso) => {
+      if (dataIso > dataSelecionada || dataIso < limite30dConsecIso) return false;
+      const regs = sessoesPorData.get(dataIso);
+      if (!regs) return false;
+      return Object.values(regs).some(
+        (r) => r && (r.status === 'presente' || r.status === 'falta' || r.status === 'atrasado')
+      );
+    });
+
     Object.keys(mapaPorRa).forEach((raKey) => {
       let seq = 0;
-      for (const dataIso of datasOrdenadasDesc) {
+      for (const dataIso of datasLetivasJanela30dDesc) {
         const registrosDia = sessoesPorData.get(dataIso);
         if (!registrosDia) continue;
         const reg =
           registrosDia[raKey] ||
           Object.entries(registrosDia).find(([k]) => normalizarRaChave(k) === raKey)?.[1];
-        if (!reg) continue;
+
+        if (!reg) {
+          // Na data selecionada hoje, se ainda não foi marcado/verificado, não interrompe a leitura prévia;
+          // Em dias letivos anteriores com chamada, não ter falta marcada significa que o aluno compareceu (quebra a sequência)
+          if (dataIso === dataSelecionada) {
+            const temDispHoje = (integracaoCruzada.dispensasPorRa[raKey] || []).some(
+              (d) => dataIso >= d.dataInicio && dataIso <= d.dataFim
+            );
+            const temAtrasoHoje = Boolean(integracaoCruzada.atrasosPorRaData[raKey]?.[dataIso]);
+            if (temDispHoje || temAtrasoHoje) break;
+            continue;
+          }
+          break;
+        }
+
         const stEfetivo = resolverStatusDia(raKey, dataIso, reg);
         if (stEfetivo === 'falta') seq++;
         else break;

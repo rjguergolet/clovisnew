@@ -4405,6 +4405,22 @@
           renderTableRows(window.lastFilteredStudentsData);
         }
 
+        // 4a. Visibilidade da Central Operacional de Prioridades — Busca Ativa (Exclusivo DIRETOR, VICE_DIRETOR e SECRETARIA)
+        const podeVerCentralBa = typeof window.podeAcessarCentralPrioridadesBa === "function"
+          ? window.podeAcessarCentralPrioridadesBa()
+          : ["DIRETOR", "VICE_DIRETOR", "SECRETARIA"].includes(window.normalizarUserRole ? window.normalizarUserRole(role) : String(role || "").toUpperCase());
+        const btnCentralBa = document.getElementById("btn-central-prioridades-ba");
+        const modalCentralBa = document.getElementById("modal-central-prioridades-ba");
+        if (btnCentralBa) {
+          btnCentralBa.classList.toggle("hidden", !podeVerCentralBa);
+        }
+        if (!podeVerCentralBa && modalCentralBa && !modalCentralBa.classList.contains("hidden")) {
+          modalCentralBa.classList.add("hidden");
+        }
+        if (podeVerCentralBa && typeof window.atualizarBadgeFilaBuscaAtiva === "function") {
+          window.atualizarBadgeFilaBuscaAtiva();
+        }
+
         // 4b. Aplicar travas na ficha do aluno
         if (typeof window.aplicarTravasEdicaoFichaAluno === "function") {
           window.aplicarTravasEdicaoFichaAluno();
@@ -5582,6 +5598,12 @@
         }
         if (typeof renderAlunosReincidentesWidget === "function") {
           renderAlunosReincidentesWidget(countMap, window.ocorrenciasCache || []);
+        }
+        if (typeof window.atualizarBadgeFilaBuscaAtiva === "function") {
+          window.atualizarBadgeFilaBuscaAtiva();
+        }
+        if (typeof window.atualizarCentralPrioridadesBaSeAberta === "function") {
+          window.atualizarCentralPrioridadesBaSeAberta();
         }
         if (typeof window.atualizarDashboardAtrasos === "function") {
           const containerDashAtrasos = document.getElementById("content-dashboard-atrasos");
@@ -16382,6 +16404,9 @@ Yasmin Seline`;
         if (elBa) elBa.textContent = String(countBa);
         if (elConsec) elConsec.textContent = String(countConsec);
         if (elAtr) elAtr.textContent = String(countAtrasos);
+        if (typeof window.atualizarBadgeFilaBuscaAtiva === "function") {
+          window.atualizarBadgeFilaBuscaAtiva();
+        }
 
         // Aplicar filtro rápido de status de presença (combinável com busca/turma/segmento)
         const filtroPresenca = window.filtroApenasRisco ? "BUSCA_ATIVA" : (window.filtroPresencaAlunos || "TODOS");
@@ -19555,6 +19580,9 @@ Yasmin Seline`;
             if (typeof window.applyStudentFilters === "function") {
               window.applyStudentFilters();
             }
+            if (typeof window.atualizarCentralPrioridadesBaSeAberta === "function") {
+              window.atualizarCentralPrioridadesBaSeAberta();
+            }
             window.showToast("Registro gravado com sucesso no Dossiê!", "success");
           } catch (err) {
             window.showErrorToast("Erro ao gravar registro de frequência / busca ativa.", err);
@@ -19566,6 +19594,742 @@ Yasmin Seline`;
           }
         });
       }
+
+      // ========================================================
+      // CENTRAL OPERACIONAL DE PRIORIDADES — BUSCA ATIVA
+      // Exclusivo para DIRETOR, VICE_DIRETOR e SECRETARIA
+      // ========================================================
+      window._cpbaAbaAtiva = "TODOS";
+      window._cpbaLimiteRender = 80;
+      window._cpbaListaBase = [];
+      window._cpbaPreloadingContatos = false;
+
+      function escHtmlCpba(str) {
+        return String(str ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      window.podeAcessarCentralPrioridadesBa = function() {
+        const roleRaw = typeof window.obterRoleAtual === "function" ? window.obterRoleAtual() : "PROFESSOR";
+        const role = typeof window.normalizarUserRole === "function" ? window.normalizarUserRole(roleRaw) : String(roleRaw || "").toUpperCase().trim();
+        return role === "DIRETOR" || role === "VICE_DIRETOR" || role === "SECRETARIA";
+      };
+
+      function extrairWhatsAppLinkBuscaAtiva(aluno, item) {
+        const foneRaw = String(aluno?.telefone || aluno?.celular || aluno?.telefones_adicionais || aluno?.contato || "");
+        const digits = foneRaw.replace(/\D/g, "");
+        if (!digits) return "";
+        const matchBr = digits.match(/(?:55)?(\d{10,11})/);
+        if (!matchBr) return "";
+        const numFinal = `55${matchBr[1]}`;
+        const nomeAluno = (aluno?.nome || item?.nome || "estudante").toUpperCase();
+        const turma = (aluno?.turma || item?.turma || "").toUpperCase();
+        let motivo = "acompanhar a frequência escolar e pontualidade";
+        if (item?.faltasConsecutivas >= 2) {
+          motivo = `verificar as ${item.faltasConsecutivas} faltas consecutivas recentes`;
+        } else if (!isNaN(item?.freqNum) && item.freqNum < 75) {
+          motivo = `conversar sobre a frequência escolar (${item.freqStr}) e garantir o acompanhamento pedagógico`;
+        } else if (item?.totalAtrasos >= 3) {
+          motivo = `conversar sobre os registros de atrasos (${item.totalAtrasos}x) na entrada`;
+        }
+        const msg = `Olá! Aqui é da equipe gestora da E.E. Professor Clóvis de Lucca. Entramos em contato referente ao(à) estudante ${nomeAluno} (${turma}) para ${motivo}. Podemos conversar por aqui ou agendar um atendimento?`;
+        return `https://wa.me/${numFinal}?text=${encodeURIComponent(msg)}`;
+      }
+
+      window.construirListaPrioridadesBuscaAtiva = function() {
+        const alunosAtivos = (window.allStudentsData || []).filter(s => isAlunoAtivo(s));
+        const atrasosMap = montarMapaAtrasosPorRa();
+        const agoraMs = Date.now();
+
+        const contatosPorRa = new Map();
+        const encaminhamentosPorRa = new Map();
+
+        const pushContato = (raRaw, item) => {
+          const raClean = String(raRaw || "").replace(/\D/g, "");
+          if (!raClean) return;
+          const arr = contatosPorRa.get(raClean) || [];
+          arr.push(item);
+          contatosPorRa.set(raClean, arr);
+        };
+
+        const pushEncaminhamento = (raRaw, item) => {
+          const raClean = String(raRaw || "").replace(/\D/g, "");
+          if (!raClean) return;
+          const arr = encaminhamentosPorRa.get(raClean) || [];
+          arr.push(item);
+          encaminhamentosPorRa.set(raClean, arr);
+        };
+
+        const parseDataIso = (raw) => {
+          if (!raw) return "";
+          if (typeof normalizarDataInputBa === "function") return normalizarDataInputBa(raw);
+          return String(raw).slice(0, 10);
+        };
+
+        (Array.isArray(window.todosContatosBaCache) ? window.todosContatosBaCache : []).forEach(c => {
+          if (!c) return;
+          const dataIso = parseDataIso(c.data || c.dataRegistro);
+          const sortMs = new Date(c.dataRegistro || c.data || 0).getTime() || 0;
+          const tipoStr = String(c.tipoContato || "Contato Busca Ativa");
+          const retornoStr = String(c.houveResposta || "Aguardando Retorno dos Pais");
+          const descCurta = String(c.descricao || "").replace(/\s+/g, " ").trim().slice(0, 120);
+          const txtUpper = `${tipoStr} ${retornoStr} ${descCurta}`.toUpperCase();
+
+          pushContato(c.ra, {
+            data: dataIso,
+            canal: tipoStr,
+            statusRetorno: retornoStr,
+            resumo: descCurta,
+            sortMs
+          });
+
+          if (
+            txtUpper.includes("CONSELHO TUTELAR") ||
+            txtUpper.includes("MINISTÉRIO PÚBLICO") ||
+            txtUpper.includes("MINISTERIO PUBLICO") ||
+            txtUpper.includes("OFÍCIO") ||
+            txtUpper.includes("OFICIO") ||
+            txtUpper.includes("FICAI") ||
+            txtUpper.includes("REGISTRO NA SED")
+          ) {
+            pushEncaminhamento(c.ra, {
+              data: dataIso,
+              tipo: tipoStr.includes("Ofício") || retornoStr.includes("Encaminhamento") ? retornoStr : tipoStr,
+              resumo: descCurta,
+              sortMs
+            });
+          }
+        });
+
+        const poolOc = Array.isArray(window.ocorrenciasCache) && window.ocorrenciasCache.length >= (window.ocorrenciasTopLevel?.length || 0)
+          ? window.ocorrenciasCache
+          : (window.ocorrenciasTopLevel || window.ocorrenciasCache || []);
+
+        poolOc.forEach(oc => {
+          if (!oc) return;
+          if (typeof window.isGatilhoAutomaticoOcorrencia === "function" && window.isGatilhoAutomaticoOcorrencia(oc)) return;
+          const raOc = oc.ra || oc.alunoRa;
+          if (!raOc) return;
+          const dataIso = parseDataIso(oc.data || oc.dataRegistro);
+          const sortMs = new Date(oc.dataRegistro || oc.data || 0).getTime() || 0;
+          const tipoUpper = String(oc.tipo || oc.categoria || "").toUpperCase();
+          const origemUpper = String(oc.origem || "").toUpperCase();
+          const descCurta = String(oc.descricao || oc.observacao || "").replace(/\s+/g, " ").trim().slice(0, 120);
+
+          if (
+            tipoUpper.includes("CONSELHO TUTELAR") ||
+            tipoUpper.includes("MINISTÉRIO PÚBLICO") ||
+            tipoUpper.includes("MINISTERIO PUBLICO") ||
+            tipoUpper.includes("REGISTRO NA SED") ||
+            tipoUpper.includes("FICAI") ||
+            tipoUpper.includes("CONVIVA")
+          ) {
+            pushEncaminhamento(raOc, {
+              data: dataIso,
+              tipo: oc.tipo || "Encaminhamento",
+              resumo: descCurta,
+              sortMs
+            });
+          }
+
+          if (
+            !oc.buscaAtivaId &&
+            (origemUpper === "BUSCA_ATIVA" ||
+              tipoUpper.includes("BUSCA ATIVA") ||
+              tipoUpper.includes("CONTATO WHATSAPP") ||
+              (tipoUpper.includes("ATENDIMENTO") && descCurta.toUpperCase().includes("RESPONS")))
+          ) {
+            pushContato(raOc, {
+              data: dataIso,
+              canal: oc.tipoContato || oc.tipo || "Contato",
+              statusRetorno: oc.houveResposta || "Registrado no Dossiê",
+              resumo: descCurta,
+              sortMs
+            });
+          }
+        });
+
+        const fila = [];
+
+        alunosAtivos.forEach(al => {
+          const r = window.obterResumoPresencaAluno(al, atrasosMap);
+          const entraNaFila = r.isBuscaAtivaAlert || r.isFaltasConsecutivas || r.isAtrasosRecorrentes;
+          if (!entraNaFila) return;
+
+          const raStr = String(al.ra || al.id || "").trim();
+          const raClean = raStr.replace(/\D/g, "");
+          const listaC = (contatosPorRa.get(raClean) || []).slice().sort((a, b) => (b.sortMs || 0) - (a.sortMs || 0));
+          const listaE = (encaminhamentosPorRa.get(raClean) || []).slice().sort((a, b) => (b.sortMs || 0) - (a.sortMs || 0));
+
+          const ult = listaC[0] || null;
+          let diasSemContato = null;
+          if (ult?.data) {
+            const dtMs = new Date(ult.data + "T12:00:00").getTime();
+            if (!isNaN(dtMs)) {
+              diasSemContato = Math.max(0, Math.floor((agoraMs - dtMs) / (1000 * 60 * 60 * 24)));
+            }
+          }
+
+          const statusUltLower = String(ult?.statusRetorno || "").toLowerCase();
+          const aguardandoOuSemResposta = Boolean(
+            ult &&
+            (statusUltLower.includes("aguardando") ||
+              statusUltLower.includes("não") ||
+              statusUltLower.includes("nao") ||
+              statusUltLower.includes("sem resposta") ||
+              statusUltLower.includes("recus"))
+          );
+          const contatadoUltimos7d = Boolean(diasSemContato !== null && diasSemContato <= 7);
+          const isNuncaContatado = listaC.length === 0;
+          const isHiato15 = Boolean(!isNuncaContatado && diasSemContato !== null && diasSemContato >= 15);
+          const isSemRetornoOuHiato = Boolean(!isNuncaContatado && (aguardandoOuSemResposta || isHiato15));
+          const isFaltaCritica = Boolean(r.isBuscaAtivaAlert || r.isFaltasConsecutivas);
+          const isAtrasoGrave = r.totalAtrasos >= 5;
+          const ultEnc = listaE[0] || null;
+          const temConselhoTutelar = listaE.some(e => {
+            const u = `${e.tipo || ""} ${e.resumo || ""}`.toUpperCase();
+            return u.includes("CONSELHO TUTELAR") || u.includes("MINISTÉRIO PÚBLICO") || u.includes("MINISTERIO PUBLICO") || u.includes("FICAI");
+          }) || r.sla === "ENCAMINHADO_CONSELHO";
+
+          const segmento = typeof window.obterSegmentoAlunoNormalizado === "function"
+            ? window.obterSegmentoAlunoNormalizado(al)
+            : "";
+
+          // Score composto de prioridade operacional
+          let score = 0;
+          score += r.faltasConsecutivas * 45;
+          if (!isNaN(r.freqNum) && r.freqNum < 75) {
+            score += (75 - r.freqNum) * 2.4;
+          }
+          score += Math.min(r.totalAtrasos, 55) * 2.2;
+          if (isNuncaContatado) {
+            score += isFaltaCritica ? 55 : 35;
+          } else if (aguardandoOuSemResposta) {
+            score += 28;
+          } else if (isHiato15) {
+            score += Math.min(30, Math.floor((diasSemContato || 15) / 3));
+          }
+          if (contatadoUltimos7d && !aguardandoOuSemResposta) {
+            score -= 22;
+          }
+
+          // Classificação de urgência explícita (texto + semântica, nunca apenas cor)
+          let urgenciaLabel = "Monitorar";
+          let urgenciaClass = "text-slate-600";
+          if (r.faltasConsecutivas >= 3 || (!isNaN(r.freqNum) && r.freqNum < 60)) {
+            urgenciaLabel = isNuncaContatado ? "Crítico · Sem 1º contato" : (isSemRetornoOuHiato ? "Crítico · Sem retorno" : "Crítico · Frequência");
+            urgenciaClass = "text-rose-700 font-semibold";
+          } else if (isFaltaCritica) {
+            urgenciaLabel = isNuncaContatado ? "Urgente · Nunca contatado" : (isSemRetornoOuHiato ? `Alerta · ${diasSemContato}d sem retorno` : "Alerta de Frequência");
+            urgenciaClass = "text-rose-700 font-semibold";
+          } else if (r.totalAtrasos >= 10) {
+            urgenciaLabel = isNuncaContatado ? "Atrasos críticos · 0 contatos" : "Atrasos críticos";
+            urgenciaClass = "text-amber-700 font-semibold";
+          } else if (r.totalAtrasos >= 5) {
+            urgenciaLabel = isNuncaContatado ? "Atrasos graves · 0 contatos" : "Atrasos graves";
+            urgenciaClass = "text-amber-700 font-medium";
+          } else {
+            urgenciaLabel = isNuncaContatado ? "Pontualidade · Sem 1º contato" : "Acompanhamento de atrasos";
+            urgenciaClass = "text-slate-600";
+          }
+
+          // Próximo passo operacional recomendado (instantâneo, regra SEDUC 39/2023)
+          let proximoPasso = "Acompanhar evolução e registrar retorno no Dossiê.";
+          if (isNuncaContatado && isFaltaCritica) {
+            proximoPasso = "Realizar 1º contato imediato (WhatsApp/ligação) e registrar no Dossiê.";
+          } else if (isNuncaContatado && r.totalAtrasos >= 5) {
+            proximoPasso = "Realizar 1º contato com responsável sobre pontualidade e horário de entrada.";
+          } else if (isNuncaContatado) {
+            proximoPasso = "Enviar orientação inicial aos responsáveis e abrir acompanhamento.";
+          } else if (temConselhoTutelar && r.faltasConsecutivas >= 2) {
+            proximoPasso = "Cobrar devolutiva do Conselho Tutelar e monitorar presença diariamente.";
+          } else if (r.faltasConsecutivas >= 3 && !temConselhoTutelar && listaC.length >= 2) {
+            proximoPasso = "Emitir convocação presencial formal e avaliar encaminhamento ao Conselho Tutelar.";
+          } else if (aguardandoOuSemResposta || (isHiato15 && isFaltaCritica)) {
+            proximoPasso = "Mudar canal para ligação telefônica; sem retorno, emitir convocação formal.";
+          } else if (isHiato15 && r.totalAtrasos >= 5) {
+            proximoPasso = "Retomar contato com a família e pactuar combinado de pontualidade.";
+          } else if (contatadoUltimos7d) {
+            proximoPasso = "Contato recente registrado — validar retorno do estudante em sala.";
+          }
+
+          const item = {
+            ra: raStr,
+            raClean,
+            nome: (al.nome || "ESTUDANTE").toUpperCase(),
+            turma: (al.turma || "SEM TURMA").toUpperCase(),
+            segmento,
+            segmentoCurto: segmento === "ENSINO MÉDIO" ? "Ensino Médio" : (segmento === "ENSINO FUNDAMENTAL" ? "Fundamental" : "—"),
+            tutor: al.tutor || al.professorTutor || "",
+            freqNum: r.freqNum,
+            freqStr: r.freqStr,
+            faltasConsecutivas: r.faltasConsecutivas,
+            totalAtrasos: r.totalAtrasos,
+            sla: r.sla,
+            totalContatos: listaC.length,
+            ultimoContato: ult,
+            diasSemContato,
+            aguardandoOuSemResposta,
+            contatadoUltimos7d,
+            isNuncaContatado,
+            isHiato15,
+            isSemRetornoOuHiato,
+            isFaltaCritica,
+            isAtrasoGrave,
+            totalEncaminhamentos: listaE.length,
+            ultimoEncaminhamento: ultEnc,
+            temConselhoTutelar,
+            prioridadeScore: Math.round(score * 10) / 10,
+            urgenciaLabel,
+            urgenciaClass,
+            proximoPasso
+          };
+          item.whatsAppUrl = extrairWhatsAppLinkBuscaAtiva(al, item);
+          fila.push(item);
+        });
+
+        fila.sort((a, b) => b.prioridadeScore - a.prioridadeScore || b.faltasConsecutivas - a.faltasConsecutivas || b.totalAtrasos - a.totalAtrasos);
+        return fila;
+      };
+
+      window.atualizarBadgeFilaBuscaAtiva = function() {
+        const btn = document.getElementById("btn-central-prioridades-ba");
+        const badge = document.getElementById("badge-count-fila-ba");
+        if (!btn) return;
+        const pode = window.podeAcessarCentralPrioridadesBa();
+        btn.classList.toggle("hidden", !pode);
+        if (!pode) return;
+
+        // Preload silencioso único dos contatos de busca ativa para que o contador de "Nunca Contatados" seja 100% preciso
+        if (
+          (!Array.isArray(window.todosContatosBaCache) || window.todosContatosBaCache.length === 0) &&
+          typeof window.carregarTodosOsContatosGeralBa === "function" &&
+          !window._cpbaPreloadingContatos &&
+          Array.isArray(window.allStudentsData) &&
+          window.allStudentsData.length > 0
+        ) {
+          window._cpbaPreloadingContatos = true;
+          window.carregarTodosOsContatosGeralBa(false)
+            .then(() => {
+              window._cpbaPreloadingContatos = false;
+              window.atualizarBadgeFilaBuscaAtiva();
+              window.atualizarCentralPrioridadesBaSeAberta();
+            })
+            .catch(() => {
+              window._cpbaPreloadingContatos = false;
+            });
+        }
+
+        const lista = window.construirListaPrioridadesBuscaAtiva();
+        const semContato = lista.filter(x => x.isNuncaContatado).length;
+        const semRetorno = lista.filter(x => x.isSemRetornoOuHiato).length;
+        const pendentes = semContato + semRetorno;
+        if (badge) {
+          badge.textContent = String(pendentes > 0 ? pendentes : lista.length);
+        }
+        btn.title = `Fila de Busca Ativa (Direção, Vice e Secretaria): ${lista.length} prioritários · ${semContato} nunca contatados · ${semRetorno} sem retorno/+15d`;
+      };
+
+      function popularSelectTurmasCentralBa(listaBase) {
+        const sel = document.getElementById("cpba-turma");
+        if (!sel) return;
+        const atual = sel.value || "";
+        const segSel = (document.getElementById("cpba-segmento")?.value || "").trim().toUpperCase();
+        const turmasSet = new Set();
+        (listaBase || []).forEach(it => {
+          if (!it.turma || it.turma === "SEM TURMA") return;
+          if (segSel && it.segmento !== segSel) return;
+          turmasSet.add(it.turma);
+        });
+        const sorted = Array.from(turmasSet).sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true, sensitivity: "base" }));
+        sel.innerHTML = `<option value="">Todas as Turmas</option>` + sorted.map(t => `<option value="${escHtmlCpba(t)}">${escHtmlCpba(t)}</option>`).join("");
+        if (atual && sorted.includes(atual)) sel.value = atual;
+      }
+
+      window.abrirCentralPrioridadesBa = async function(abaInicial = null) {
+        if (!window.podeAcessarCentralPrioridadesBa()) {
+          window.showToast?.("Acesso restrito à Direção, Vice-Direção e Secretaria.", "warning");
+          return;
+        }
+        const modal = document.getElementById("modal-central-prioridades-ba");
+        if (!modal) return;
+        modal.classList.remove("hidden");
+
+        if (abaInicial) {
+          window._cpbaAbaAtiva = abaInicial;
+        }
+        window._cpbaLimiteRender = 80;
+
+        const tbody = document.getElementById("cpba-tbody");
+        const precisaCarregar =
+          !Array.isArray(window.allStudentsData) || window.allStudentsData.length === 0 ||
+          !Array.isArray(window.todosContatosBaCache) || window.todosContatosBaCache.length === 0 ||
+          !Array.isArray(window.frequenciaDiariaCache) || window.frequenciaDiariaCache.length === 0;
+
+        if (precisaCarregar && tbody) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="5" class="px-6 py-12 text-center text-slate-500">
+                <i class="fa-solid fa-spinner animate-spin text-lg text-slate-700 mb-2 block"></i>
+                Sincronizando estudantes, frequência, atrasos e histórico de contatos...
+              </td>
+            </tr>
+          `;
+        }
+
+        try {
+          if ((!Array.isArray(window.allStudentsData) || window.allStudentsData.length === 0) && typeof window.carregarTodosAlunos === "function") {
+            await window.carregarTodosAlunos(false);
+          }
+          if ((!Array.isArray(window.frequenciaDiariaCache) || window.frequenciaDiariaCache.length === 0) && typeof window.carregarFrequenciaDiariaParaBuscaAtiva === "function") {
+            await window.carregarFrequenciaDiariaParaBuscaAtiva();
+          }
+          if ((!Array.isArray(window.ocorrenciasCache) || window.ocorrenciasCache.length === 0) && typeof window.carregarHistoricoOcorrenciasGeral === "function") {
+            await window.carregarHistoricoOcorrenciasGeral();
+          }
+          if ((!Array.isArray(window.todosContatosBaCache) || window.todosContatosBaCache.length === 0) && typeof window.carregarTodosOsContatosGeralBa === "function") {
+            await window.carregarTodosOsContatosGeralBa(false);
+          }
+        } catch (err) {
+          console.warn("[CentralPrioridadesBa] Aviso ao sincronizar caches:", err);
+        }
+
+        window._cpbaListaBase = window.construirListaPrioridadesBuscaAtiva();
+        popularSelectTurmasCentralBa(window._cpbaListaBase);
+        window.selecionarAbaCentralPrioridadesBa(window._cpbaAbaAtiva || "TODOS");
+        window.atualizarBadgeFilaBuscaAtiva();
+      };
+
+      window.recarregarBaseCentralPrioridadesBa = async function() {
+        const btn = document.getElementById("btn-cpba-refresh");
+        const prevHtml = btn?.innerHTML;
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin text-xs"></i><span>Sincronizando...</span>`;
+        }
+        try {
+          if (typeof window.carregarTodosOsContatosGeralBa === "function") {
+            await window.carregarTodosOsContatosGeralBa(true);
+          }
+          if (typeof window.carregarFrequenciaDiariaParaBuscaAtiva === "function") {
+            await window.carregarFrequenciaDiariaParaBuscaAtiva();
+          }
+          window._cpbaListaBase = window.construirListaPrioridadesBuscaAtiva();
+          popularSelectTurmasCentralBa(window._cpbaListaBase);
+          window.filtrarCentralPrioridadesBa();
+          window.atualizarBadgeFilaBuscaAtiva();
+          window.showToast?.("Base da Fila de Busca Ativa atualizada!", "success");
+        } catch (err) {
+          window.showErrorToast?.("Erro ao sincronizar base de Busca Ativa.", err);
+        } finally {
+          if (btn) {
+            btn.disabled = false;
+            if (prevHtml) btn.innerHTML = prevHtml;
+          }
+        }
+      };
+
+      window.fecharCentralPrioridadesBa = function() {
+        document.getElementById("modal-central-prioridades-ba")?.classList.add("hidden");
+      };
+
+      window.selecionarAbaCentralPrioridadesBa = function(aba = "TODOS") {
+        window._cpbaAbaAtiva = aba || "TODOS";
+        window._cpbaLimiteRender = 80;
+
+        document.querySelectorAll("[data-cpba-tab]").forEach(btn => {
+          const ativo = btn.getAttribute("data-cpba-tab") === window._cpbaAbaAtiva;
+          if (ativo) {
+            btn.className = "px-3 py-1.5 rounded-md text-xs font-semibold bg-white text-slate-900 shadow-2xs transition cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5";
+          } else {
+            btn.className = "px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5";
+          }
+        });
+
+        window.filtrarCentralPrioridadesBa();
+      };
+
+      window.aoAlterarSegmentoCentralBa = function() {
+        popularSelectTurmasCentralBa(window._cpbaListaBase);
+        window.filtrarCentralPrioridadesBa();
+      };
+
+      window.limparFiltrosCentralPrioridadesBa = function() {
+        const setVal = (id, v) => {
+          const el = document.getElementById(id);
+          if (el) el.value = v;
+        };
+        setVal("cpba-search", "");
+        setVal("cpba-segmento", "");
+        setVal("cpba-turma", "");
+        setVal("cpba-status-contato", "");
+        setVal("cpba-sort", "prioridade");
+        popularSelectTurmasCentralBa(window._cpbaListaBase);
+        window.selecionarAbaCentralPrioridadesBa("TODOS");
+      };
+
+      window.verTodosCentralPrioridadesBa = function() {
+        window._cpbaLimiteRender = 99999;
+        window.filtrarCentralPrioridadesBa();
+      };
+
+      window.abrirAcaoRapidaCentralBa = function(ra, modo = "CONTATO") {
+        if (!ra) return;
+        const aba = modo === "DOSSIE" ? "dossie" : "busca-ativa";
+        if (typeof window.abrirFichaAluno === "function") {
+          window.abrirFichaAluno(ra, aba);
+          if (aba === "busca-ativa" && typeof window.setModoRegistroBaDossie === "function") {
+            setTimeout(() => {
+              window.setModoRegistroBaDossie(modo === "ENCAMINHAMENTO" ? "ENCAMINHAMENTO" : "CONTATO");
+              const desc = document.getElementById("dossie-ba-descricao");
+              if (desc) {
+                desc.focus();
+                desc.scrollIntoView({ behavior: "smooth", block: "center" });
+              }
+            }, 140);
+          }
+        }
+      };
+
+      window.atualizarCentralPrioridadesBaSeAberta = function() {
+        const modal = document.getElementById("modal-central-prioridades-ba");
+        if (!modal || modal.classList.contains("hidden")) return;
+        if (!window.podeAcessarCentralPrioridadesBa()) {
+          modal.classList.add("hidden");
+          return;
+        }
+        window._cpbaListaBase = window.construirListaPrioridadesBuscaAtiva();
+        popularSelectTurmasCentralBa(window._cpbaListaBase);
+        window.filtrarCentralPrioridadesBa();
+      };
+
+      window.filtrarCentralPrioridadesBa = function() {
+        const tbody = document.getElementById("cpba-tbody");
+        if (!tbody) return;
+
+        const base = Array.isArray(window._cpbaListaBase) ? window._cpbaListaBase : [];
+        const q = (document.getElementById("cpba-search")?.value || "").trim().toLowerCase();
+        const segSel = (document.getElementById("cpba-segmento")?.value || "").trim().toUpperCase();
+        const turmaSel = (document.getElementById("cpba-turma")?.value || "").trim().toUpperCase();
+        const statusSel = (document.getElementById("cpba-status-contato")?.value || "").trim().toUpperCase();
+        const sortSel = (document.getElementById("cpba-sort")?.value || "prioridade").trim();
+
+        // Aplica filtros estruturais (busca, segmento, turma, status contato) para calcular contadores coerentes das abas e KPIs
+        const comFiltrosGlobais = base.filter(it => {
+          if (segSel && it.segmento !== segSel) return false;
+          if (turmaSel && it.turma !== turmaSel) return false;
+          if (q) {
+            const hay = `${it.nome} ${it.ra} ${it.turma} ${it.tutor} ${it.segmentoCurto}`.toLowerCase();
+            if (!hay.includes(q)) return false;
+          }
+          if (statusSel === "NUNCA" && !it.isNuncaContatado) return false;
+          if (statusSel === "AGUARDANDO" && !it.aguardandoOuSemResposta) return false;
+          if (statusSel === "HIATO_15" && !it.isHiato15) return false;
+          if (statusSel === "SEM_ENCAMINHAMENTO" && it.totalEncaminhamentos > 0) return false;
+          if (statusSel === "COM_ENCAMINHAMENTO" && it.totalEncaminhamentos === 0 && !it.temConselhoTutelar) return false;
+          if (statusSel === "ATENDIDO_7D" && !it.contatadoUltimos7d) return false;
+          return true;
+        });
+
+        const countTodos = comFiltrosGlobais.length;
+        const countNunca = comFiltrosGlobais.filter(x => x.isNuncaContatado).length;
+        const countRetorno = comFiltrosGlobais.filter(x => x.isSemRetornoOuHiato).length;
+        const countFaltas = comFiltrosGlobais.filter(x => x.isFaltaCritica).length;
+        const countFaltasConsec = comFiltrosGlobais.filter(x => x.faltasConsecutivas >= 2).length;
+        const countAtrasos = comFiltrosGlobais.filter(x => x.isAtrasoGrave).length;
+        const countCobertura7d = comFiltrosGlobais.filter(x => x.contatadoUltimos7d).length;
+        const pctCobertura7d = countTodos > 0 ? Math.round((countCobertura7d / countTodos) * 100) : 0;
+
+        const setTxt = (id, v) => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = String(v);
+        };
+        setTxt("cpba-kpi-total", countTodos);
+        setTxt("cpba-kpi-sem-contato", countNunca);
+        setTxt("cpba-kpi-sem-retorno", countRetorno);
+        setTxt("cpba-kpi-faltas-consec", countFaltasConsec);
+        setTxt("cpba-kpi-cobertura-7d", countCobertura7d);
+        setTxt("cpba-kpi-cobertura-pct", `${pctCobertura7d}%`);
+
+        setTxt("cpba-tab-count-todos", countTodos);
+        setTxt("cpba-tab-count-nunca", countNunca);
+        setTxt("cpba-tab-count-retorno", countRetorno);
+        setTxt("cpba-tab-count-faltas", countFaltas);
+        setTxt("cpba-tab-count-atrasos", countAtrasos);
+
+        const aba = window._cpbaAbaAtiva || "TODOS";
+        let listaFinal = comFiltrosGlobais.filter(it => {
+          if (aba === "NUNCA_CONTATADOS") return it.isNuncaContatado;
+          if (aba === "SEM_RETORNO") return it.isSemRetornoOuHiato;
+          if (aba === "FALTAS_CRITICAS") return it.isFaltaCritica;
+          if (aba === "ATRASOS_GRAVES") return it.isAtrasoGrave;
+          return true;
+        });
+
+        listaFinal = listaFinal.slice().sort((a, b) => {
+          if (sortSel === "faltas_consec") {
+            return b.faltasConsecutivas - a.faltasConsecutivas || (isNaN(a.freqNum) ? 999 : a.freqNum) - (isNaN(b.freqNum) ? 999 : b.freqNum) || b.prioridadeScore - a.prioridadeScore;
+          }
+          if (sortSel === "freq_asc") {
+            return (isNaN(a.freqNum) ? 999 : a.freqNum) - (isNaN(b.freqNum) ? 999 : b.freqNum) || b.faltasConsecutivas - a.faltasConsecutivas;
+          }
+          if (sortSel === "atrasos_desc") {
+            return b.totalAtrasos - a.totalAtrasos || b.prioridadeScore - a.prioridadeScore;
+          }
+          if (sortSel === "hiato_desc") {
+            const hA = a.isNuncaContatado ? 99999 : (a.diasSemContato ?? -1);
+            const hB = b.isNuncaContatado ? 99999 : (b.diasSemContato ?? -1);
+            return hB - hA || b.prioridadeScore - a.prioridadeScore;
+          }
+          if (sortSel === "turma_nome") {
+            return a.turma.localeCompare(b.turma, "pt-BR", { numeric: true }) || a.nome.localeCompare(b.nome, "pt-BR");
+          }
+          return b.prioridadeScore - a.prioridadeScore || b.faltasConsecutivas - a.faltasConsecutivas || b.totalAtrasos - a.totalAtrasos;
+        });
+
+        const temFiltroAtivo = Boolean(q || segSel || turmaSel || statusSel || sortSel !== "prioridade" || aba !== "TODOS");
+        document.getElementById("btn-cpba-limpar")?.classList.toggle("hidden", !temFiltroAtivo);
+
+        const limite = window._cpbaLimiteRender || 80;
+        const exibidos = listaFinal.slice(0, limite);
+        const btnVerTodos = document.getElementById("btn-cpba-ver-todos");
+        if (btnVerTodos) {
+          btnVerTodos.classList.toggle("hidden", listaFinal.length <= limite);
+          if (listaFinal.length > limite) {
+            btnVerTodos.textContent = `Mostrar todos (${listaFinal.length})`;
+          }
+        }
+        setTxt("cpba-footer-resumo", `Exibindo ${exibidos.length} de ${listaFinal.length} estudante(s) nesta fila`);
+
+        if (exibidos.length === 0) {
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="5" class="px-6 py-12 text-center space-y-2">
+                <p class="text-sm font-semibold text-slate-800">Nenhum estudante encontrado com os filtros atuais.</p>
+                <p class="text-xs text-slate-500">Ajuste os filtros acima ou clique em "Limpar filtros" para ver toda a fila de busca ativa.</p>
+              </td>
+            </tr>
+          `;
+          return;
+        }
+
+        tbody.innerHTML = exibidos.map((it, idx) => {
+          const raEsc = it.ra.replace(/'/g, "\\'");
+          const freqTone = !isNaN(it.freqNum) && it.freqNum < 75 ? "text-rose-700 font-semibold" : "text-slate-800 font-medium";
+          const consTone = it.faltasConsecutivas >= 3 ? "text-rose-700 font-semibold" : (it.faltasConsecutivas >= 2 ? "text-amber-700 font-semibold" : "text-slate-500");
+          const atrTone = it.totalAtrasos >= 10 ? "text-amber-800 font-semibold" : (it.totalAtrasos >= 5 ? "text-amber-700 font-medium" : "text-slate-500");
+
+          let contatoHtml = "";
+          if (it.isNuncaContatado) {
+            contatoHtml = `<div class="font-semibold text-rose-700">Nenhum contato registrado (0x)</div>`;
+          } else {
+            const dtFmt = it.ultimoContato?.data ? it.ultimoContato.data.split("-").reverse().join("/") : "—";
+            const diasTxt = it.diasSemContato !== null ? (it.diasSemContato === 0 ? "hoje" : `há ${it.diasSemContato}d`) : "";
+            const diasTone = it.diasSemContato !== null && it.diasSemContato >= 15 ? "text-amber-700 font-semibold" : (it.contatadoUltimos7d ? "text-emerald-700 font-medium" : "text-slate-600");
+            const retStatus = it.ultimoContato?.statusRetorno || "";
+            const canal = it.ultimoContato?.canal || "Contato";
+            contatoHtml = `
+              <div class="text-slate-800 font-medium">
+                <span class="font-mono tabular-nums">${escHtmlCpba(dtFmt)}</span>
+                ${diasTxt ? `<span class="text-slate-300 mx-1">·</span><span class="${diasTone} font-mono tabular-nums">${escHtmlCpba(diasTxt)}</span>` : ""}
+                <span class="text-slate-300 mx-1">·</span>
+                <span class="font-mono tabular-nums text-slate-500">${it.totalContatos}x</span>
+              </div>
+              <div class="text-[11px] text-slate-500 truncate max-w-[270px]" title="${escHtmlCpba(`${canal} — ${retStatus}`)}">${escHtmlCpba(canal)}${retStatus ? ` · ${escHtmlCpba(retStatus)}` : ""}</div>
+            `;
+          }
+
+          let encHtml = `<div class="text-[11px] text-slate-400 mt-0.5">Sem encaminhamento formal</div>`;
+          if (it.ultimoEncaminhamento) {
+            const dtEnc = it.ultimoEncaminhamento.data ? it.ultimoEncaminhamento.data.split("-").reverse().join("/") : "";
+            const encTone = it.temConselhoTutelar ? "text-blue-800 font-medium" : "text-slate-500";
+            encHtml = `<div class="text-[11px] ${encTone} mt-0.5 truncate max-w-[270px]" title="${escHtmlCpba(it.ultimoEncaminhamento.tipo || "")}">${dtEnc ? `<span class="font-mono tabular-nums">${escHtmlCpba(dtEnc)}</span> · ` : ""}${escHtmlCpba(it.ultimoEncaminhamento.tipo || "Encaminhamento")}</div>`;
+          }
+
+          const whatsBtn = it.whatsAppUrl
+            ? `<a href="${it.whatsAppUrl}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="px-2 py-1.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-slate-200 hover:border-emerald-300 rounded-md text-xs transition inline-flex items-center justify-center shrink-0" title="Abrir WhatsApp da família com mensagem pronta"><i class="fa-brands fa-whatsapp text-sm"></i></a>`
+            : "";
+
+          return `
+            <tr class="hover:bg-slate-50/90 transition-colors align-top">
+              <td class="px-4 py-3">
+                <div class="flex items-start gap-2">
+                  <span class="font-mono tabular-nums text-[11px] text-slate-400 pt-0.5 w-6 shrink-0">${idx + 1}.</span>
+                  <div class="min-w-0">
+                    <button
+                      type="button"
+                      onclick="window.abrirAcaoRapidaCentralBa('${raEsc}', 'CONTATO')"
+                      class="text-left font-semibold text-slate-900 hover:text-blue-700 hover:underline leading-snug cursor-pointer block"
+                    >
+                      ${escHtmlCpba(it.nome)}
+                    </button>
+                    <div class="text-[11px] text-slate-500 mt-0.5 flex flex-wrap items-center gap-x-1.5">
+                      <span class="font-semibold text-slate-700">${escHtmlCpba(it.turma)}</span>
+                      <span class="text-slate-300">·</span>
+                      <span>${escHtmlCpba(it.segmentoCurto)}</span>
+                      <span class="text-slate-300">·</span>
+                      <span class="font-mono tabular-nums">RA ${escHtmlCpba(it.ra)}</span>
+                      ${it.tutor ? `<span class="text-slate-300">·</span><span>Tutor: ${escHtmlCpba(it.tutor)}</span>` : ""}
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <td class="px-4 py-3">
+                <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono tabular-nums text-xs">
+                  <span class="${freqTone}">Freq. ${escHtmlCpba(it.freqStr)}</span>
+                  <span class="text-slate-300">·</span>
+                  <span class="${consTone}">${it.faltasConsecutivas} cons.</span>
+                  <span class="text-slate-300">·</span>
+                  <span class="${atrTone}">${it.totalAtrasos} atr.</span>
+                </div>
+                <div class="text-[11px] mt-1 ${it.urgenciaClass}">${escHtmlCpba(it.urgenciaLabel)}</div>
+              </td>
+              <td class="px-4 py-3">
+                ${contatoHtml}
+                ${encHtml}
+              </td>
+              <td class="px-4 py-3">
+                <p class="text-[11px] text-slate-700 leading-relaxed">${escHtmlCpba(it.proximoPasso)}</p>
+              </td>
+              <td class="px-4 py-3 text-right">
+                <div class="inline-flex items-center justify-end gap-1.5 flex-nowrap">
+                  ${whatsBtn}
+                  <button
+                    type="button"
+                    onclick="window.abrirAcaoRapidaCentralBa('${raEsc}', 'CONTATO')"
+                    class="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-md text-[11px] font-semibold transition cursor-pointer whitespace-nowrap shrink-0"
+                    title="Abrir Dossiê na aba Busca Ativa pronto para registrar contato"
+                  >
+                    Registrar Contato
+                  </button>
+                  <button
+                    type="button"
+                    onclick="window.abrirAcaoRapidaCentralBa('${raEsc}', 'DOSSIE')"
+                    class="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-md text-[11px] font-semibold transition cursor-pointer whitespace-nowrap shrink-0"
+                    title="Abrir Dossiê completo do estudante"
+                  >
+                    Dossiê
+                  </button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }).join("");
+      };
+
+      // Fecha a Central com Escape apenas quando o Dossiê não estiver aberto acima dela
+      document.addEventListener("keydown", (e) => {
+        if (e.key !== "Escape") return;
+        const modalCentral = document.getElementById("modal-central-prioridades-ba");
+        const modalFicha = document.getElementById("modal-ficha-aluno");
+        if (modalCentral && !modalCentral.classList.contains("hidden") && (!modalFicha || modalFicha.classList.contains("hidden"))) {
+          window.fecharCentralPrioridadesBa();
+        }
+      });
 
       // ========================================================
       // ANÁLISE INTELIGENTE POR SEGMENTO COM IA (GEMINI)
@@ -22175,30 +22939,191 @@ Yasmin Seline`;
         return "";
       }
 
+      function normalizarTurmaChaveBa(turmaRaw) {
+        return String(turmaRaw || "").trim().toUpperCase().replace(/\s+/g, " ");
+      }
+
+      function obterHojeIsoBa() {
+        const d = new Date();
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        return `${yyyy}-${mm}-${dd}`;
+      }
+
+      function obterDataLimiteDiasBa(dias = 30) {
+        const d = new Date();
+        d.setHours(0, 0, 0, 0);
+        d.setDate(d.getDate() - Math.max(1, Number(dias) || 30));
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        return `${yyyy}-${mm}-${dd}`;
+      }
+
+      function extrairDataAuditoriaSedIsoBa(aluno) {
+        if (!aluno || typeof aluno !== "object") return "";
+        const candidatos = [
+          aluno.ultima_auditoria_sed,
+          aluno.data_auditoria_sed,
+          aluno.dataAuditoriaFreq,
+          aluno.dataAtualizacaoFreq,
+          aluno.data_atualizacao_freq,
+          aluno.atualizado_em,
+          aluno.updatedAt
+        ];
+        for (const c of candidatos) {
+          if (!c) continue;
+          if (typeof c === "object" && typeof c.seconds === "number") {
+            const dt = new Date(c.seconds * 1000);
+            if (!isNaN(dt.getTime())) {
+              return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+            }
+          }
+          const iso = extrairDataIsoChamadaBa(c);
+          if (iso) return iso;
+        }
+        return "";
+      }
+
+      window._sessoesDiariaNormalizadasBa = [];
+
+      function calcularSequenciaConsecutivaPorSessoesBa(rk, turmaNorm, sessoesAsc, hojeIso, limite30dIso, incluirHistorico) {
+        if (!rk || !Array.isArray(sessoesAsc) || sessoesAsc.length === 0) {
+          return { seq: 0, datas: [], totalDiasAplicaveis: 0, ultimaData: "", ultimoStatus: null };
+        }
+
+        const diasAplicaveis = [];
+        for (let i = 0; i < sessoesAsc.length; i++) {
+          const sessao = sessoesAsc[i];
+          if (!sessao || !sessao.dataIso) continue;
+          if (sessao.dataIso > hojeIso) continue;
+          if (!incluirHistorico && sessao.dataIso < limite30dIso) continue;
+
+          const statusExplicito = sessao.registrosMap.get(rk);
+          const turmaAplicavel = Boolean(
+            turmaNorm && (sessao.turmasConcluidas.has(turmaNorm) || sessao.turmasComRegistro.has(turmaNorm))
+          );
+          const emAndamentoHoje = sessao.isEmAndamento && sessao.dataIso === hojeIso;
+          const diaAplicavel = Boolean(statusExplicito) || turmaAplicavel || (!emAndamentoHoje && sessao.isDiaGlobal);
+          if (!diaAplicavel) continue;
+
+          // Em dia letivo com chamada, ausência de marcação explícita de falta significa presença (quebra a sequência)
+          diasAplicaveis.push({
+            dataIso: sessao.dataIso,
+            status: statusExplicito || "P"
+          });
+        }
+
+        let seq = 0;
+        const datas = [];
+        for (let i = diasAplicaveis.length - 1; i >= 0; i--) {
+          if (diasAplicaveis[i].status === "F") {
+            seq++;
+            datas.unshift(diasAplicaveis[i].dataIso);
+          } else {
+            break;
+          }
+        }
+
+        const ultima = diasAplicaveis.length > 0 ? diasAplicaveis[diasAplicaveis.length - 1] : null;
+        return {
+          seq,
+          datas,
+          totalDiasAplicaveis: diasAplicaveis.length,
+          ultimaData: ultima ? ultima.dataIso : "",
+          ultimoStatus: ultima ? ultima.status : null
+        };
+      }
+
       window.computarMapaFaltasConsecutivasDiaria = function(docsLista) {
         const docs = Array.isArray(docsLista) ? docsLista : (Array.isArray(window.frequenciaDiariaCache) ? window.frequenciaDiariaCache : []);
-        const porAlunoData = new Map();
+        const sessoesPorData = new Map();
+        const rasConhecidos = new Set();
+        const raParaTurma = new Map();
 
-        const registrar = (raRaw, dataIso, statusNorm) => {
+        const listaAlunosRef = Array.isArray(window.alunosCache)
+          ? window.alunosCache
+          : (Array.isArray(window.todosAlunosCache) ? window.todosAlunosCache : []);
+        listaAlunosRef.forEach(al => {
+          const rk = normalizarRaChaveBa(al?.ra || al?.id);
+          if (!rk) return;
+          rasConhecidos.add(rk);
+          const tNorm = normalizarTurmaChaveBa(al?.turma);
+          if (tNorm) raParaTurma.set(rk, tNorm);
+        });
+
+        const obterOuCriarSessao = (dataIso) => {
+          let sessao = sessoesPorData.get(dataIso);
+          if (!sessao) {
+            sessao = {
+              dataIso,
+              registrosMap: new Map(),
+              hasRealAttendance: false,
+              turmasConcluidas: new Set(),
+              turmasComRegistro: new Set(),
+              isEmAndamento: false,
+              isDiaGlobal: false
+            };
+            sessoesPorData.set(dataIso, sessao);
+          }
+          return sessao;
+        };
+
+        const registrar = (raRaw, dataIso, statusNorm, docMeta) => {
           if (!dataIso || !statusNorm) return;
           const rk = normalizarRaChaveBa(raRaw);
           if (!rk) return;
-          let mapDatas = porAlunoData.get(rk);
-          if (!mapDatas) {
-            mapDatas = new Map();
-            porAlunoData.set(rk, mapDatas);
+          rasConhecidos.add(rk);
+          const sessao = obterOuCriarSessao(dataIso);
+          sessao.registrosMap.set(rk, statusNorm);
+          if (statusNorm === "P" || statusNorm === "F") {
+            sessao.hasRealAttendance = true;
           }
-          mapDatas.set(dataIso, statusNorm);
+          const tAluno = raParaTurma.get(rk);
+          if (tAluno) sessao.turmasComRegistro.add(tAluno);
+          if (docMeta) {
+            if (docMeta.isConcluida) {
+              sessao.isDiaGlobal = true;
+              sessao.isEmAndamento = false;
+            } else if (docMeta.isEmAndamento) {
+              if (!sessao.isDiaGlobal) sessao.isEmAndamento = true;
+              if (!docMeta.docTurma || docMeta.docTurma === "TODAS") {
+                sessao.isDiaGlobal = true;
+              }
+            } else if (!docMeta.docTurma || docMeta.docTurma === "TODAS") {
+              sessao.isDiaGlobal = true;
+            }
+            if (docMeta.docTurma && docMeta.docTurma !== "TODAS") {
+              sessao.turmasComRegistro.add(docMeta.docTurma);
+            }
+            if (Array.isArray(docMeta.turmasConcluidas)) {
+              docMeta.turmasConcluidas.forEach(tc => {
+                const tcNorm = normalizarTurmaChaveBa(tc);
+                if (tcNorm) {
+                  sessao.turmasConcluidas.add(tcNorm);
+                  sessao.turmasComRegistro.add(tcNorm);
+                }
+              });
+            }
+          }
         };
 
         docs.forEach(docItem => {
           if (!docItem || typeof docItem !== "object") return;
           const docDataIso = extrairDataIsoChamadaBa(docItem.data || docItem.dataChamada || docItem.id);
+          const statusChamada = String(docItem.statusChamada || "").trim().toLowerCase();
+          const docMeta = {
+            isConcluida: statusChamada === "concluida",
+            isEmAndamento: statusChamada === "em_andamento",
+            docTurma: normalizarTurmaChaveBa(docItem.turma),
+            turmasConcluidas: Array.isArray(docItem.turmasConcluidas) ? docItem.turmasConcluidas : []
+          };
 
           if (docItem.registros && typeof docItem.registros === "object" && !Array.isArray(docItem.registros)) {
             Object.entries(docItem.registros).forEach(([raKey, reg]) => {
               const stVal = typeof reg === "string" ? reg : reg?.status;
-              registrar(raKey, docDataIso, normalizarStatusChamadaBa(stVal));
+              registrar(raKey, docDataIso, normalizarStatusChamadaBa(stVal), docMeta);
             });
           }
 
@@ -22208,37 +23133,43 @@ Yasmin Seline`;
               if (iso && mapa && typeof mapa === "object") {
                 Object.entries(mapa).forEach(([raKey, val]) => {
                   const stVal = typeof val === "string" ? val : val?.status;
-                  registrar(raKey, iso, normalizarStatusChamadaBa(stVal));
+                  registrar(raKey, iso, normalizarStatusChamadaBa(stVal), docMeta);
                 });
               }
             });
           }
 
           if (docItem.ra && docDataIso && docItem.status) {
-            registrar(docItem.ra, docDataIso, normalizarStatusChamadaBa(docItem.status));
+            registrar(docItem.ra, docDataIso, normalizarStatusChamadaBa(docItem.status), docMeta);
           }
         });
 
+        // Apenas dias letivos reais com chamada registrada (fins de semana e feriados sem chamada são ignorados)
+        const sessoesAsc = Array.from(sessoesPorData.values())
+          .filter(s => s.hasRealAttendance)
+          .sort((a, b) => a.dataIso.localeCompare(b.dataIso));
+
+        window._sessoesDiariaNormalizadasBa = sessoesAsc;
+
+        const hojeIso = obterHojeIsoBa();
+        const limite30dIso = obterDataLimiteDiasBa(30);
         const resultado = new Map();
-        porAlunoData.forEach((datasMap, rk) => {
-          const ordenadas = Array.from(datasMap.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-          let faltasConsecutivas = 0;
-          const datasConsecutivas = [];
-          for (let i = ordenadas.length - 1; i >= 0; i--) {
-            if (ordenadas[i][1] === "F") {
-              faltasConsecutivas++;
-              datasConsecutivas.unshift(ordenadas[i][0]);
-            } else {
-              break;
-            }
-          }
-          const ultima = ordenadas.length > 0 ? ordenadas[ordenadas.length - 1] : null;
+
+        rasConhecidos.forEach(rk => {
+          const turmaNorm = raParaTurma.get(rk) || "";
+          const res30d = calcularSequenciaConsecutivaPorSessoesBa(rk, turmaNorm, sessoesAsc, hojeIso, limite30dIso, false);
+          const resHist = calcularSequenciaConsecutivaPorSessoesBa(rk, turmaNorm, sessoesAsc, hojeIso, limite30dIso, true);
+
           resultado.set(rk, {
-            faltasConsecutivas,
-            datasConsecutivas,
-            ultimaData: ultima ? ultima[0] : "",
-            ultimoStatus: ultima ? ultima[1] : null,
-            totalDias: ordenadas.length
+            faltasConsecutivas: res30d.seq,
+            datasConsecutivas: res30d.datas,
+            faltasConsecutivasHistorico: resHist.seq,
+            datasConsecutivasHistorico: resHist.datas,
+            limite30DiasIso: limite30dIso,
+            ultimaData: resHist.ultimaData,
+            ultimoStatus: resHist.ultimoStatus,
+            totalDias: resHist.totalDiasAplicaveis,
+            totalDias30d: res30d.totalDiasAplicaveis
           });
         });
 
@@ -22246,34 +23177,68 @@ Yasmin Seline`;
         return resultado;
       };
 
-      window.obterInfoFaltasConsecutivasAluno = function(aluno) {
+      window.obterInfoFaltasConsecutivasAluno = function(aluno, opcoes = {}) {
         if (!aluno) {
-          return { faltasConsecutivas: 0, datasConsecutivas: [], isGatilho3: false, isAlerta2: false, fonte: "Nenhuma" };
+          return { faltasConsecutivas: 0, datasConsecutivas: [], faltasConsecutivasHistorico: 0, isGatilho3: false, isAlerta2: false, fonte: "Nenhuma", janelaDias: 30 };
         }
+        const incluirHistorico = Boolean(opcoes && opcoes.incluirHistorico);
         const rk = normalizarRaChaveBa(aluno.ra || aluno.id);
-        const diariaInfo = (window.mapaFaltasConsecutivasDiaria instanceof Map)
-          ? window.mapaFaltasConsecutivasDiaria.get(rk)
-          : null;
-
+        const turmaNorm = normalizarTurmaChaveBa(aluno.turma);
+        const hojeIso = obterHojeIsoBa();
+        const limite30dIso = obterDataLimiteDiasBa(30);
         const fallbackDias = Math.max(0, parseInt(aluno.dias_seguidos_faltando ?? aluno.faltas_consecutivas ?? "0", 10) || 0);
+
+        const sessoesAsc = Array.isArray(window._sessoesDiariaNormalizadasBa) ? window._sessoesDiariaNormalizadasBa : [];
+        let res30d = null;
+        let resHist = null;
+
+        if (sessoesAsc.length > 0 && rk) {
+          res30d = calcularSequenciaConsecutivaPorSessoesBa(rk, turmaNorm, sessoesAsc, hojeIso, limite30dIso, false);
+          resHist = calcularSequenciaConsecutivaPorSessoesBa(rk, turmaNorm, sessoesAsc, hojeIso, limite30dIso, true);
+        }
+
+        const temChamadaDiaria = Boolean(resHist && resHist.totalDiasAplicaveis > 0);
         let faltasConsecutivas = 0;
         let datasConsecutivas = [];
         let fonte = "Chamada Diária";
 
-        if (diariaInfo && diariaInfo.totalDias > 0) {
-          faltasConsecutivas = diariaInfo.faltasConsecutivas;
-          datasConsecutivas = diariaInfo.datasConsecutivas || [];
+        if (incluirHistorico) {
+          if (temChamadaDiaria) {
+            faltasConsecutivas = resHist.seq;
+            datasConsecutivas = resHist.datas;
+            fonte = "Chamada Diária (Histórico)";
+          } else {
+            faltasConsecutivas = fallbackDias;
+            fonte = fallbackDias > 0 ? "Auditoria SED (Histórico)" : "Nenhuma";
+          }
         } else {
-          faltasConsecutivas = fallbackDias;
-          fonte = fallbackDias > 0 ? "Auditoria SED" : "Nenhuma";
+          // Regra Busca Ativa: sempre nos últimos dias letivos (janela de 30 dias), quebrando ao retornar
+          if (temChamadaDiaria) {
+            faltasConsecutivas = res30d ? res30d.seq : 0;
+            datasConsecutivas = res30d ? res30d.datas : [];
+            fonte = faltasConsecutivas > 0 ? "Chamada Diária (30d)" : "Chamada Diária";
+          } else {
+            const dataAuditoriaIso = extrairDataAuditoriaSedIsoBa(aluno);
+            if (fallbackDias > 0 && (!dataAuditoriaIso || dataAuditoriaIso >= limite30dIso)) {
+              faltasConsecutivas = fallbackDias;
+              fonte = "Auditoria SED (30d)";
+            } else {
+              faltasConsecutivas = 0;
+              fonte = "Nenhuma";
+            }
+          }
         }
+
+        const faltasConsecutivasHistorico = temChamadaDiaria ? resHist.seq : fallbackDias;
 
         return {
           faltasConsecutivas,
           datasConsecutivas,
+          faltasConsecutivasHistorico,
           isGatilho3: faltasConsecutivas >= 3,
           isAlerta2: faltasConsecutivas === 2,
-          fonte
+          fonte,
+          janelaDias: incluirHistorico ? null : 30
         };
       };
 
