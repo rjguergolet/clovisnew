@@ -296,9 +296,15 @@ export default function ConselhoAtaEditor({
     const reprovFaltas = ativos.filter(a => a.reprovandoPorFaltasGlobal);
     const crit4 = ativos.filter(a => a.criticoNotas4Mais);
     const aeeLista = ativos.filter(a => a.isAEE);
+    const discLista = ativos.filter(a => a.possuiOcorrenciaDisciplinar);
+    const discCriticos = ativos.filter(a => a.alertaDisciplinar);
+    const baLista = ativos.filter(a => a.possuiBuscaAtiva);
+    const baCT = ativos.filter(a => a.statusBuscaAtiva === 'CONSELHO_TUTELAR');
+    const baSemRetorno = ativos.filter(a => a.statusBuscaAtiva === 'AGUARDANDO_RETORNO');
+    const faltandoBa = ativos.filter(a => a.faltandoBuscaAtivaCritica);
     const deliberados = ativos.filter(a => a.deliberacao.status !== 'PENDENTE');
 
-    const abertura = `A sessão iniciou com a leitura dos indicadores oficiais do Mapão da turma ${metadata.turmaNormalizada} (${stats.totalAtivos} estudantes ativos e ${stats.totalTransferidos} transferidos/inativos), registrando frequência média global anual de ${stats.mediaFreqAnual ?? '—'}% e média geral de notas em ${stats.mediaNotasTurma !== null ? stats.mediaNotasTurma.toFixed(1) : '—'}.`;
+    const abertura = `A sessão iniciou com a leitura dos indicadores oficiais do Mapão da turma ${metadata.turmaNormalizada} (${stats.totalAtivos} estudantes ativos e ${stats.totalTransferidos} transferidos/inativos), registrando frequência média global anual de ${stats.mediaFreqAnual ?? '—'}% e média geral de notas em ${stats.mediaNotasTurma !== null ? stats.mediaNotasTurma.toFixed(1) : '—'}, bem como o levantamento de ocorrências disciplinares (${stats.totalOcorrenciasDisciplinaresTurma} registro(s) envolvendo ${stats.casosDisciplinaresCount} estudante(s)) e acompanhamentos de Busca Ativa (${stats.casosBuscaAtivaCount} estudante(s)).`;
 
     const partesFalado: string[] = [];
     if (reprovFaltas.length > 0) {
@@ -316,6 +322,27 @@ export default function ConselhoAtaEditor({
         `Foi dedicada atenção especial aos ${aeeLista.length} estudante(s) público-alvo da Educação Especial (AEE): ${aeeLista.map(a => a.nome).join(', ')}, avaliando o alcance das adaptações curriculares e participação com o professor auxiliar/sala de recursos.`
       );
     }
+    if (discLista.length > 0) {
+      const focoDisc = discCriticos.length > 0 ? discCriticos : discLista;
+      partesFalado.push(
+        `No âmbito da convivência e questões disciplinares, foram considerados os registros do ano letivo (${stats.totalOcorrenciasDisciplinaresTurma} ocorrência(s)${stats.ocorrenciasGravesTurma > 0 ? `, sendo ${stats.ocorrenciasGravesTurma} grave/Conviva` : ''}), com destaque para: ${focoDisc.map(a => `${a.nome} (${a.totalOcorrenciasDisciplinares} ocorr.)`).slice(0, 6).join(', ')}${focoDisc.length > 6 ? ' e outros' : ''}.`
+      );
+    }
+    if (baLista.length > 0 || faltandoBa.length > 0) {
+      const detalhesBa: string[] = [];
+      if (baCT.length > 0) {
+        detalhesBa.push(`${baCT.length} encaminhado(s) ao Conselho Tutelar (${baCT.map(a => a.nome).slice(0, 4).join(', ')})`);
+      }
+      if (baSemRetorno.length > 0) {
+        detalhesBa.push(`${baSemRetorno.length} aguardando retorno da família`);
+      }
+      if (faltandoBa.length > 0) {
+        detalhesBa.push(`${faltandoBa.length} abaixo de 75% ainda sem registro formal de Busca Ativa (${faltandoBa.map(a => a.nome).slice(0, 4).join(', ')})`);
+      }
+      partesFalado.push(
+        `Quanto à Busca Ativa, foram avaliados os acompanhamentos registrados para ${baLista.length} estudante(s)${detalhesBa.length > 0 ? `, destacando: ${detalhesBa.join('; ')}` : ''}.`
+      );
+    }
     if (partesFalado.length === 0) {
       partesFalado.push(
         'O grupo docente apresentou diagnóstico positivo de convivência, frequência e avanço de aprendizagem da turma no período analisado, destacando pontos pontuais de apoio pedagógico.'
@@ -323,12 +350,12 @@ export default function ConselhoAtaEditor({
     }
 
     const pensado =
-      'Como estratégias pedagógicas pensadas pelo coletivo: (1) intensificar o acompanhamento pela Tutoria PEI e contato imediato com os responsáveis dos casos em alerta; (2) aplicar roteiros de compensação de ausências (AC) e recuperação contínua/intensiva nas disciplinas com maior índice de retenção; (3) alinhar adaptações avaliativas e flexibilização de tempo/suporte visual para os estudantes AEE.';
+      'Como estratégias pedagógicas e de convivência pensadas pelo coletivo: (1) intensificar o acompanhamento pela Tutoria PEI, Busca Ativa e contato imediato com os responsáveis dos casos em alerta; (2) aplicar roteiros de compensação de ausências (AC) e recuperação contínua/intensiva nas disciplinas com maior índice de retenção; (3) alinhar adaptações avaliativas e flexibilização de tempo/suporte visual para os estudantes AEE; (4) realizar mediação de conflitos, acompanhamento Conviva SP e assinatura de ciência pelos responsáveis nos casos disciplinares reincidentes.';
 
     const decisoes =
       deliberados.length > 0
         ? `Foram registradas ${deliberados.length} deliberações individuais em pauta (${Array.from(new Set(deliberados.map(d => DELIBERACAO_LABELS[d.deliberacao.status]))).join('; ')}).${metadata.bimestreKey === 'FINAL' ? ` No Conselho Final, apurou-se até o momento: ${stats.aprovadosCount} aprovado(s), ${stats.aprovadosConselhoCount} aprovado(s) pelo Conselho e ${stats.reprovadosCount} retido(s), com respectiva definição de enturmação para ${metadata.anoLetivo + 1}.` : ''}`
-        : 'Ficou deliberado o encaminhamento dos casos críticos à busca ativa, convocação formal de responsáveis com assinatura de termo de ciência e monitoramento semanal pela CGPG e Vice-Direção.';
+        : 'Ficou deliberado o encaminhamento dos casos críticos à busca ativa, convocação formal de responsáveis com assinatura de termo de ciência, acompanhamento disciplinar/Conviva quando aplicável e monitoramento semanal pela CGPG e Vice-Direção.';
 
     setAta(prev => ({
       ...prev,

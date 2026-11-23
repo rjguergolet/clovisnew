@@ -117,35 +117,54 @@ export function exportarPautaConselhoTurmaPDF(
     20.5
   );
 
-  // Faixa de Resumo Quantitativo
+  // Faixa de Resumo Quantitativo (6 KPIs)
   let curY = 29;
-  const boxW = (pageWidth - marginX * 2 - 9) / 4;
+  const boxW = (pageWidth - marginX * 2 - 15) / 6;
   const kpis = [
     {
-      label: 'REPROVANDO POR FALTAS (< 75% GLOBAL)',
+      label: 'REPROV. FALTAS (<75%)',
       value: `${stats.reprovandoFaltasCount}`,
       sub: `${stats.totalAtivos > 0 ? Math.round((stats.reprovandoFaltasCount / stats.totalAtivos) * 100) : 0}% dos ativos`,
       border: [220, 38, 38] as [number, number, number],
       fill: [254, 242, 242] as [number, number, number]
     },
     {
-      label: 'CRÍTICOS COM 4+ NOTAS VERMELHAS',
+      label: 'CRÍTICOS 4+ VERMELHAS',
       value: `${stats.criticosNotas4MaisCount}`,
-      sub: stats.duplosCriticosCount > 0 ? `${stats.duplosCriticosCount} também reprovando por faltas` : 'Abaixo de 5,0 em 4+ disciplinas',
+      sub: stats.duplosCriticosCount > 0 ? `${stats.duplosCriticosCount} duplo crítico` : '4+ notas < 5,0',
       border: [234, 88, 12] as [number, number, number],
       fill: [255, 247, 237] as [number, number, number]
     },
     {
-      label: 'ESTUDANTES AEE NA TURMA',
+      label: 'ESTUDANTES AEE',
       value: `${stats.casosAEECount}`,
-      sub: `${stats.casosAEEComAlertaCount} com alerta de notas/faltas`,
+      sub: `${stats.casosAEEComAlertaCount} com alerta`,
       border: [79, 70, 229] as [number, number, number],
       fill: [238, 242, 255] as [number, number, number]
     },
     {
-      label: 'TOTAL EM PAUTA PARA CONVERSA',
+      label: 'DISCIPLINAR (ANO)',
+      value: `${stats.casosDisciplinaresCount}`,
+      sub: `${stats.totalOcorrenciasDisciplinaresTurma} ocorr.${stats.ocorrenciasGravesTurma > 0 ? ` (${stats.ocorrenciasGravesTurma}g)` : ''}`,
+      border: [126, 34, 206] as [number, number, number],
+      fill: [250, 245, 255] as [number, number, number]
+    },
+    {
+      label: 'BUSCA ATIVA',
+      value: `${stats.casosBuscaAtivaCount}`,
+      sub:
+        stats.conselhoTutelarCount > 0
+          ? `${stats.conselhoTutelarCount} Cons. Tutelar`
+          : stats.reprovandoFaltasSemBuscaAtivaCount > 0
+          ? `${stats.reprovandoFaltasSemBuscaAtivaCount} <75% sem BA`
+          : `${stats.buscaAtivaSemRetornoOuCTCount} pendente(s)`,
+      border: [15, 118, 110] as [number, number, number],
+      fill: [240, 253, 250] as [number, number, number]
+    },
+    {
+      label: 'TOTAL EM PAUTA',
       value: `${stats.pautaConselhoCount}`,
-      sub: `${stats.deliberadosCount} deliberados · Freq. média ${stats.mediaFreqAnual ?? '—'}%`,
+      sub: `${stats.deliberadosCount} delib. · ${stats.mediaFreqAnual ?? '—'}%`,
       border: [15, 23, 42] as [number, number, number],
       fill: [248, 250, 252] as [number, number, number]
     }
@@ -160,17 +179,17 @@ export function exportarPautaConselhoTurmaPDF(
 
     doc.setTextColor(71, 85, 105);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(6.5);
-    doc.text(k.label, x + 3, curY + 4.5);
+    doc.setFontSize(6.2);
+    doc.text(k.label, x + 2.5, curY + 4.5);
 
     doc.setTextColor(...k.border);
-    doc.setFontSize(13);
-    doc.text(k.value, x + 3, curY + 10.5);
+    doc.setFontSize(12);
+    doc.text(k.value, x + 2.5, curY + 10.5);
 
     doc.setTextColor(100, 116, 139);
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.8);
-    doc.text(k.sub, x + 15, curY + 10.5);
+    doc.setFontSize(6.3);
+    doc.text(k.sub, x + 12.5, curY + 10.5);
   });
 
   curY += 21;
@@ -204,6 +223,15 @@ export function exportarPautaConselhoTurmaPDF(
       if (a.reprovandoPorFaltasGlobal) tags.push('REPROV. FALTAS');
       if (a.criticoNotas4Mais) tags.push('4+ VERMELHAS');
       if (a.riscoLimiteFaltas) tags.push('ZONA LIMITE');
+      if (a.possuiOcorrenciaDisciplinar) {
+        tags.push(
+          `${a.totalOcorrenciasDisciplinares} OCORR.${a.ocorrenciasGravesCount > 0 ? ` (${a.ocorrenciasGravesCount}G)` : ''}`
+        );
+      }
+      if (a.statusBuscaAtiva === 'CONSELHO_TUTELAR') tags.push('BA: CONS. TUTELAR');
+      else if (a.statusBuscaAtiva === 'AGUARDANDO_RETORNO') tags.push('BA: AGUARD. RET.');
+      else if (a.faltandoBuscaAtivaCritica) tags.push('SEM BUSCA ATIVA');
+      else if (a.possuiBuscaAtiva) tags.push(`BA: ${a.statusBuscaAtivaLabel.toUpperCase()}`);
 
       const redText =
         a.notasVermelhas.length > 0
@@ -296,13 +324,23 @@ export function exportarPautaConselhoTurmaPDF(
     .sort((a, b) => b.qtdNotasVermelhas - a.qtdNotasVermelhas);
   renderSecaoTabela('3. CASOS CRÍTICOS EM RENDIMENTO (4 OU MAIS NOTAS VERMELHAS)', [194, 65, 12], lista4Verm);
 
+  const listaDiscOuBa = ativos
+    .filter(a => a.alertaDisciplinar || a.statusBuscaAtiva === 'CONSELHO_TUTELAR' || a.statusBuscaAtiva === 'AGUARDANDO_RETORNO')
+    .sort((a, b) => b.scoreGravidade - a.scoreGravidade || a.numChamada - b.numChamada);
+  renderSecaoTabela(
+    '4. QUESTÕES DISCIPLINARES RELEVANTES E BUSCA ATIVA CRÍTICA / CONSELHO TUTELAR',
+    [126, 34, 206],
+    listaDiscOuBa
+  );
+
   const jaListados = new Set<string>([
     ...listaAEE.map(a => a.chaveAluno),
     ...listaFaltas.map(a => a.chaveAluno),
-    ...lista4Verm.map(a => a.chaveAluno)
+    ...lista4Verm.map(a => a.chaveAluno),
+    ...listaDiscOuBa.map(a => a.chaveAluno)
   ]);
   const demaisPauta = pautaOrdenada.filter(a => !jaListados.has(a.chaveAluno));
-  renderSecaoTabela('4. DEMAIS ESTUDANTES PARA CONVERSA NO CONSELHO (ZONA LIMITE / 1 A 3 VERMELHAS)', [51, 65, 85], demaisPauta);
+  renderSecaoTabela('5. DEMAIS ESTUDANTES PARA CONVERSA NO CONSELHO (ZONA LIMITE / 1 A 3 VERMELHAS)', [51, 65, 85], demaisPauta);
 
   if (pautaOrdenada.length === 0) {
     doc.setFont('helvetica', 'italic');
@@ -491,8 +529,8 @@ export async function exportarAtaConselhoOficialPDF(
     curY += 2;
   };
 
-  // Síntese numérica oficial do Mapão
-  const resumoOficial = `Estudantes ativos apurados no Mapão: ${stats.totalAtivos} (${stats.totalTransferidos} transferidos/inativos). Frequência global anual média: ${stats.mediaFreqAnual ?? '—'}% · Média global de notas: ${stats.mediaNotasTurma !== null ? stats.mediaNotasTurma.toFixed(1) : '—'}. Casos prioritários mapeados: ${stats.reprovandoFaltasCount} estudante(s) abaixo de 75% na frequência global anual, ${stats.criticosNotas4MaisCount} com 4 ou mais notas abaixo de 5,0, e ${stats.casosAEECount} estudante(s) atendido(s) pelo AEE.`;
+  // Síntese numérica oficial do Mapão + Disciplinar + Busca Ativa
+  const resumoOficial = `Estudantes ativos apurados no Mapão: ${stats.totalAtivos} (${stats.totalTransferidos} transferidos/inativos). Frequência global anual média: ${stats.mediaFreqAnual ?? '—'}% · Média global de notas: ${stats.mediaNotasTurma !== null ? stats.mediaNotasTurma.toFixed(1) : '—'}. Casos prioritários mapeados: ${stats.reprovandoFaltasCount} estudante(s) abaixo de 75% na frequência global anual, ${stats.criticosNotas4MaisCount} com 4 ou mais notas abaixo de 5,0, ${stats.casosAEECount} estudante(s) atendido(s) pelo AEE, ${stats.casosDisciplinaresCount} com registro(s) disciplinar(es) (${stats.totalOcorrenciasDisciplinaresTurma} ocorrência(s)) e ${stats.casosBuscaAtivaCount} em acompanhamento de Busca Ativa${stats.conselhoTutelarCount > 0 ? ` (${stats.conselhoTutelarCount} encaminhado(s) ao Conselho Tutelar)` : ''}.`;
   renderSecaoTexto('I. PANORAMA OFICIAL DO MAPÃO E ABERTURA', [resumoOficial, ata.aberturaPanorama].filter(Boolean).join('\n'));
   renderSecaoTexto('II. O QUE FOI FALADO E DISCUTIDO PELO CONSELHO (ANÁLISE PEDAGÓGICA)', ata.oqueFoiFaladoDiscurso);
   renderSecaoTexto('III. O QUE FOI PENSADO E PROPOSTO (ESTRATÉGIAS, RECUPERAÇÃO E FOCO AEE)', ata.oqueFoiPensadoEstrategias);
@@ -525,6 +563,13 @@ export async function exportarAtaConselhoOficialPDF(
         if (a.reprovandoPorFaltasGlobal) flags.push('Falta <75%');
         if (a.criticoNotas4Mais) flags.push('4+ Verm.');
         else if (a.qtdNotasVermelhas > 0) flags.push(`${a.qtdNotasVermelhas} Verm.`);
+        if (a.possuiOcorrenciaDisciplinar) {
+          flags.push(`Disc. (${a.totalOcorrenciasDisciplinares}x${a.ocorrenciasGravesCount > 0 ? '/G' : ''})`);
+        }
+        if (a.statusBuscaAtiva === 'CONSELHO_TUTELAR') flags.push('BA: C. Tutelar');
+        else if (a.statusBuscaAtiva === 'AGUARDANDO_RETORNO') flags.push('BA: Sem ret.');
+        else if (a.faltandoBuscaAtivaCritica) flags.push('Sem BA');
+        else if (a.possuiBuscaAtiva) flags.push('Busca Ativa');
         if (flags.length === 0) flags.push('Pauta');
 
         const parecerTxt = [

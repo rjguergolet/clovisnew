@@ -25,7 +25,9 @@ import {
   Award,
   ScrollText,
   Sparkles,
-  History
+  History,
+  PhoneCall,
+  Scale
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { getAuthHeaders } from '../lib/auth';
@@ -59,12 +61,21 @@ type FiltroConselho =
   | 'REPROVANDO_FALTAS'
   | 'NOTAS_4_MAIS'
   | 'AEE'
+  | 'DISCIPLINAR'
+  | 'BUSCA_ATIVA'
   | 'ATIVOS'
   | 'TRANSFERIDOS';
 
 type SubAbaTurma = 'TRIAGEM' | 'RESULTADO_FINAL' | 'ATA';
 
-type OrdenacaoConselho = 'criticidade' | 'freq_asc' | 'vermelhas_desc' | 'chamada' | 'nome';
+type OrdenacaoConselho =
+  | 'criticidade'
+  | 'freq_asc'
+  | 'vermelhas_desc'
+  | 'disciplinar_desc'
+  | 'busca_ativa'
+  | 'chamada'
+  | 'nome';
 
 const BIMESTRES_OPCOES: Array<{ key: BimestreConselhoKey; label: string }> = [
   { key: '1B', label: '1º Bim' },
@@ -107,6 +118,8 @@ export default function ConselhoBimestreEspecial() {
     }
     return [];
   });
+  const [ocorrenciasBase, setOcorrenciasBase] = useState<any[]>([]);
+  const [buscaAtivaBase, setBuscaAtivaBase] = useState<any[]>([]);
 
   const [carregando, setCarregando] = useState(true);
   const [erroCarga, setErroCarga] = useState<string | null>(null);
@@ -213,10 +226,33 @@ export default function ConselhoBimestreEspecial() {
     }
   }, [anoLetivo]);
 
+  // Carrega ocorrências disciplinares e registros de Busca Ativa para cruzar com a pauta do Conselho
+  const carregarContextoDisciplinarEBuscaAtiva = useCallback(async () => {
+    try {
+      const [ocRes, baRes] = await Promise.allSettled([
+        getDocs(collection(db, 'ocorrencias')),
+        getDocs(collection(db, 'busca_ativa'))
+      ]);
+      if (ocRes.status === 'fulfilled') {
+        const listaOc: any[] = [];
+        ocRes.value.forEach(d => listaOc.push({ id: d.id, ...d.data() }));
+        setOcorrenciasBase(listaOc);
+      }
+      if (baRes.status === 'fulfilled') {
+        const listaBa: any[] = [];
+        baRes.value.forEach(d => listaBa.push({ id: d.id, ...d.data() }));
+        setBuscaAtivaBase(listaBa);
+      }
+    } catch (e) {
+      console.warn('[ConselhoEspecial] Aviso ao carregar ocorrências/busca ativa:', e);
+    }
+  }, []);
+
   useEffect(() => {
     carregarBaseAlunos();
+    carregarContextoDisciplinarEBuscaAtiva();
     carregarTurmasConselho();
-  }, [carregarBaseAlunos, carregarTurmasConselho]);
+  }, [carregarBaseAlunos, carregarContextoDisciplinarEBuscaAtiva, carregarTurmasConselho]);
 
   // Combina documentos persistidos no Conselho com os boletins (1º-3º bim) já importados no cadastro dos alunos
   const turmasCombinadas = useMemo(() => {
@@ -277,12 +313,23 @@ export default function ConselhoBimestreEspecial() {
 
   // Classificação completa de todas as turmas do bimestre (para rail de turmas + Panorama Geral)
   const turmasClassificadas = useMemo(() => {
+    const contextoExtra = {
+      ocorrenciasTop: ocorrenciasBase,
+      buscaAtivaDocs: buscaAtivaBase,
+      anoLetivo
+    };
     return turmasDoBimestre.map(doc => {
-      const alunos = classificarAlunosConselho(doc.alunosRaw || [], doc.metadata, baseAlunos, doc.deliberacoes || {});
+      const alunos = classificarAlunosConselho(
+        doc.alunosRaw || [],
+        doc.metadata,
+        baseAlunos,
+        doc.deliberacoes || {},
+        contextoExtra
+      );
       const stats = resumirEstatisticasTurma(alunos);
       return { doc, alunos, stats };
     });
-  }, [turmasDoBimestre, baseAlunos]);
+  }, [turmasDoBimestre, baseAlunos, ocorrenciasBase, buscaAtivaBase, anoLetivo]);
 
   const turmaAtualObj = useMemo(() => {
     return turmasClassificadas.find(t => t.doc.chaveTurmaBimestre === chaveTurmaSelecionada) || turmasClassificadas[0] || null;
@@ -933,6 +980,12 @@ export default function ConselhoBimestreEspecial() {
       case 'AEE':
         list = list.filter(a => a.isAtivo && a.isAEE);
         break;
+      case 'DISCIPLINAR':
+        list = list.filter(a => a.isAtivo && a.possuiOcorrenciaDisciplinar);
+        break;
+      case 'BUSCA_ATIVA':
+        list = list.filter(a => a.isAtivo && (a.possuiBuscaAtiva || a.faltandoBuscaAtivaCritica));
+        break;
       case 'ATIVOS':
         list = list.filter(a => a.isAtivo);
         break;
@@ -952,9 +1005,22 @@ export default function ConselhoBimestreEspecial() {
           a.nome.toLowerCase().includes(q) ||
           String(a.numChamada).includes(q) ||
           (a.tutor && a.tutor.toLowerCase().includes(q)) ||
+          a.statusBuscaAtivaLabel.toLowerCase().includes(q) ||
+          a.ocorrenciasDisciplinares.some(
+            o => o.tipo.toLowerCase().includes(q) || o.descricao.toLowerCase().includes(q)
+          ) ||
           a.notasVermelhas.some(n => n.nome.toLowerCase().includes(q) || n.nomeCurto.toLowerCase().includes(q))
       );
     }
+
+    const rankBuscaAtiva = (a: AlunoConselhoClassificado): number => {
+      if (a.statusBuscaAtiva === 'CONSELHO_TUTELAR') return 5;
+      if (a.faltandoBuscaAtivaCritica) return 4;
+      if (a.statusBuscaAtiva === 'AGUARDANDO_RETORNO') return 3;
+      if (a.statusBuscaAtiva === 'CONTATO_REALIZADO') return 2;
+      if (a.statusBuscaAtiva === 'MONITORANDO') return 1;
+      return 0;
+    };
 
     return [...list].sort((a, b) => {
       switch (ordenacao) {
@@ -964,6 +1030,18 @@ export default function ConselhoBimestreEspecial() {
           return (a.freqAnualNum ?? 100) - (b.freqAnualNum ?? 100) || b.qtdNotasVermelhas - a.qtdNotasVermelhas;
         case 'vermelhas_desc':
           return b.qtdNotasVermelhas - a.qtdNotasVermelhas || (a.freqAnualNum ?? 100) - (b.freqAnualNum ?? 100);
+        case 'disciplinar_desc':
+          return (
+            b.ocorrenciasGravesCount - a.ocorrenciasGravesCount ||
+            b.totalOcorrenciasDisciplinares - a.totalOcorrenciasDisciplinares ||
+            b.scoreGravidade - a.scoreGravidade
+          );
+        case 'busca_ativa':
+          return (
+            rankBuscaAtiva(b) - rankBuscaAtiva(a) ||
+            b.totalBuscaAtiva - a.totalBuscaAtiva ||
+            (a.freqAnualNum ?? 100) - (b.freqAnualNum ?? 100)
+          );
         case 'chamada':
           return a.numChamada - b.numChamada;
         case 'nome':
@@ -981,11 +1059,25 @@ export default function ConselhoBimestreEspecial() {
         acc.reprovandoFaltas += item.stats.reprovandoFaltasCount;
         acc.criticos4Mais += item.stats.criticosNotas4MaisCount;
         acc.casosAEE += item.stats.casosAEECount;
+        acc.casosDisciplinares += item.stats.casosDisciplinaresCount;
+        acc.casosBuscaAtiva += item.stats.casosBuscaAtivaCount;
+        acc.conselhoTutelar += item.stats.conselhoTutelarCount;
         acc.pautaTotal += item.stats.pautaConselhoCount;
         acc.deliberados += item.stats.deliberadosCount;
         return acc;
       },
-      { turmas: 0, ativos: 0, reprovandoFaltas: 0, criticos4Mais: 0, casosAEE: 0, pautaTotal: 0, deliberados: 0 }
+      {
+        turmas: 0,
+        ativos: 0,
+        reprovandoFaltas: 0,
+        criticos4Mais: 0,
+        casosAEE: 0,
+        casosDisciplinares: 0,
+        casosBuscaAtiva: 0,
+        conselhoTutelar: 0,
+        pautaTotal: 0,
+        deliberados: 0
+      }
     );
   }, [turmasClassificadas]);
 
@@ -1011,6 +1103,11 @@ export default function ConselhoBimestreEspecial() {
         'Qtd. Notas Vermelhas': a.qtdNotasVermelhas,
         'Disciplinas Vermelhas': a.notasVermelhas.map(n => `${n.nomeCurto} (${n.mencao})`).join('; '),
         'Média Global': a.mediaGlobalNotas ?? '',
+        'Ocorrências Disciplinares': a.totalOcorrenciasDisciplinares,
+        'Ocorrências Graves/Conviva': a.ocorrenciasGravesCount,
+        'Status Busca Ativa': a.faltandoBuscaAtivaCritica ? 'SEM BUSCA ATIVA (<75%)' : a.statusBuscaAtivaLabel,
+        'Registros Busca Ativa': a.totalBuscaAtiva,
+        'Última Busca Ativa': a.ultimaBuscaAtivaData || '',
         'Pauta Conselho': a.precisaConversaConselho ? 'SIM' : 'NÃO',
         Deliberação: DELIBERACAO_LABELS[a.deliberacao.status],
         ...(isConselhoFinal
@@ -1340,6 +1437,14 @@ export default function ConselhoBimestreEspecial() {
                 <span className="font-mono tabular-nums text-indigo-700">
                   {resumoEscolaBimestre.casosAEE} AEE
                 </span>
+                <span aria-hidden="true" className="text-slate-300">·</span>
+                <span className="font-mono tabular-nums text-purple-700">
+                  {resumoEscolaBimestre.casosDisciplinares} disciplinar
+                </span>
+                <span aria-hidden="true" className="text-slate-300">·</span>
+                <span className="font-mono tabular-nums text-teal-700">
+                  {resumoEscolaBimestre.casosBuscaAtiva} busca ativa
+                </span>
               </div>
 
               <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
@@ -1400,6 +1505,12 @@ export default function ConselhoBimestreEspecial() {
                         <span>{stats.criticosNotas4MaisCount} 4+v</span>
                         <span aria-hidden="true">·</span>
                         <span>{stats.casosAEECount} AEE</span>
+                        {(stats.casosDisciplinaresCount > 0 || stats.casosBuscaAtivaCount > 0) && (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span>{stats.casosDisciplinaresCount}D/{stats.casosBuscaAtivaCount}BA</span>
+                          </>
+                        )}
                       </div>
                     </button>
                   );
@@ -1437,6 +1548,8 @@ export default function ConselhoBimestreEspecial() {
                     <th className="py-3 px-3 text-right">Reprov. Faltas (&lt;75%)</th>
                     <th className="py-3 px-3 text-right">4+ Notas Vermelhas</th>
                     <th className="py-3 px-3 text-right">Casos AEE</th>
+                    <th className="py-3 px-3 text-right">Disciplinar</th>
+                    <th className="py-3 px-3 text-right">Busca Ativa</th>
                     <th className="py-3 px-3 text-right">Pauta Conselho</th>
                     <th className="py-3 px-3 text-right">Freq. Anual Média</th>
                     <th className="py-3 px-3 text-right">Média Notas</th>
@@ -1476,6 +1589,26 @@ export default function ConselhoBimestreEspecial() {
                         <span className={stats.casosAEECount > 0 ? 'font-bold text-indigo-700' : 'text-slate-400'}>
                           {stats.casosAEECount}
                         </span>
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono tabular-nums">
+                        <span className={stats.casosDisciplinaresCount > 0 ? 'font-bold text-purple-700' : 'text-slate-400'}>
+                          {stats.casosDisciplinaresCount}
+                        </span>
+                        {stats.ocorrenciasGravesTurma > 0 && (
+                          <span className="text-[11px] font-semibold text-rose-700 ml-1">
+                            ({stats.ocorrenciasGravesTurma}g)
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono tabular-nums">
+                        <span className={stats.casosBuscaAtivaCount > 0 ? 'font-bold text-teal-700' : 'text-slate-400'}>
+                          {stats.casosBuscaAtivaCount}
+                        </span>
+                        {stats.conselhoTutelarCount > 0 && (
+                          <span className="text-[11px] font-semibold text-rose-700 ml-1">
+                            ({stats.conselhoTutelarCount} CT)
+                          </span>
+                        )}
                       </td>
                       <td className="py-3 px-3 text-right font-mono tabular-nums font-semibold text-slate-900">
                         {stats.pautaConselhoCount}
@@ -1796,12 +1929,34 @@ export default function ConselhoBimestreEspecial() {
                                 </td>
                                 <td className="py-2.5 px-3">
                                   <div className="font-semibold text-slate-900 leading-snug">{aluno.nome}</div>
-                                  <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-x-2">
+                                  <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                                     {aluno.isAEE && (
                                       <span className="font-bold text-indigo-700 inline-flex items-center gap-1">
                                         <Accessibility className="w-3 h-3" />
                                         AEE
                                       </span>
+                                    )}
+                                    {aluno.isAtivo && aluno.possuiOcorrenciaDisciplinar && (
+                                      <span className="font-semibold text-purple-700">
+                                        {aluno.totalOcorrenciasDisciplinares} ocorr.
+                                        {aluno.ocorrenciasGravesCount > 0 ? ` (${aluno.ocorrenciasGravesCount}g)` : ''}
+                                      </span>
+                                    )}
+                                    {aluno.isAtivo && aluno.possuiBuscaAtiva && (
+                                      <span
+                                        className={`font-semibold ${
+                                          aluno.statusBuscaAtiva === 'CONSELHO_TUTELAR'
+                                            ? 'text-rose-700'
+                                            : aluno.statusBuscaAtiva === 'AGUARDANDO_RETORNO'
+                                            ? 'text-amber-700'
+                                            : 'text-teal-700'
+                                        }`}
+                                      >
+                                        BA: {aluno.statusBuscaAtivaLabel}
+                                      </span>
+                                    )}
+                                    {aluno.isAtivo && aluno.faltandoBuscaAtivaCritica && (
+                                      <span className="font-semibold text-rose-700">Sem Busca Ativa</span>
                                     )}
                                     {!aluno.isAtivo && <span>{aluno.situacao}</span>}
                                     {aluno.isAtivo && aluno.precisaConversaConselho && (
@@ -1996,32 +2151,32 @@ export default function ConselhoBimestreEspecial() {
             {/* CONTEÚDO SUB-ABA 1: ANÁLISE E TRIAGEM DO MAPÃO */}
             {subAbaTurma === 'TRIAGEM' && (
               <>
-            {/* 4 INDICADORES PRINCIPAIS DA TURMA (CLICÁVEIS PARA FILTRAR) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 6 INDICADORES PRINCIPAIS DA TURMA (CLICÁVEIS PARA FILTRAR) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
               {/* KPI 1: REPROVANDO POR FALTAS GLOBAL */}
               <button
                 type="button"
                 onClick={() => setFiltroAtivo('REPROVANDO_FALTAS')}
-                className={`text-left bg-white border rounded-xl p-4 transition-colors cursor-pointer ${
+                className={`text-left bg-white border rounded-xl p-3.5 transition-colors cursor-pointer ${
                   filtroAtivo === 'REPROVANDO_FALTAS'
                     ? 'border-rose-600 ring-1 ring-rose-600'
                     : 'border-slate-200 hover:border-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between text-xs font-semibold text-rose-700">
-                  <span>Reprovando por Faltas</span>
-                  <CalendarClock className="w-4 h-4" />
+                  <span>Reprov. Faltas</span>
+                  <CalendarClock className="w-4 h-4 shrink-0" />
                 </div>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-3xl font-bold font-mono tabular-nums text-slate-900">
+                <div className="mt-1.5 flex items-baseline gap-1.5">
+                  <span className="text-2xl font-bold font-mono tabular-nums text-slate-900">
                     {turmaAtualObj.stats.reprovandoFaltasCount}
                   </span>
-                  <span className="text-xs text-slate-500 font-mono tabular-nums">
-                    de {turmaAtualObj.stats.totalAtivos} ativos
+                  <span className="text-[11px] text-slate-500 font-mono tabular-nums">
+                    de {turmaAtualObj.stats.totalAtivos}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mt-1.5">
-                  Média global anual oficial abaixo de 75% no Mapão
+                <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                  Global anual abaixo de 75%
                 </p>
               </button>
 
@@ -2029,28 +2184,28 @@ export default function ConselhoBimestreEspecial() {
               <button
                 type="button"
                 onClick={() => setFiltroAtivo('NOTAS_4_MAIS')}
-                className={`text-left bg-white border rounded-xl p-4 transition-colors cursor-pointer ${
+                className={`text-left bg-white border rounded-xl p-3.5 transition-colors cursor-pointer ${
                   filtroAtivo === 'NOTAS_4_MAIS'
                     ? 'border-orange-600 ring-1 ring-orange-600'
                     : 'border-slate-200 hover:border-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between text-xs font-semibold text-orange-700">
-                  <span>Críticos (4+ Vermelhas)</span>
-                  <AlertTriangle className="w-4 h-4" />
+                  <span>4+ Vermelhas</span>
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
                 </div>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-3xl font-bold font-mono tabular-nums text-slate-900">
+                <div className="mt-1.5 flex items-baseline gap-1.5">
+                  <span className="text-2xl font-bold font-mono tabular-nums text-slate-900">
                     {turmaAtualObj.stats.criticosNotas4MaisCount}
                   </span>
                   {turmaAtualObj.stats.duplosCriticosCount > 0 && (
-                    <span className="text-xs font-semibold text-rose-700 font-mono tabular-nums">
-                      ({turmaAtualObj.stats.duplosCriticosCount} duplo crítico)
+                    <span className="text-[11px] font-semibold text-rose-700 font-mono tabular-nums">
+                      ({turmaAtualObj.stats.duplosCriticosCount} duplo)
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-500 mt-1.5">
-                  Quatro ou mais componentes com nota abaixo de 5,0
+                <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                  4 ou mais notas &lt; 5,0
                 </p>
               </button>
 
@@ -2058,53 +2213,119 @@ export default function ConselhoBimestreEspecial() {
               <button
                 type="button"
                 onClick={() => setFiltroAtivo('AEE')}
-                className={`text-left bg-white border rounded-xl p-4 transition-colors cursor-pointer ${
+                className={`text-left bg-white border rounded-xl p-3.5 transition-colors cursor-pointer ${
                   filtroAtivo === 'AEE'
                     ? 'border-indigo-600 ring-1 ring-indigo-600'
                     : 'border-slate-200 hover:border-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between text-xs font-semibold text-indigo-700">
-                  <span>Foco AEE na Turma</span>
-                  <Accessibility className="w-4 h-4" />
+                  <span>Foco AEE</span>
+                  <Accessibility className="w-4 h-4 shrink-0" />
                 </div>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-3xl font-bold font-mono tabular-nums text-slate-900">
+                <div className="mt-1.5 flex items-baseline gap-1.5">
+                  <span className="text-2xl font-bold font-mono tabular-nums text-slate-900">
                     {turmaAtualObj.stats.casosAEECount}
                   </span>
-                  <span className="text-xs text-slate-500 font-mono tabular-nums">
-                    {turmaAtualObj.stats.casosAEEComAlertaCount} com alerta
+                  <span className="text-[11px] text-slate-500 font-mono tabular-nums">
+                    {turmaAtualObj.stats.casosAEEComAlertaCount} alerta
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mt-1.5">
-                  Cruzado com a base escolar (ajustável no detalhe)
+                <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                  Educação Especial na turma
                 </p>
               </button>
 
-              {/* KPI 4: PAUTA COMPLETA DO CONSELHO */}
+              {/* KPI 4: QUESTÕES DISCIPLINARES */}
+              <button
+                type="button"
+                onClick={() => setFiltroAtivo('DISCIPLINAR')}
+                className={`text-left bg-white border rounded-xl p-3.5 transition-colors cursor-pointer ${
+                  filtroAtivo === 'DISCIPLINAR'
+                    ? 'border-purple-600 ring-1 ring-purple-600'
+                    : 'border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-semibold text-purple-700">
+                  <span>Disciplinar</span>
+                  <Scale className="w-4 h-4 shrink-0" />
+                </div>
+                <div className="mt-1.5 flex items-baseline gap-1.5">
+                  <span className="text-2xl font-bold font-mono tabular-nums text-slate-900">
+                    {turmaAtualObj.stats.casosDisciplinaresCount}
+                  </span>
+                  <span className="text-[11px] text-slate-500 font-mono tabular-nums">
+                    {turmaAtualObj.stats.totalOcorrenciasDisciplinaresTurma} ocorr.
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                  {turmaAtualObj.stats.ocorrenciasGravesTurma > 0
+                    ? `${turmaAtualObj.stats.ocorrenciasGravesTurma} grave/Conviva no ano`
+                    : 'Ocorrências de convivência'}
+                </p>
+              </button>
+
+              {/* KPI 5: BUSCA ATIVA */}
+              <button
+                type="button"
+                onClick={() => setFiltroAtivo('BUSCA_ATIVA')}
+                className={`text-left bg-white border rounded-xl p-3.5 transition-colors cursor-pointer ${
+                  filtroAtivo === 'BUSCA_ATIVA'
+                    ? 'border-teal-600 ring-1 ring-teal-600'
+                    : 'border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-semibold text-teal-700">
+                  <span>Busca Ativa</span>
+                  <PhoneCall className="w-4 h-4 shrink-0" />
+                </div>
+                <div className="mt-1.5 flex items-baseline gap-1.5">
+                  <span className="text-2xl font-bold font-mono tabular-nums text-slate-900">
+                    {turmaAtualObj.stats.casosBuscaAtivaCount}
+                  </span>
+                  {turmaAtualObj.stats.conselhoTutelarCount > 0 ? (
+                    <span className="text-[11px] font-semibold text-rose-700 font-mono tabular-nums">
+                      {turmaAtualObj.stats.conselhoTutelarCount} C. Tutelar
+                    </span>
+                  ) : turmaAtualObj.stats.reprovandoFaltasSemBuscaAtivaCount > 0 ? (
+                    <span className="text-[11px] font-semibold text-rose-700 font-mono tabular-nums">
+                      {turmaAtualObj.stats.reprovandoFaltasSemBuscaAtivaCount} sem BA
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-slate-500 font-mono tabular-nums">
+                      {turmaAtualObj.stats.buscaAtivaSemRetornoOuCTCount} pend.
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                  Contatos, retorno e C. Tutelar
+                </p>
+              </button>
+
+              {/* KPI 6: PAUTA COMPLETA DO CONSELHO */}
               <button
                 type="button"
                 onClick={() => setFiltroAtivo('PAUTA')}
-                className={`text-left bg-white border rounded-xl p-4 transition-colors cursor-pointer ${
+                className={`text-left bg-white border rounded-xl p-3.5 transition-colors cursor-pointer ${
                   filtroAtivo === 'PAUTA'
                     ? 'border-slate-900 ring-1 ring-slate-900'
                     : 'border-slate-200 hover:border-slate-300'
                 }`}
               >
                 <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                  <span>Conversar no Conselho</span>
-                  <Users className="w-4 h-4" />
+                  <span>Pauta Conselho</span>
+                  <Users className="w-4 h-4 shrink-0" />
                 </div>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="text-3xl font-bold font-mono tabular-nums text-slate-900">
+                <div className="mt-1.5 flex items-baseline gap-1.5">
+                  <span className="text-2xl font-bold font-mono tabular-nums text-slate-900">
                     {turmaAtualObj.stats.pautaConselhoCount}
                   </span>
-                  <span className="text-xs text-emerald-700 font-semibold font-mono tabular-nums">
-                    {turmaAtualObj.stats.deliberadosCount} deliberados
+                  <span className="text-[11px] text-emerald-700 font-semibold font-mono tabular-nums">
+                    {turmaAtualObj.stats.deliberadosCount} ok
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mt-1.5">
-                  Faltas &lt;75%, zona limite, 1+ vermelhas ou AEE
+                <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                  Faltas, notas, AEE, disc. e BA
                 </p>
               </button>
             </div>
@@ -2120,6 +2341,14 @@ export default function ConselhoBimestreEspecial() {
                       { key: 'REPROVANDO_FALTAS', label: 'Reprovando Faltas', count: turmaAtualObj.stats.reprovandoFaltasCount },
                       { key: 'NOTAS_4_MAIS', label: '4+ Vermelhas', count: turmaAtualObj.stats.criticosNotas4MaisCount },
                       { key: 'AEE', label: 'Casos AEE', count: turmaAtualObj.stats.casosAEECount },
+                      { key: 'DISCIPLINAR', label: 'Disciplinar', count: turmaAtualObj.stats.casosDisciplinaresCount },
+                      {
+                        key: 'BUSCA_ATIVA',
+                        label: 'Busca Ativa',
+                        count:
+                          turmaAtualObj.stats.casosBuscaAtivaCount +
+                          turmaAtualObj.stats.reprovandoFaltasSemBuscaAtivaCount
+                      },
                       { key: 'ATIVOS', label: 'Todos os Ativos', count: turmaAtualObj.stats.totalAtivos },
                       { key: 'TRANSFERIDOS', label: 'Transferidos', count: turmaAtualObj.stats.totalTransferidos }
                     ] as Array<{ key: FiltroConselho; label: string; count: number }>
@@ -2151,7 +2380,7 @@ export default function ConselhoBimestreEspecial() {
                       type="text"
                       value={buscaAluno}
                       onChange={e => setBuscaAluno(e.target.value)}
-                      placeholder="Buscar estudante ou disciplina..."
+                      placeholder="Buscar estudante, disciplina, ocorr..."
                       className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-slate-400 text-slate-900"
                     />
                   </div>
@@ -2179,6 +2408,8 @@ export default function ConselhoBimestreEspecial() {
                     <option value="criticidade">Ordenar: Maior criticidade</option>
                     <option value="freq_asc">Ordenar: Menor freq. anual</option>
                     <option value="vermelhas_desc">Ordenar: Mais notas vermelhas</option>
+                    <option value="disciplinar_desc">Ordenar: Mais ocorr. disciplinares</option>
+                    <option value="busca_ativa">Ordenar: Prioridade Busca Ativa</option>
                     <option value="chamada">Ordenar: Nº da chamada</option>
                     <option value="nome">Ordenar: Nome A–Z</option>
                   </select>
@@ -2210,10 +2441,11 @@ export default function ConselhoBimestreEspecial() {
                         <th className="py-2.5 px-3 min-w-[185px]">Enquadramento no Conselho</th>
                         <th className="py-2.5 px-3 text-right whitespace-nowrap">Global Anual</th>
                         <th className="py-2.5 px-3 text-right whitespace-nowrap">Bimestre / AC</th>
-                        <th className="py-2.5 px-3 min-w-[210px]">Notas Vermelhas (&lt; 5,0)</th>
+                        <th className="py-2.5 px-3 min-w-[205px]">Notas Vermelhas (&lt; 5,0)</th>
                         <th className="py-2.5 px-3 text-right whitespace-nowrap">Média</th>
-                        <th className="py-2.5 px-3 min-w-[200px]">Deliberação</th>
-                        <th className="py-2.5 px-3 text-right w-24">Mapão</th>
+                        <th className="py-2.5 px-3 min-w-[165px]">Disciplinar / Busca Ativa</th>
+                        <th className="py-2.5 px-3 min-w-[195px]">Deliberação</th>
+                        <th className="py-2.5 px-3 text-right w-20">Mapão</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-200 text-sm">
@@ -2300,6 +2532,11 @@ export default function ConselhoBimestreEspecial() {
                                     <span>
                                       {aluno.riscoLimiteFaltas
                                         ? 'Zona Limite de Faltas'
+                                        : aluno.alertaDisciplinar
+                                        ? 'Atenção Disciplinar / Convivência'
+                                        : aluno.statusBuscaAtiva === 'CONSELHO_TUTELAR' ||
+                                          aluno.statusBuscaAtiva === 'AGUARDANDO_RETORNO'
+                                        ? `Busca Ativa: ${aluno.statusBuscaAtivaLabel}`
                                         : 'Atenção em Rendimento'}
                                     </span>
                                   </div>
@@ -2398,6 +2635,64 @@ export default function ConselhoBimestreEspecial() {
                               >
                                 {aluno.mediaGlobalNotas !== null ? aluno.mediaGlobalNotas.toFixed(1) : '—'}
                               </span>
+                            </td>
+
+                            {/* HISTÓRICO DISCIPLINAR E BUSCA ATIVA */}
+                            <td className="py-3 px-3">
+                              {aluno.isAtivo ? (
+                                <div className="space-y-1 text-xs">
+                                  {/* Disciplinar */}
+                                  {aluno.possuiOcorrenciaDisciplinar ? (
+                                    <div
+                                      className={`flex items-center gap-1 font-semibold leading-tight ${
+                                        aluno.ocorrenciasGravesCount > 0
+                                          ? 'text-rose-700'
+                                          : aluno.alertaDisciplinar
+                                          ? 'text-purple-700'
+                                          : 'text-slate-700'
+                                      }`}
+                                    >
+                                      <Scale className="w-3 h-3 shrink-0" />
+                                      <span className="font-mono tabular-nums">
+                                        {aluno.totalOcorrenciasDisciplinares} ocorr.
+                                        {aluno.ocorrenciasGravesCount > 0 ? ` (${aluno.ocorrenciasGravesCount} grave)` : ''}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <div className="text-[11px] text-slate-400">Sem ocorr. disc.</div>
+                                  )}
+
+                                  {/* Busca Ativa */}
+                                  {aluno.statusBuscaAtiva === 'CONSELHO_TUTELAR' ? (
+                                    <div className="flex items-center gap-1 text-rose-700 font-bold leading-tight">
+                                      <PhoneCall className="w-3 h-3 shrink-0" />
+                                      <span>Conselho Tutelar ({aluno.totalBuscaAtiva}x)</span>
+                                    </div>
+                                  ) : aluno.statusBuscaAtiva === 'AGUARDANDO_RETORNO' ? (
+                                    <div className="flex items-center gap-1 text-amber-700 font-semibold leading-tight">
+                                      <PhoneCall className="w-3 h-3 shrink-0" />
+                                      <span>Aguard. Retorno ({aluno.totalBuscaAtiva}x)</span>
+                                    </div>
+                                  ) : aluno.faltandoBuscaAtivaCritica ? (
+                                    <div className="flex items-center gap-1 text-rose-700 font-semibold leading-tight">
+                                      <PhoneCall className="w-3 h-3 shrink-0" />
+                                      <span>Sem Busca Ativa (&lt;75%)</span>
+                                    </div>
+                                  ) : aluno.possuiBuscaAtiva ? (
+                                    <div className="flex items-center gap-1 text-teal-700 font-medium leading-tight">
+                                      <PhoneCall className="w-3 h-3 shrink-0" />
+                                      <span>
+                                        {aluno.statusBuscaAtivaLabel}
+                                        {aluno.totalBuscaAtiva > 0 ? ` (${aluno.totalBuscaAtiva}x)` : ''}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <div className="text-[11px] text-slate-400">BA: Sem registro</div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-slate-400">—</span>
+                              )}
                             </td>
 
                             {/* DELIBERAÇÃO INLINE */}
@@ -2638,6 +2933,159 @@ export default function ConselhoBimestreEspecial() {
                   </ul>
                 </div>
               )}
+
+              {/* Histórico Disciplinar & Busca Ativa (Ano Letivo) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Bloco Disciplinar */}
+                <div className="p-4 bg-white border border-slate-200 rounded-lg space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <Scale className="w-3.5 h-3.5 text-purple-700" />
+                      <span>Questões Disciplinares ({anoLetivo})</span>
+                    </h4>
+                    <span
+                      className={`text-xs font-mono tabular-nums font-bold ${
+                        alunoDetalhe.ocorrenciasGravesCount > 0
+                          ? 'text-rose-700'
+                          : alunoDetalhe.totalOcorrenciasDisciplinares > 0
+                          ? 'text-purple-700'
+                          : 'text-slate-400'
+                      }`}
+                    >
+                      {alunoDetalhe.totalOcorrenciasDisciplinares} registro
+                      {alunoDetalhe.totalOcorrenciasDisciplinares !== 1 ? 's' : ''}
+                      {alunoDetalhe.ocorrenciasGravesCount > 0
+                        ? ` · ${alunoDetalhe.ocorrenciasGravesCount} grave`
+                        : ''}
+                    </span>
+                  </div>
+
+                  {alunoDetalhe.ocorrenciasDisciplinares.length === 0 ? (
+                    <p className="text-xs text-slate-500">
+                      Nenhuma ocorrência disciplinar registrada para este estudante em {anoLetivo}.
+                    </p>
+                  ) : (
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                      {alunoDetalhe.ocorrenciasDisciplinares.slice(0, 10).map((oc, idx) => (
+                        <div
+                          key={oc.id || idx}
+                          className={`p-2.5 rounded-md border text-xs space-y-1 ${
+                            oc.gravidade === 'GRAVE'
+                              ? 'bg-rose-50/60 border-rose-200'
+                              : 'bg-slate-50 border-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-slate-900 truncate">{oc.tipo}</span>
+                            <span className="font-mono tabular-nums text-[11px] text-slate-500 shrink-0">
+                              {oc.data ? oc.data.split('-').reverse().join('/') : '—'}
+                            </span>
+                          </div>
+                          <p className="text-slate-700 leading-snug">{oc.descricao}</p>
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
+                            <span
+                              className={`font-semibold ${
+                                oc.gravidade === 'GRAVE'
+                                  ? 'text-rose-700'
+                                  : oc.gravidade === 'MODERADA'
+                                  ? 'text-amber-700'
+                                  : 'text-slate-600'
+                              }`}
+                            >
+                              {oc.gravidade === 'GRAVE'
+                                ? 'Grave'
+                                : oc.gravidade === 'MODERADA'
+                                ? 'Moderada'
+                                : 'Leve'}
+                            </span>
+                            {oc.registradoConviva && (
+                              <span className="font-semibold text-purple-700">
+                                Conviva{oc.protocoloConviva ? `: ${oc.protocoloConviva}` : ''}
+                              </span>
+                            )}
+                            <span>{oc.cienciaFamilia ? 'Família ciente' : 'Sem ciência registrada'}</span>
+                            {oc.autor && <span>· {oc.autor}</span>}
+                          </div>
+                          {oc.encaminhamento && (
+                            <p className="text-[11px] text-slate-600 italic">
+                              Encaminhamento: {oc.encaminhamento}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Bloco Busca Ativa */}
+                <div className="p-4 bg-white border border-slate-200 rounded-lg space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <PhoneCall className="w-3.5 h-3.5 text-teal-700" />
+                      <span>Busca Ativa ({anoLetivo})</span>
+                    </h4>
+                    <span
+                      className={`text-xs font-semibold ${
+                        alunoDetalhe.statusBuscaAtiva === 'CONSELHO_TUTELAR' || alunoDetalhe.faltandoBuscaAtivaCritica
+                          ? 'text-rose-700'
+                          : alunoDetalhe.statusBuscaAtiva === 'AGUARDANDO_RETORNO'
+                          ? 'text-amber-700'
+                          : alunoDetalhe.possuiBuscaAtiva
+                          ? 'text-teal-700'
+                          : 'text-slate-400'
+                      }`}
+                    >
+                      {alunoDetalhe.faltandoBuscaAtivaCritica
+                        ? 'Sem Busca Ativa (<75%)'
+                        : alunoDetalhe.statusBuscaAtivaLabel}
+                    </span>
+                  </div>
+
+                  {alunoDetalhe.faltandoBuscaAtivaCritica && (
+                    <div className="p-2.5 rounded-md bg-rose-50 border border-rose-200 text-xs text-rose-800 font-medium">
+                      Estudante com frequência global abaixo de 75% e nenhum registro de Busca Ativa lançado neste ano. Recomenda-se acionar a família e registrar imediatamente.
+                    </div>
+                  )}
+
+                  {alunoDetalhe.registrosBuscaAtiva.length === 0 ? (
+                    <p className="text-xs text-slate-500">
+                      Nenhum contato de Busca Ativa registrado em {anoLetivo}.
+                    </p>
+                  ) : (
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                      {alunoDetalhe.registrosBuscaAtiva.slice(0, 10).map((ba, idx) => (
+                        <div
+                          key={ba.id || idx}
+                          className={`p-2.5 rounded-md border text-xs space-y-1 ${
+                            ba.encaminhadoConselhoTutelar
+                              ? 'bg-rose-50/60 border-rose-200'
+                              : 'bg-slate-50 border-slate-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-slate-900 truncate">
+                              {ba.tipoContato} · {ba.statusResposta}
+                            </span>
+                            <span className="font-mono tabular-nums text-[11px] text-slate-500 shrink-0">
+                              {ba.data ? ba.data.split('-').reverse().join('/') : '—'}
+                            </span>
+                          </div>
+                          {ba.descricao && <p className="text-slate-700 leading-snug">{ba.descricao}</p>}
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
+                            {ba.compensacaoEntregue && (
+                              <span className="font-semibold text-emerald-700">Compensação entregue</span>
+                            )}
+                            {ba.encaminhadoConselhoTutelar && (
+                              <span className="font-semibold text-rose-700">Conselho Tutelar</span>
+                            )}
+                            {ba.autor && <span>{ba.autor}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {/* Histórico de Boletins dos Bimestres Anteriores (1º ao 4º Bim / Final) */}
               {alunoDetalhe.boletimHistorico && alunoDetalhe.boletimHistorico.length > 0 && (

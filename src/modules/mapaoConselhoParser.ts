@@ -9,6 +9,8 @@
  * anual (FTAn / Fre An%), cruzando com a base de alunos (AEE, Tutor, RA) e classificando os casos de pauta.
  */
 
+import { extrairAnoRegistro } from './anoLetivoHelper';
+
 export type BimestreConselhoKey = '1B' | '2B' | '3B' | '4B' | 'FINAL';
 
 export type StatusDeliberacaoConselho =
@@ -17,6 +19,8 @@ export type StatusDeliberacaoConselho =
   | 'COMPENSACAO_AUSENCIAS'
   | 'RECUPERACAO_INTENSIVA'
   | 'PLANO_AEE'
+  | 'ACOMPANHAMENTO_DISCIPLINAR'
+  | 'BUSCA_ATIVA_CONSELHO_TUTELAR'
   | 'APROVADO_CONSELHO'
   | 'RETENCAO_PREVISTA'
   | 'ACOMPANHAMENTO_TUTORIA';
@@ -142,6 +146,44 @@ export interface AtaConselhoTurmaData {
   atualizadoEm?: string;
 }
 
+export type StatusBuscaAtivaConselho =
+  | 'SEM_REGISTRO'
+  | 'MONITORANDO'
+  | 'CONTATO_REALIZADO'
+  | 'AGUARDANDO_RETORNO'
+  | 'CONSELHO_TUTELAR';
+
+export interface OcorrenciaDisciplinarResumo {
+  id: string;
+  data: string;
+  tipo: string;
+  categoria: string;
+  gravidade: 'GRAVE' | 'MODERADA' | 'LEVE';
+  descricao: string;
+  encaminhamento: string;
+  autor: string;
+  protocoloConviva: string;
+  registradoConviva: boolean;
+  cienciaFamilia: boolean;
+}
+
+export interface RegistroBuscaAtivaResumo {
+  id: string;
+  data: string;
+  tipoContato: string;
+  statusResposta: string;
+  descricao: string;
+  autor: string;
+  compensacaoEntregue: boolean;
+  encaminhadoConselhoTutelar: boolean;
+}
+
+export interface ContextoConselhoExtra {
+  ocorrenciasTop?: any[];
+  buscaAtivaDocs?: any[];
+  anoLetivo?: number;
+}
+
 export interface AlunoConselhoClassificado extends AlunoMapaoExtraido {
   chaveAluno: string; // Chave determinística para persistência de deliberações (ex: "n19_JULIA_GABRIELLY")
   ra: string | null;
@@ -153,6 +195,21 @@ export interface AlunoConselhoClassificado extends AlunoMapaoExtraido {
   recomposicao: boolean;
   telefoneResponsavel: string;
   boletimHistorico: BoletimBimestreResumo[];
+  // Contexto Disciplinar e Busca Ativa (Ano Letivo)
+  ocorrenciasDisciplinares: OcorrenciaDisciplinarResumo[];
+  totalOcorrenciasDisciplinares: number;
+  ocorrenciasGravesCount: number;
+  ocorrenciasSemCienciaCount: number;
+  possuiOcorrenciaDisciplinar: boolean;
+  alertaDisciplinar: boolean; // Grave/Conviva ou >= 2 ocorrências disciplinares no ano
+  registrosBuscaAtiva: RegistroBuscaAtivaResumo[];
+  totalBuscaAtiva: number;
+  statusBuscaAtiva: StatusBuscaAtivaConselho;
+  statusBuscaAtivaLabel: string;
+  ultimaBuscaAtivaData: string;
+  possuiBuscaAtiva: boolean;
+  alertaBuscaAtiva: boolean; // Conselho Tutelar, Aguardando Retorno ou <75% sem Busca Ativa
+  faltandoBuscaAtivaCritica: boolean; // Reprovando por faltas (<75%) e ainda sem Busca Ativa
   // Flags oficiais de triagem do Conselho
   reprovandoPorFaltasGlobal: boolean; // Fre An < 75%
   perdidoEmFaltasExtremo: boolean; // Fre An < 70%
@@ -1077,12 +1134,326 @@ function encontrarAlunoNaBase(nomeMapao: string, turmaMapao: string, baseAlunos:
   return null;
 }
 
+function normalizarRaComparacao(ra: any): string {
+  return String(ra ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .replace(/^0+/, '');
+}
+
+function formatarDataRegistroBr(raw: any): string {
+  const s = String(raw ?? '').trim();
+  if (!s) return '—';
+  const mIso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (mIso) return `${mIso[3]}/${mIso[2]}/${mIso[1]}`;
+  const mBr = s.match(/^(\d{2}\/\d{2}\/\d{4})/);
+  if (mBr) return mBr[1];
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d.toLocaleDateString('pt-BR');
+  return s.slice(0, 10);
+}
+
+function extrairIsoOrdenacao(raw: any): string {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  const mIso = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (mIso) return mIso[1];
+  const mBr = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (mBr) return `${mBr[3]}-${mBr[2]}-${mBr[1]}`;
+  return s.slice(0, 10);
+}
+
+function pertenceAoAnoConselho(doc: any, anoAlvo: number): boolean {
+  if (!doc || typeof doc !== 'object') return false;
+  const anoDoc = extrairAnoRegistro(doc);
+  if (anoDoc !== null) {
+    return anoDoc === anoAlvo;
+  }
+  if (doc.encerradoNaVirada === true || doc.arquivadoVirada === true) return false;
+  return true;
+}
+
+function classificarOcorrenciaDisciplinar(oc: any): OcorrenciaDisciplinarResumo | null {
+  if (!oc || typeof oc !== 'object') return null;
+
+  const tipoRaw = String(oc.tipo || '').trim();
+  const catRaw = String(oc.categoria || '').trim();
+  const origemUpper = String(oc.origem || '').trim().toUpperCase();
+  const tipoLower = tipoRaw.toLowerCase();
+  const catLower = catRaw.toLowerCase();
+  const combinado = `${tipoLower} ${catLower}`;
+
+  // Excluir rotinas que não são ocorrências disciplinares (atrasos, dispensas, tutorias, busca ativa, elogios)
+  const isDispensa =
+    oc.isDispensa === true ||
+    combinado.includes('dispensa') ||
+    combinado.includes('afastamento') ||
+    combinado.includes('saída antecipada') ||
+    combinado.includes('saida antecipada');
+  if (isDispensa) return null;
+
+  const isAtraso =
+    origemUpper !== 'ATA_ESCOLAR' &&
+    ((tipoLower || catLower)
+      ? (tipoLower.includes('atraso') || catLower.includes('atraso'))
+      : oc.isAtraso === true);
+  if (isAtraso) return null;
+
+  if (origemUpper === 'BUSCA_ATIVA' || combinado.includes('busca ativa')) return null;
+  if (combinado.includes('tutoria') || combinado.includes('acolhimento')) return null;
+  if (
+    combinado.includes('elogio') ||
+    combinado.includes('mérito') ||
+    combinado.includes('merito') ||
+    combinado.includes('parabéns') ||
+    combinado.includes('parabens') ||
+    combinado.includes('destaque positivo') ||
+    combinado.includes('conselho final')
+  ) {
+    return null;
+  }
+
+  // Excluir questões puramente pedagógicas, a menos que tenham gravidade grave/Conviva
+  const gravRaw = String(oc.gravidade || '').trim().toLowerCase();
+  const temConviva = oc.registradoConviva === true || Boolean(String(oc.protocoloConviva || '').trim());
+  const ehPedagogicaPura =
+    (combinado.includes('pedagóg') || combinado.includes('pedagog')) &&
+    !combinado.includes('disciplinar') &&
+    !temConviva &&
+    !gravRaw.includes('grave') &&
+    !gravRaw.includes('alta');
+  if (ehPedagogicaPura) return null;
+
+  const desc = String(oc.descricao || oc.observacao || oc.relato || '').trim();
+  const enc = String(oc.encaminhamento || oc.providencia || oc.medida || '').trim();
+  const textoTodo = `${combinado} ${gravRaw} ${desc.toLowerCase()}`;
+
+  const isGrave =
+    gravRaw.includes('grave') ||
+    gravRaw.includes('alta') ||
+    gravRaw.includes('crít') ||
+    gravRaw.includes('crit') ||
+    temConviva ||
+    origemUpper === 'ATA_ESCOLAR' ||
+    textoTodo.includes('bullying') ||
+    textoTodo.includes('agress') ||
+    textoTodo.includes('suspens') ||
+    textoTodo.includes('ameaç') ||
+    textoTodo.includes('ameac') ||
+    textoTodo.includes('violên') ||
+    textoTodo.includes('violen') ||
+    textoTodo.includes('conviva') ||
+    textoTodo.includes('desacato') ||
+    textoTodo.includes('dano ao patrimônio') ||
+    textoTodo.includes('dano ao patrimonio');
+
+  const isModerada =
+    !isGrave &&
+    (gravRaw.includes('méd') ||
+      gravRaw.includes('med') ||
+      gravRaw.includes('moderad') ||
+      combinado.includes('ocorrência disciplinar') ||
+      combinado.includes('ocorrencia disciplinar') ||
+      combinado.includes('coletiv') ||
+      combinado.includes('advert') ||
+      combinado.includes('indisciplin') ||
+      combinado.includes('conflito'));
+
+  const dataRaw = oc.data || oc.dataOcorrencia || oc.dataRegistro || oc.criadoEm || '';
+
+  return {
+    id: String(oc.id || oc._id || `${extrairIsoOrdenacao(dataRaw)}_${tipoRaw}_${desc.slice(0, 24)}`),
+    data: extrairIsoOrdenacao(dataRaw) || String(dataRaw || ''),
+    tipo: tipoRaw || catRaw || 'Ocorrência Disciplinar',
+    categoria: catRaw || tipoRaw || 'Disciplinar',
+    gravidade: isGrave ? 'GRAVE' : isModerada ? 'MODERADA' : 'LEVE',
+    descricao: desc || 'Registro disciplinar sem descrição detalhada.',
+    encaminhamento: enc,
+    autor: String(oc.autor_nome || oc.autor || oc.registradoPor || oc.usuario || '').trim(),
+    protocoloConviva: String(oc.protocoloConviva || '').trim(),
+    registradoConviva: temConviva,
+    cienciaFamilia: Boolean(oc.dataCiencia || oc.cienciaResponsavel === true)
+  };
+}
+
+function extrairRegistroBuscaAtiva(doc: any): RegistroBuscaAtivaResumo | null {
+  if (!doc || typeof doc !== 'object') return null;
+  const dataRaw = doc.data || doc.dataContato || doc.dataRegistro || doc.criadoEm || '';
+  const tipoContato = String(doc.tipoContato || doc.canal || doc.tipo || 'Contato Busca Ativa')
+    .replace(/^Busca Ativa\s*-\s*/i, '')
+    .trim();
+  const statusResposta = String(doc.houveResposta || doc.status || doc.resultado || 'Registrado').trim();
+  const desc = String(doc.descricao || doc.observacao || doc.relato || '').trim();
+  const textoCheck = `${tipoContato} ${statusResposta} ${desc}`.toLowerCase();
+  const encaminhadoCT = textoCheck.includes('conselho tutelar') || statusResposta.toLowerCase().includes('conselho');
+
+  return {
+    id: String(doc.buscaAtivaId || doc.id || doc._id || `${extrairIsoOrdenacao(dataRaw)}_${tipoContato}_${desc.slice(0, 20)}`),
+    data: extrairIsoOrdenacao(dataRaw) || String(dataRaw || ''),
+    tipoContato: tipoContato || 'Busca Ativa',
+    statusResposta,
+    descricao: desc,
+    autor: String(doc.autor_nome || doc.autor || doc.usuario || doc.registradoPor || '').trim(),
+    compensacaoEntregue: Boolean(doc.compensacaoEntregue),
+    encaminhadoConselhoTutelar: encaminhadoCT
+  };
+}
+
+interface IndicesContextoConselho {
+  discPorRa: Map<string, OcorrenciaDisciplinarResumo[]>;
+  discPorNome: Map<string, OcorrenciaDisciplinarResumo[]>;
+  baPorRa: Map<string, RegistroBuscaAtivaResumo[]>;
+  baPorNome: Map<string, RegistroBuscaAtivaResumo[]>;
+}
+
+function construirIndicesContextoConselho(
+  baseAlunos: any[],
+  contexto: ContextoConselhoExtra | undefined,
+  anoLetivo: number
+): IndicesContextoConselho {
+  const discPorRa = new Map<string, OcorrenciaDisciplinarResumo[]>();
+  const discPorNome = new Map<string, OcorrenciaDisciplinarResumo[]>();
+  const baPorRa = new Map<string, RegistroBuscaAtivaResumo[]>();
+  const baPorNome = new Map<string, RegistroBuscaAtivaResumo[]>();
+
+  const discDedup = new Set<string>();
+  const baDedup = new Set<string>();
+
+  const adicionarOcorrencia = (oc: any, alunoFallback?: any) => {
+    if (!oc || typeof oc !== 'object') return;
+    if (!pertenceAoAnoConselho(oc, anoLetivo)) return;
+
+    const raKey = normalizarRaComparacao(oc.ra || oc.raAluno || alunoFallback?.ra || alunoFallback?.id);
+    const nomeNorm = normalizarTextoComparacao(oc.nomeAluno || oc.alunoNome || alunoFallback?.nome || '');
+    if (!raKey && !nomeNorm) return;
+
+    const origemUpper = String(oc.origem || '').trim().toUpperCase();
+    const tipoCatLower = `${String(oc.tipo || '')} ${String(oc.categoria || '')}`.toLowerCase();
+
+    // Se for registro de Busca Ativa salvo em `ocorrencias`, encaminhar ao índice de Busca Ativa (deduplicado)
+    if (origemUpper === 'BUSCA_ATIVA' || tipoCatLower.includes('busca ativa')) {
+      const baItem = extrairRegistroBuscaAtiva(oc);
+      if (!baItem) return;
+      const baSig = oc.buscaAtivaId
+        ? `baid:${oc.buscaAtivaId}`
+        : `basig:${raKey || nomeNorm}|${baItem.data}|${baItem.statusResposta.toLowerCase()}|${baItem.descricao.slice(0, 40).toLowerCase()}`;
+      if (baDedup.has(baSig)) return;
+      baDedup.add(baSig);
+      if (raKey) {
+        const arr = baPorRa.get(raKey) || [];
+        arr.push(baItem);
+        baPorRa.set(raKey, arr);
+      }
+      if (nomeNorm) {
+        const arr = baPorNome.get(nomeNorm) || [];
+        arr.push(baItem);
+        baPorNome.set(nomeNorm, arr);
+      }
+      return;
+    }
+
+    const discItem = classificarOcorrenciaDisciplinar(oc);
+    if (!discItem) return;
+
+    const sig = oc.id
+      ? `ocid:${oc.id}|${raKey || nomeNorm}`
+      : `ocsig:${raKey || nomeNorm}|${discItem.data}|${discItem.tipo.toLowerCase()}|${discItem.descricao.slice(0, 50).toLowerCase()}`;
+    if (discDedup.has(sig)) return;
+    discDedup.add(sig);
+
+    if (raKey) {
+      const arr = discPorRa.get(raKey) || [];
+      arr.push(discItem);
+      discPorRa.set(raKey, arr);
+    }
+    if (nomeNorm) {
+      const arr = discPorNome.get(nomeNorm) || [];
+      arr.push(discItem);
+      discPorNome.set(nomeNorm, arr);
+    }
+  };
+
+  // 1. Busca Ativa top-level (prioridade na deduplicação por buscaAtivaId/id)
+  (contexto?.buscaAtivaDocs || []).forEach(ba => {
+    if (!ba || typeof ba !== 'object') return;
+    if (!pertenceAoAnoConselho(ba, anoLetivo)) return;
+    const raKey = normalizarRaComparacao(ba.ra || ba.raAluno);
+    const nomeNorm = normalizarTextoComparacao(ba.nomeAluno || ba.alunoNome || ba.nome || '');
+    if (!raKey && !nomeNorm) return;
+
+    const baItem = extrairRegistroBuscaAtiva(ba);
+    if (!baItem) return;
+
+    const sigById = ba.id ? `baid:${ba.id}` : '';
+    const sigByContent = `basig:${raKey || nomeNorm}|${baItem.data}|${baItem.statusResposta.toLowerCase()}|${baItem.descricao.slice(0, 40).toLowerCase()}`;
+    if ((sigById && baDedup.has(sigById)) || baDedup.has(sigByContent)) return;
+    if (sigById) baDedup.add(sigById);
+    baDedup.add(sigByContent);
+
+    if (raKey) {
+      const arr = baPorRa.get(raKey) || [];
+      arr.push(baItem);
+      baPorRa.set(raKey, arr);
+    }
+    if (nomeNorm) {
+      const arr = baPorNome.get(nomeNorm) || [];
+      arr.push(baItem);
+      baPorNome.set(nomeNorm, arr);
+    }
+  });
+
+  // 2. Ocorrências top-level
+  (contexto?.ocorrenciasTop || []).forEach(oc => {
+    adicionarOcorrencia(oc);
+    // Suporte a ocorrências coletivas com alunosEnvolvidos
+    if (Array.isArray(oc?.alunosEnvolvidos) && oc.alunosEnvolvidos.length > 0) {
+      oc.alunosEnvolvidos.forEach((env: any) => {
+        if (!env || typeof env !== 'object') return;
+        adicionarOcorrencia({ ...oc, id: undefined }, { ra: env.ra || env.id, nome: env.nome });
+      });
+    }
+  });
+
+  // 3. Ocorrências aninhadas nos documentos dos alunos
+  (baseAlunos || []).forEach(al => {
+    const listas = [al?.ocorrencias, al?.historico_ocorrencias, al?.registros];
+    listas.forEach(arr => {
+      if (Array.isArray(arr)) {
+        arr.forEach(oc => adicionarOcorrencia(oc, al));
+      }
+    });
+  });
+
+  // Ordenar cada lista do mais recente para o mais antigo
+  const sortDesc = <T extends { data: string }>(arr: T[]) =>
+    arr.sort((a, b) => String(b.data || '').localeCompare(String(a.data || '')));
+  discPorRa.forEach(sortDesc);
+  discPorNome.forEach(sortDesc);
+  baPorRa.forEach(sortDesc);
+  baPorNome.forEach(sortDesc);
+
+  return { discPorRa, discPorNome, baPorRa, baPorNome };
+}
+
+export const STATUS_BUSCA_ATIVA_LABELS: Record<StatusBuscaAtivaConselho, string> = {
+  SEM_REGISTRO: 'Sem Registro',
+  MONITORANDO: 'Monitorando',
+  CONTATO_REALIZADO: 'Contato Realizado',
+  AGUARDANDO_RETORNO: 'Aguardando Retorno',
+  CONSELHO_TUTELAR: 'Conselho Tutelar'
+};
+
 export function classificarAlunosConselho(
   alunosRaw: AlunoMapaoExtraido[],
   metadata: MapaoConselhoMetadata,
   baseAlunos: any[] = [],
-  deliberacoes: Record<string, DeliberacaoAlunoConselho> = {}
+  deliberacoes: Record<string, DeliberacaoAlunoConselho> = {},
+  contextoExtra?: ContextoConselhoExtra
 ): AlunoConselhoClassificado[] {
+  const anoRef = contextoExtra?.anoLetivo || metadata.anoLetivo || new Date().getFullYear();
+  const indices = construirIndicesContextoConselho(baseAlunos, contextoExtra, anoRef);
+
   const lista: AlunoConselhoClassificado[] = alunosRaw.map(al => {
     const chaveAluno = gerarChaveAlunoConselho(al.numChamada, al.nome);
     const delibSalva: DeliberacaoAlunoConselho = deliberacoes[chaveAluno] || {
@@ -1103,6 +1474,83 @@ export function classificarAlunosConselho(
       aeeOrigem = 'NAO';
     }
 
+    const raBase = matchBase ? String(matchBase.ra || matchBase.id || '') : '';
+    const raKey = normalizarRaComparacao(raBase);
+    const nomeMapaoNorm = normalizarTextoComparacao(al.nome);
+    const nomeBaseNorm = matchBase ? normalizarTextoComparacao(matchBase.nome) : '';
+
+    // ------------------------------------------------------------------
+    // Cruzamento de Histórico Disciplinar e Busca Ativa (Ano Letivo)
+    // ------------------------------------------------------------------
+    const ocorrenciasMap = new Map<string, OcorrenciaDisciplinarResumo>();
+    const addDiscList = (arr?: OcorrenciaDisciplinarResumo[]) => {
+      (arr || []).forEach(item => {
+        const k = `${item.data}|${item.tipo}|${item.descricao.slice(0, 40)}`;
+        if (!ocorrenciasMap.has(k)) ocorrenciasMap.set(k, item);
+      });
+    };
+    if (raKey) addDiscList(indices.discPorRa.get(raKey));
+    if (nomeBaseNorm) addDiscList(indices.discPorNome.get(nomeBaseNorm));
+    if (nomeMapaoNorm && nomeMapaoNorm !== nomeBaseNorm) addDiscList(indices.discPorNome.get(nomeMapaoNorm));
+
+    const ocorrenciasDisciplinares = Array.from(ocorrenciasMap.values()).sort((a, b) =>
+      String(b.data || '').localeCompare(String(a.data || ''))
+    );
+    const totalOcorrenciasDisciplinares = ocorrenciasDisciplinares.length;
+    const ocorrenciasGravesCount = ocorrenciasDisciplinares.filter(o => o.gravidade === 'GRAVE').length;
+    const ocorrenciasSemCienciaCount = ocorrenciasDisciplinares.filter(o => !o.cienciaFamilia).length;
+    const possuiOcorrenciaDisciplinar = al.isAtivo && totalOcorrenciasDisciplinares > 0;
+    const alertaDisciplinar = al.isAtivo && (ocorrenciasGravesCount > 0 || totalOcorrenciasDisciplinares >= 2);
+
+    const baMap = new Map<string, RegistroBuscaAtivaResumo>();
+    const addBaList = (arr?: RegistroBuscaAtivaResumo[]) => {
+      (arr || []).forEach(item => {
+        const k = `${item.data}|${item.statusResposta}|${item.descricao.slice(0, 35)}`;
+        if (!baMap.has(k)) baMap.set(k, item);
+      });
+    };
+    if (raKey) addBaList(indices.baPorRa.get(raKey));
+    if (nomeBaseNorm) addBaList(indices.baPorNome.get(nomeBaseNorm));
+    if (nomeMapaoNorm && nomeMapaoNorm !== nomeBaseNorm) addBaList(indices.baPorNome.get(nomeMapaoNorm));
+
+    const registrosBuscaAtiva = Array.from(baMap.values()).sort((a, b) =>
+      String(b.data || '').localeCompare(String(a.data || ''))
+    );
+    const totalBuscaAtiva = registrosBuscaAtiva.length;
+    const ultimaBuscaAtivaData = registrosBuscaAtiva[0]?.data || '';
+
+    const slaRaw = String(matchBase?.sla_busca_ativa || '').trim().toUpperCase();
+    let statusBuscaAtiva: StatusBuscaAtivaConselho = 'SEM_REGISTRO';
+    if (
+      slaRaw === 'ENCAMINHADO_CONSELHO' ||
+      registrosBuscaAtiva.some(r => r.encaminhadoConselhoTutelar)
+    ) {
+      statusBuscaAtiva = 'CONSELHO_TUTELAR';
+    } else if (registrosBuscaAtiva.length > 0) {
+      const ultResp = String(registrosBuscaAtiva[0].statusResposta || '').toLowerCase();
+      if (
+        ultResp.includes('aguard') ||
+        ultResp.includes('não') ||
+        ultResp.includes('nao') ||
+        ultResp.includes('sem retorno') ||
+        ultResp.includes('sem sucesso') ||
+        slaRaw === 'AGUARDANDO_RETORNO'
+      ) {
+        statusBuscaAtiva = 'AGUARDANDO_RETORNO';
+      } else {
+        statusBuscaAtiva = 'CONTATO_REALIZADO';
+      }
+    } else if (slaRaw === 'AGUARDANDO_RETORNO') {
+      statusBuscaAtiva = 'AGUARDANDO_RETORNO';
+    } else if (slaRaw === 'CONTATO_REALIZADO') {
+      statusBuscaAtiva = 'CONTATO_REALIZADO';
+    } else if (slaRaw === 'MONITORANDO') {
+      statusBuscaAtiva = 'MONITORANDO';
+    }
+
+    const statusBuscaAtivaLabel = STATUS_BUSCA_ATIVA_LABELS[statusBuscaAtiva];
+    const possuiBuscaAtiva = al.isAtivo && (totalBuscaAtiva > 0 || statusBuscaAtiva !== 'SEM_REGISTRO');
+
     const freqAnual = al.freqAnualNum;
     const freqBim = al.freqBimestreNum;
 
@@ -1117,6 +1565,12 @@ export function classificarAlunosConselho(
     const criticoNotas4Mais = al.isAtivo && al.qtdNotasVermelhas >= 4;
     const alertaNotas1a3 = al.isAtivo && al.qtdNotasVermelhas >= 1 && al.qtdNotasVermelhas <= 3;
     const duploCritico = reprovandoPorFaltasGlobal && criticoNotas4Mais;
+    const faltandoBuscaAtivaCritica = reprovandoPorFaltasGlobal && !possuiBuscaAtiva;
+    const alertaBuscaAtiva =
+      al.isAtivo &&
+      (statusBuscaAtiva === 'CONSELHO_TUTELAR' ||
+        statusBuscaAtiva === 'AGUARDANDO_RETORNO' ||
+        faltandoBuscaAtivaCritica);
 
     // Disciplinas com frequência individual crítica no bimestre (< 75% descontando AC)
     const disciplinasComFaltaCritica: AlunoConselhoClassificado['disciplinasComFaltaCritica'] = [];
@@ -1166,6 +1620,33 @@ export function classificarAlunosConselho(
           `Estudante AEE${aeeBase.info ? ` (${aeeBase.info})` : ''} — análise individualizada obrigatória em conselho.`
         );
       }
+      if (alertaDisciplinar) {
+        const ultDataDisc = ocorrenciasDisciplinares[0]?.data ? formatarDataRegistroBr(ocorrenciasDisciplinares[0].data) : '';
+        motivosConselho.push(
+          `Questão disciplinar relevante: ${totalOcorrenciasDisciplinares} ocorrência${totalOcorrenciasDisciplinares > 1 ? 's' : ''} no ano${ocorrenciasGravesCount > 0 ? ` (${ocorrenciasGravesCount} grave/Conviva)` : ''}${ultDataDisc ? ` — última em ${ultDataDisc}` : ''}.`
+        );
+      } else if (possuiOcorrenciaDisciplinar && (reprovandoPorFaltasGlobal || criticoNotas4Mais || isAEE || alertaNotas1a3)) {
+        motivosConselho.push(
+          `Possui 1 registro disciplinar no ano (${ocorrenciasDisciplinares[0]?.tipo || 'Disciplinar'}).`
+        );
+      }
+      if (statusBuscaAtiva === 'CONSELHO_TUTELAR') {
+        motivosConselho.push(
+          `Busca Ativa: caso encaminhado ao Conselho Tutelar (${totalBuscaAtiva} registro${totalBuscaAtiva !== 1 ? 's' : ''}${ultimaBuscaAtivaData ? `; último em ${formatarDataRegistroBr(ultimaBuscaAtivaData)}` : ''}).`
+        );
+      } else if (statusBuscaAtiva === 'AGUARDANDO_RETORNO') {
+        motivosConselho.push(
+          `Busca Ativa pendente / sem retorno da família (${totalBuscaAtiva} tentativa${totalBuscaAtiva !== 1 ? 's' : ''}${ultimaBuscaAtivaData ? `; última em ${formatarDataRegistroBr(ultimaBuscaAtivaData)}` : ''}).`
+        );
+      } else if (faltandoBuscaAtivaCritica) {
+        motivosConselho.push(
+          `Alerta de Busca Ativa: estudante abaixo de 75% anual ainda sem registro de Busca Ativa no sistema.`
+        );
+      } else if (possuiBuscaAtiva && (reprovandoPorFaltasGlobal || riscoLimiteFaltas || totalBuscaAtiva >= 2)) {
+        motivosConselho.push(
+          `Busca Ativa em acompanhamento: ${statusBuscaAtivaLabel} (${totalBuscaAtiva} registro${totalBuscaAtiva !== 1 ? 's' : ''}${ultimaBuscaAtivaData ? `; último em ${formatarDataRegistroBr(ultimaBuscaAtivaData)}` : ''}).`
+        );
+      }
       if (riscoLimiteFaltas) {
         if (freqBim !== null && freqBim < 75) {
           motivosConselho.push(
@@ -1193,9 +1674,28 @@ export function classificarAlunosConselho(
       (reprovandoPorFaltasGlobal ||
         criticoNotas4Mais ||
         isAEE ||
+        alertaDisciplinar ||
+        statusBuscaAtiva === 'CONSELHO_TUTELAR' ||
+        statusBuscaAtiva === 'AGUARDANDO_RETORNO' ||
         riscoLimiteFaltas ||
         alertaNotas1a3 ||
         (al.mediaGlobalNotas !== null && al.mediaGlobalNotas < 5.5));
+
+    // Pesos adicionais de gravidade por histórico disciplinar e busca ativa
+    const bonusDisciplinar = al.isAtivo
+      ? ocorrenciasGravesCount * 65 + Math.min(totalOcorrenciasDisciplinares, 6) * 20
+      : 0;
+    const bonusBuscaAtiva = al.isAtivo
+      ? statusBuscaAtiva === 'CONSELHO_TUTELAR'
+        ? 110
+        : statusBuscaAtiva === 'AGUARDANDO_RETORNO'
+        ? 65
+        : faltandoBuscaAtivaCritica
+        ? 45
+        : totalBuscaAtiva > 0
+        ? 15
+        : 0
+      : 0;
 
     // Prioridade e Score de Gravidade
     let prioridade: PrioridadeConselho = 'REGULAR';
@@ -1206,26 +1706,51 @@ export function classificarAlunosConselho(
       scoreGravidade = -100;
     } else if (duploCritico) {
       prioridade = 'URGENTE_DUPLO';
-      scoreGravidade = 1000 + (isAEE ? 80 : 0) + (75 - (freqAnual ?? 75)) * 5 + al.qtdNotasVermelhas * 20;
+      scoreGravidade =
+        1000 +
+        (isAEE ? 80 : 0) +
+        (75 - (freqAnual ?? 75)) * 5 +
+        al.qtdNotasVermelhas * 20 +
+        bonusDisciplinar +
+        bonusBuscaAtiva;
     } else if (reprovandoPorFaltasGlobal) {
       prioridade = 'CRITICO_FALTAS';
-      scoreGravidade = 700 + (isAEE ? 80 : 0) + (75 - (freqAnual ?? 75)) * 8 + al.qtdNotasVermelhas * 12;
+      scoreGravidade =
+        700 +
+        (isAEE ? 80 : 0) +
+        (75 - (freqAnual ?? 75)) * 8 +
+        al.qtdNotasVermelhas * 12 +
+        bonusDisciplinar +
+        bonusBuscaAtiva;
     } else if (criticoNotas4Mais) {
       prioridade = 'CRITICO_NOTAS';
-      scoreGravidade = 600 + (isAEE ? 80 : 0) + al.qtdNotasVermelhas * 25 + (freqAnual !== null ? Math.max(0, 85 - freqAnual) : 0);
+      scoreGravidade =
+        600 +
+        (isAEE ? 80 : 0) +
+        al.qtdNotasVermelhas * 25 +
+        (freqAnual !== null ? Math.max(0, 85 - freqAnual) : 0) +
+        bonusDisciplinar +
+        bonusBuscaAtiva;
     } else if (isAEE) {
       prioridade = 'FOCO_AEE';
-      scoreGravidade = 450 + al.qtdNotasVermelhas * 20 + (freqAnual !== null ? Math.max(0, 85 - freqAnual) * 2 : 0);
+      scoreGravidade =
+        450 +
+        al.qtdNotasVermelhas * 20 +
+        (freqAnual !== null ? Math.max(0, 85 - freqAnual) * 2 : 0) +
+        bonusDisciplinar +
+        bonusBuscaAtiva;
     } else if (precisaConversaConselho) {
       prioridade = 'ATENCAO_CONSELHO';
       scoreGravidade =
         200 +
         (riscoLimiteFaltas ? 80 : 0) +
         al.qtdNotasVermelhas * 30 +
-        (freqAnual !== null ? Math.max(0, 85 - freqAnual) * 3 : 0);
+        (freqAnual !== null ? Math.max(0, 85 - freqAnual) * 3 : 0) +
+        bonusDisciplinar +
+        bonusBuscaAtiva;
     } else {
       prioridade = 'REGULAR';
-      scoreGravidade = 0;
+      scoreGravidade = bonusDisciplinar + bonusBuscaAtiva;
     }
 
     const boletimHistorico = matchBase ? extrairBoletimHistoricoAluno(matchBase) : [];
@@ -1248,6 +1773,20 @@ export function classificarAlunosConselho(
         ? String(matchBase.telefone || matchBase.contato || matchBase.celular || matchBase.whatsapp || '').trim()
         : '',
       boletimHistorico,
+      ocorrenciasDisciplinares,
+      totalOcorrenciasDisciplinares,
+      ocorrenciasGravesCount,
+      ocorrenciasSemCienciaCount,
+      possuiOcorrenciaDisciplinar,
+      alertaDisciplinar,
+      registrosBuscaAtiva,
+      totalBuscaAtiva,
+      statusBuscaAtiva,
+      statusBuscaAtivaLabel,
+      ultimaBuscaAtivaData,
+      possuiBuscaAtiva,
+      alertaBuscaAtiva,
+      faltandoBuscaAtivaCritica,
       reprovandoPorFaltasGlobal,
       perdidoEmFaltasExtremo,
       riscoLimiteFaltas,
@@ -1658,6 +2197,17 @@ export function resumirEstatisticasTurma(alunos: AlunoConselhoClassificado[]) {
   const duplosCriticos = ativos.filter(a => a.duploCritico);
   const casosAEE = ativos.filter(a => a.isAEE);
   const casosAEEComAlerta = casosAEE.filter(a => a.reprovandoPorFaltasGlobal || a.qtdNotasVermelhas > 0 || a.riscoLimiteFaltas);
+  const casosDisciplinares = ativos.filter(a => a.possuiOcorrenciaDisciplinar);
+  const casosDisciplinaresCriticos = ativos.filter(a => a.alertaDisciplinar);
+  const totalOcorrenciasDisciplinaresTurma = ativos.reduce((acc, a) => acc + a.totalOcorrenciasDisciplinares, 0);
+  const ocorrenciasGravesTurma = ativos.reduce((acc, a) => acc + a.ocorrenciasGravesCount, 0);
+  const casosBuscaAtiva = ativos.filter(a => a.possuiBuscaAtiva);
+  const casosBuscaAtivaAlerta = ativos.filter(a => a.alertaBuscaAtiva);
+  const buscaAtivaSemRetornoOuCT = ativos.filter(
+    a => a.statusBuscaAtiva === 'AGUARDANDO_RETORNO' || a.statusBuscaAtiva === 'CONSELHO_TUTELAR'
+  );
+  const conselhoTutelar = ativos.filter(a => a.statusBuscaAtiva === 'CONSELHO_TUTELAR');
+  const reprovandoFaltasSemBuscaAtiva = ativos.filter(a => a.faltandoBuscaAtivaCritica);
   const pautaConselho = ativos.filter(a => a.precisaConversaConselho);
   const regulares = ativos.filter(a => !a.precisaConversaConselho);
   const deliberados = pautaConselho.filter(a => a.deliberacao.status !== 'PENDENTE');
@@ -1701,6 +2251,15 @@ export function resumirEstatisticasTurma(alunos: AlunoConselhoClassificado[]) {
     duplosCriticosCount: duplosCriticos.length,
     casosAEECount: casosAEE.length,
     casosAEEComAlertaCount: casosAEEComAlerta.length,
+    casosDisciplinaresCount: casosDisciplinares.length,
+    casosDisciplinaresCriticosCount: casosDisciplinaresCriticos.length,
+    totalOcorrenciasDisciplinaresTurma,
+    ocorrenciasGravesTurma,
+    casosBuscaAtivaCount: casosBuscaAtiva.length,
+    casosBuscaAtivaAlertaCount: casosBuscaAtivaAlerta.length,
+    buscaAtivaSemRetornoOuCTCount: buscaAtivaSemRetornoOuCT.length,
+    conselhoTutelarCount: conselhoTutelar.length,
+    reprovandoFaltasSemBuscaAtivaCount: reprovandoFaltasSemBuscaAtiva.length,
     pautaConselhoCount: pautaConselho.length,
     regularesCount: regulares.length,
     deliberadosCount: deliberados.length,
@@ -1740,6 +2299,8 @@ export const DELIBERACAO_LABELS: Record<StatusDeliberacaoConselho, string> = {
   COMPENSACAO_AUSENCIAS: 'Compensação de Ausências / Reposição',
   RECUPERACAO_INTENSIVA: 'Recuperação Intensiva',
   PLANO_AEE: 'Plano AEE / Adaptação Curricular',
+  ACOMPANHAMENTO_DISCIPLINAR: 'Mediação / Acompanhamento Disciplinar',
+  BUSCA_ATIVA_CONSELHO_TUTELAR: 'Busca Ativa / Conselho Tutelar',
   ACOMPANHAMENTO_TUTORIA: 'Acompanhamento de Tutoria e Família',
   APROVADO_CONSELHO: 'Aprovado / Promovido pelo Conselho',
   RETENCAO_PREVISTA: 'Risco de Retenção Confirmado'
