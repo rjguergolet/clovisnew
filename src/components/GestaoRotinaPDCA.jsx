@@ -11,6 +11,7 @@ import {
   getDocs,
   onSnapshot
 } from '../lib/database';
+import { ehRegistroDoAnoVigente } from '../modules/anoLetivoHelper';
 
 /**
  * Módulo Otimizado: Tarefas & Rotina PDCA (Exclusivo para Equipe Gestora & Apoio Pedagógico)
@@ -138,10 +139,11 @@ const FREQUENCIAS = [
   }
 ];
 
-const PERFIS_AUTORIZADOS_PDCA = ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC'];
+const PERFIS_AUTORIZADOS_PDCA = ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC'];
 
 const hierarquiaVisibilidade = {
-  'DIRETOR': ['DIRETOR', 'VICE_DIRETOR', 'VICE-DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR', 'TODA A EQUIPE'],
+  'DIRETOR': ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'VICE-DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR', 'TODA A EQUIPE'],
+  'SENIOR_GOE': ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'VICE-DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR', 'TODA A EQUIPE'],
   'VICE_DIRETOR': ['VICE_DIRETOR', 'VICE-DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR', 'TODA A EQUIPE'],
   'VICE-DIRETOR': ['VICE_DIRETOR', 'VICE-DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR', 'TODA A EQUIPE'],
   'CGPG': ['CGPG', 'CGPCG', 'PAAC', 'PROFESSOR', 'TODA A EQUIPE'],
@@ -153,6 +155,7 @@ const hierarquiaVisibilidade = {
 const OPCOES_ATRIBUICAO = [
   'TODA A EQUIPE',
   'DIRETOR',
+  'SENIOR_GOE',
   'VICE_DIRETOR',
   'CGPG',
   'PAAC'
@@ -761,7 +764,7 @@ export function getNivelKey(task, listaUsuariosEquipe = []) {
   if (!task) return 'TODA A EQUIPE';
   const target = String(task.atribuidoA || task.atribuirA || '').toUpperCase().trim();
   if (!target) return 'TODA A EQUIPE';
-  if (target.includes('DIRETOR') && !target.includes('VICE')) return 'DIRETOR';
+  if ((target.includes('DIRETOR') || target.includes('SENIOR') || target.includes('SÊNIOR') || /\bGOE\b/.test(target) || target.includes('EXTENDIDO') || target.includes('ESTENDIDO')) && !target.includes('VICE')) return 'DIRETOR';
   if (target.includes('VICE')) return 'VICE_DIRETOR';
   if (target.includes('CGPG') || target.includes('CGPCG') || target.includes('COORDENA')) return 'CGPG';
   if (target.includes('PAAC')) return 'PAAC';
@@ -782,7 +785,7 @@ export function getNivelKey(task, listaUsuariosEquipe = []) {
     });
     if (usr) {
       const uNivel = String(usr.nivel || usr.cargo || '').toUpperCase().trim();
-      if (uNivel.includes('DIRETOR') && !uNivel.includes('VICE')) return 'DIRETOR';
+      if ((uNivel.includes('DIRETOR') || uNivel.includes('SENIOR') || uNivel.includes('SÊNIOR') || /\bGOE\b/.test(uNivel) || uNivel.includes('EXTENDIDO') || uNivel.includes('ESTENDIDO')) && !uNivel.includes('VICE')) return 'DIRETOR';
       if (uNivel.includes('VICE')) return 'VICE_DIRETOR';
       if (uNivel.includes('CGPG') || uNivel.includes('CGPCG') || uNivel.includes('COORDENA')) return 'CGPG';
       if (uNivel.includes('PAAC')) return 'PAAC';
@@ -903,6 +906,7 @@ export default function GestaoRotinaPDCA() {
   const getNormalizedCargo = (raw) => {
     if (!raw) return 'PROFESSOR';
     const str = String(raw).toUpperCase().trim().replace(/-/g, '_');
+    if (str.includes('SENIOR') || str.includes('SÊNIOR') || /\bGOE\b/.test(str) || str.includes('EXTENDIDO') || str.includes('ESTENDIDO')) return 'SENIOR_GOE';
     if (str.includes('VICE')) return 'VICE_DIRETOR';
     if (str.includes('DIRETOR') || str.includes('DIRECAO') || str.includes('DIREÇÃO')) return 'DIRETOR';
     if (str.includes('CGPG') || str.includes('CGPCG') || str.includes('COORDENA')) return 'CGPG';
@@ -917,12 +921,12 @@ export default function GestaoRotinaPDCA() {
 
   // CONTROLE ESTRITO DE ACESSO ("Só pra quem tem que ter acesso a isso")
   const isAuthorized = PERFIS_AUTORIZADOS_PDCA.includes(cargoLogado);
-  const podeGerenciarEquipe = ['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(cargoLogado);
-  const podeDuplicar = ['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(cargoLogado);
-  const podeRenovarCiclo = ['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(cargoLogado);
+  const podeGerenciarEquipe = ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG'].includes(cargoLogado);
+  const podeDuplicar = ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG'].includes(cargoLogado);
+  const podeRenovarCiclo = ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG'].includes(cargoLogado);
   const podeExcluirTarefa = typeof window !== 'undefined' && typeof window.podeExcluir === 'function'
     ? window.podeExcluir()
-    : ['DIRETOR', 'VICE_DIRETOR'].includes(cargoLogado);
+    : ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR'].includes(cargoLogado);
 
   // Carregar lista de usuários da equipe autorizada
   useEffect(() => {
@@ -970,20 +974,22 @@ export default function GestaoRotinaPDCA() {
     const unsubscribe = onSnapshot(
       colRef,
       (snapshot) => {
+        const rawDocsCount = Array.isArray(snapshot.docs) ? snapshot.docs.length : (snapshot.size || 0);
         const lista = [];
         snapshot.forEach((docSnap) => {
-          lista.push({ id: docSnap.id, ...docSnap.data() });
+          const item = { id: docSnap.id, ...docSnap.data() };
+          if (ehRegistroDoAnoVigente(item)) {
+            lista.push(item);
+          }
         });
 
-        if (lista.length === 0 && (!snapshot.metadata || snapshot.metadata.fromCache === false)) {
+        if (rawDocsCount === 0 && (!snapshot.metadata || snapshot.metadata.fromCache === false)) {
           seedInitialTasks();
           return;
         }
 
-        if (lista.length > 0) {
-          window.tasksCache = lista;
-          setTarefas(lista);
-        }
+        window.tasksCache = lista;
+        setTarefas(lista);
         setLoading(false);
         setIsRealtimeConnected(true);
       },
@@ -997,7 +1003,13 @@ export default function GestaoRotinaPDCA() {
       }
     );
 
+    const onAnoChanged = () => {
+      carregarTarefas();
+    };
+    window.addEventListener('clovis_ano_letivo_changed', onAnoChanged);
+
     return () => {
+      window.removeEventListener('clovis_ano_letivo_changed', onAnoChanged);
       if (typeof unsubscribe === 'function') unsubscribe();
     };
   }, [isAuthorized]);
@@ -1009,12 +1021,13 @@ export default function GestaoRotinaPDCA() {
       const serverSnap = await getDocs(collection(db, 'rotina_equipe'));
       const lista = [];
       serverSnap.forEach((docSnap) => {
-        lista.push({ id: docSnap.id, ...docSnap.data() });
+        const item = { id: docSnap.id, ...docSnap.data() };
+        if (ehRegistroDoAnoVigente(item)) {
+          lista.push(item);
+        }
       });
-      if (lista.length > 0) {
-        window.tasksCache = lista;
-        setTarefas(lista);
-      }
+      window.tasksCache = lista;
+      setTarefas(lista);
       setIsRealtimeConnected(true);
     } catch (e) {
       console.warn('Aviso ao recarregar tarefas manualmente:', e);
@@ -1108,7 +1121,7 @@ export default function GestaoRotinaPDCA() {
     if (!targetRaw) return true;
     const target = String(targetRaw).toUpperCase().trim();
 
-    if (cargoLogado === 'DIRETOR') return true;
+    if (cargoLogado === 'DIRETOR' || cargoLogado === 'SENIOR_GOE') return true;
 
     const userEmailLogado = getCurrentUserEmail();
     const userDetails =
@@ -1128,7 +1141,8 @@ export default function GestaoRotinaPDCA() {
     }
 
     let targetRole = null;
-    if (target.includes('DIRETOR') && !target.includes('VICE')) targetRole = 'DIRETOR';
+    if (target.includes('SENIOR') || target.includes('SÊNIOR') || /\bGOE\b/.test(target) || target.includes('EXTENDIDO') || target.includes('ESTENDIDO')) targetRole = 'SENIOR_GOE';
+    else if (target.includes('DIRETOR') && !target.includes('VICE')) targetRole = 'DIRETOR';
     else if (target.includes('VICE')) targetRole = 'VICE_DIRETOR';
     else if (target.includes('CGPG') || target.includes('CGPCG') || target.includes('COORDENA')) targetRole = 'CGPG';
     else if (target.includes('PAAC')) targetRole = 'PAAC';
@@ -1167,7 +1181,7 @@ export default function GestaoRotinaPDCA() {
     if (['TODA A EQUIPE', 'TODA_EQUIPE', 'TODOS', 'GERAL'].includes(targetUpper)) return true;
 
     if (targetUpper.includes('GESTORA') || targetUpper.includes('GESTAO')) {
-      return ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'PAAC'].includes(cargoLogado);
+      return ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'PAAC'].includes(cargoLogado);
     }
 
     const userEmailLogado = getCurrentUserEmail();
@@ -1186,7 +1200,8 @@ export default function GestaoRotinaPDCA() {
     }
 
     let targetRole = null;
-    if (targetUpper.includes('DIRETOR') && !targetUpper.includes('VICE')) targetRole = 'DIRETOR';
+    if (targetUpper.includes('SENIOR') || targetUpper.includes('SÊNIOR') || /\bGOE\b/.test(targetUpper) || targetUpper.includes('EXTENDIDO') || targetUpper.includes('ESTENDIDO')) targetRole = 'SENIOR_GOE';
+    else if (targetUpper.includes('DIRETOR') && !targetUpper.includes('VICE')) targetRole = 'DIRETOR';
     else if (targetUpper.includes('VICE')) targetRole = 'VICE_DIRETOR';
     else if (targetUpper.includes('CGPG') || targetUpper.includes('CGPCG') || targetUpper.includes('COORDENA')) targetRole = 'CGPG';
     else if (targetUpper.includes('PAAC')) targetRole = 'PAAC';
@@ -1513,7 +1528,7 @@ export default function GestaoRotinaPDCA() {
         titulo: '',
         descricao: '',
         frequencia: defaultFreq,
-        atribuirA: cargoLogado === 'DIRETOR' ? 'TODA A EQUIPE' : cargoLogado,
+        atribuirA: (cargoLogado === 'DIRETOR' || cargoLogado === 'SENIOR_GOE') ? 'TODA A EQUIPE' : cargoLogado,
         dataInicio: '',
         horaInicio: '',
         dataFim: '',
@@ -2112,7 +2127,7 @@ export default function GestaoRotinaPDCA() {
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mb-1">
                 <span className="font-semibold text-slate-700">Rotina &amp; Operações</span>
                 <span aria-hidden="true">·</span>
-                <span>{cargoLogado === 'DIRETOR' ? 'Visão Global Master' : `Acesso ${cargoLogado}`}</span>
+                <span>{(cargoLogado === 'DIRETOR' || cargoLogado === 'SENIOR_GOE') ? 'Visão Global Master' : `Acesso ${cargoLogado}`}</span>
                 <span aria-hidden="true">·</span>
                 <span>{isRealtimeConnected ? 'Sincronizado' : 'Conectando'}</span>
               </div>
@@ -2376,7 +2391,7 @@ export default function GestaoRotinaPDCA() {
                     filtroEscopo === 'TODAS_ACESSO' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  {cargoLogado === 'DIRETOR' ? `Toda Escola (${countTodasAcessoTotal})` : `Meu Nível (${countTodasAcessoTotal})`}
+                  {(cargoLogado === 'DIRETOR' || cargoLogado === 'SENIOR_GOE') ? `Toda Escola (${countTodasAcessoTotal})` : `Meu Nível (${countTodasAcessoTotal})`}
                 </button>
               </div>
             </div>

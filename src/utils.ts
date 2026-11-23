@@ -349,7 +349,7 @@ export function podeExcluir(role?: string | null): boolean {
   }
   const currentRole = role || (typeof window !== 'undefined' ? ((window as any).obterRoleAtual?.() || (window as any).currentUserRole || localStorage.getItem('usuario_nivel') || localStorage.getItem('usuario_cargo')) : '');
   const r = String(currentRole || '').toUpperCase().trim().replace(/-/g, '_');
-  return !r || r === 'DIRETOR' || r === 'VICE_DIRETOR' || r === 'CGPG' || r === 'CGPCG' || r.includes('DIRETOR') || r === 'ADMIN';
+  return !r || r === 'DIRETOR' || r === 'SENIOR_GOE' || r === 'VICE_DIRETOR' || r === 'CGPG' || r === 'CGPCG' || r.includes('DIRETOR') || r === 'ADMIN';
 }
 
 export async function deletarEntidadeUniversal(collectionName: string, id: string): Promise<boolean> {

@@ -389,7 +389,7 @@ export default function DashProjetosPEI() {
   }, [studentsData, ocorrenciasTick]);
 
   const roleNorm = String(userRole || 'DIRETOR').trim().toUpperCase().replace(/-/g, '_');
-  const isAuthorized = roleNorm === 'DIRETOR' || roleNorm === 'VICE_DIRETOR' || roleNorm.includes('VICE') || roleNorm === 'ADMIN';
+  const isAuthorized = roleNorm === 'DIRETOR' || roleNorm === 'SENIOR_GOE' || roleNorm === 'VICE_DIRETOR' || roleNorm.includes('VICE') || roleNorm === 'ADMIN';
 
   // 2. FUNÇÃO DE RE-RENDERIZAÇÃO DO DASHBOARD (ZERO READS)
   const renderizarDashProjetosPEI = useCallback(() => {

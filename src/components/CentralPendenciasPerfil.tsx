@@ -66,7 +66,7 @@ export default function CentralPendenciasPerfil({
   const isProfessor = roleNorm === 'PROFESSOR';
   const isPAAC = roleNorm === 'PAAC' || roleNorm === 'PROFESSOR_PAAC';
   const isCoord = roleNorm === 'CGPG' || roleNorm === 'CGPCG';
-  const isDirecao = roleNorm === 'DIRETOR' || roleNorm === 'VICE_DIRETOR' || roleNorm.includes('VICE');
+  const isDirecao = roleNorm === 'DIRETOR' || roleNorm === 'SENIOR_GOE' || roleNorm === 'VICE_DIRETOR' || roleNorm.includes('VICE');
   const isSecretaria = roleNorm === 'SECRETARIA';
   const canAccessPDCA = !isProfessor && !isSecretaria && (isDirecao || isCoord || isPAAC);
 

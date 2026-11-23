@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { db, collection, getDocs, addDoc, updateDoc, doc, deleteDoc, onSnapshot } from '../lib/database';
+import { ehRegistroDoAnoVigente } from '../modules/anoLetivoHelper';
 import {
   CATEGORIAS_AGENDA,
   TURMAS_ESCOLARES,
@@ -25,6 +26,7 @@ const ROLE_FILTER_PILLS = [
   { id: 'PROFESSORES', label: 'Professores' },
   { id: 'SECRETARIA', label: 'Secretaria' },
   { id: 'DIRETOR', label: 'Diretor' },
+  { id: 'SENIOR_GOE', label: 'Sênior/GOE' },
   { id: 'VICE_DIRETOR', label: 'Vice-Diretor' },
   { id: 'CGPG', label: 'CGPG' },
   { id: 'PAAC', label: 'PAAC' }
@@ -161,6 +163,7 @@ export default function AgendaPEI() {
       return window.normalizarUserRole(raw);
     }
     const str = String(raw || '').trim().toUpperCase().replace(/-/g, '_');
+    if (str === 'SENIOR_GOE' || str === 'SÊNIOR/GOE' || str === 'SENIOR/GOE' || str === 'GOE' || str === 'SÊNIOR' || str === 'SENIOR' || str.includes('SENIOR') || str.includes('SÊNIOR') || /\bGOE\b/.test(str) || str === 'EXTENDIDO' || str === 'ESTENDIDO' || str.includes('EXTENDIDO') || str.includes('ESTENDIDO')) return 'SENIOR_GOE';
     if (str === 'DIRETOR' || str === 'DIREÇÃO' || str === 'DIRECAO') return 'DIRETOR';
     if (str.includes('VICE') || str === 'VICE_DIRETOR') return 'VICE_DIRETOR';
     if (str.includes('CGPG') || str.includes('COORDENA') || str.includes('CGPCG')) return 'CGPG';
@@ -168,7 +171,7 @@ export default function AgendaPEI() {
   };
 
   const roleNorm = getNormalizedRole(userRole);
-  const podeEditarAgenda = ['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(roleNorm);
+  const podeEditarAgenda = ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG'].includes(roleNorm);
   const canCreateEvent = podeEditarAgenda;
 
   // Carregamento em Tempo Real de Eventos via onSnapshot
@@ -186,6 +189,7 @@ export default function AgendaPEI() {
       const list = [];
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
+        if (!ehRegistroDoAnoVigente(data)) return;
         const dtInicio = data.dataInicio || data.data || data.dataLimite || '';
         if (dtInicio) {
           list.push({
@@ -217,7 +221,13 @@ export default function AgendaPEI() {
       }
     });
 
+    const onAnoChanged = () => {
+      carregarEventosAgenda();
+    };
+    window.addEventListener('clovis_ano_letivo_changed', onAnoChanged);
+
     return () => {
+      window.removeEventListener('clovis_ano_letivo_changed', onAnoChanged);
       if (typeof unsubscribe === 'function') {
         unsubscribe();
       }
@@ -232,6 +242,7 @@ export default function AgendaPEI() {
       const list = [];
       serverSnap.forEach((docSnap) => {
         const data = docSnap.data();
+        if (!ehRegistroDoAnoVigente(data)) return;
         const dtInicio = data.dataInicio || data.data || data.dataLimite || '';
         if (dtInicio) {
           list.push({
@@ -564,6 +575,7 @@ export default function AgendaPEI() {
     if (r === 'PROFESSORES') return 'Professores';
     if (r === 'SECRETARIA') return 'Secretaria';
     if (r === 'DIRETOR') return 'Direção';
+    if (r === 'SENIOR_GOE' || r === 'EXTENDIDO') return 'Sênior/GOE';
     return r;
   };
 
@@ -937,7 +949,7 @@ export default function AgendaPEI() {
     const atribUpper = String(ev.atribuirA || '').toUpperCase();
     if (atribUpper.includes('PROFESSOR') || atribUpper.includes('DOCENTE')) {
       dest = 'professores';
-    } else if (atribUpper.includes('DIRETOR') || atribUpper.includes('VICE') || atribUpper.includes('CGPG')) {
+    } else if (atribUpper.includes('DIRETOR') || atribUpper.includes('SENIOR') || atribUpper.includes('SÊNIOR') || /\bGOE\b/.test(atribUpper) || atribUpper.includes('EXTENDIDO') || atribUpper.includes('VICE') || atribUpper.includes('CGPG')) {
       dest = 'gestao';
     }
 
@@ -2425,6 +2437,7 @@ export default function AgendaPEI() {
                       <option value="PROFESSORES">Professores</option>
                       <option value="SECRETARIA">Secretaria</option>
                       <option value="DIRETOR">Diretor</option>
+                      <option value="SENIOR_GOE">Sênior/GOE</option>
                       <option value="VICE_DIRETOR">Vice-Diretor</option>
                       <option value="CGPG">CGPG</option>
                       <option value="PAAC">PAAC</option>
@@ -2709,6 +2722,7 @@ export default function AgendaPEI() {
                       <option value="PROFESSORES">Professores</option>
                       <option value="SECRETARIA">Secretaria</option>
                       <option value="DIRETOR">Diretor</option>
+                      <option value="SENIOR_GOE">Sênior/GOE</option>
                       <option value="VICE_DIRETOR">Vice-Diretor</option>
                       <option value="CGPG">CGPG</option>
                       <option value="PAAC">PAAC</option>
@@ -3047,6 +3061,7 @@ export default function AgendaPEI() {
                     >
                       <option value="TODA A EQUIPE">Toda a Equipe</option>
                       <option value="DIRETOR">Diretor</option>
+                      <option value="SENIOR_GOE">Sênior/GOE</option>
                       <option value="VICE_DIRETOR">Vice-Diretor</option>
                       <option value="CGPG">CGPG</option>
                       <option value="PROFESSORES">Professores</option>

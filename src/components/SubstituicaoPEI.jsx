@@ -410,7 +410,7 @@ export default function SubstituicaoPEI() {
   }, []);
 
   const roleNorm = String(userRole || 'PROFESSOR').toUpperCase().trim().replace(/-/g, '_');
-  const temAcessoSubstituicao = ['DIRETOR', 'VICE_DIRETOR', 'VICE-DIRETOR', 'CGPG'].some(
+  const temAcessoSubstituicao = ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'VICE-DIRETOR', 'CGPG'].some(
     r => roleNorm === r || roleNorm.includes(r)
   );
   const podeEditar = temAcessoSubstituicao;
@@ -1080,7 +1080,7 @@ export default function SubstituicaoPEI() {
     const nome = (prof.nome || '').toLowerCase();
     const disc = (prof.disciplina || '').toLowerCase();
 
-    if (tipo === 'DIRETOR' || (nome.includes('diretor') && !nome.includes('vice'))) {
+    if (tipo === 'DIRETOR' || tipo === 'SENIOR_GOE' || tipo === 'SÊNIOR/GOE' || tipo === 'SENIOR/GOE' || tipo === 'GOE' || tipo.includes('SENIOR') || tipo.includes('SÊNIOR') || tipo === 'EXTENDIDO' || tipo === 'ESTENDIDO' || (nome.includes('diretor') && !nome.includes('vice'))) {
       return 'DIRETOR';
     }
     if (tipo === 'VICE_DIRETOR' || tipo === 'VICE-DIRETOR' || tipo === 'VICE' || nome.includes('vice')) {

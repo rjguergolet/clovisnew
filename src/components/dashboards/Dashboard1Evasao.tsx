@@ -19,7 +19,7 @@ export default function Dashboard1Evasao({
   const [filtroTabela, setFiltroTabela] = useState<'todos' | 'criticos' | 'precoce' | 'queda' | 'consecutivas'>('criticos');
   const [ordenacao, setOrdenacao] = useState<'risco' | 'sed' | 'diaria' | 'consecutivas' | 'nome'>('risco');
 
-  const podeAjustarSed = userRoleNorm === 'DIRETOR' || userRoleNorm === 'VICE_DIRETOR' || userRoleNorm.includes('VICE');
+  const podeAjustarSed = userRoleNorm === 'DIRETOR' || userRoleNorm === 'SENIOR_GOE' || userRoleNorm === 'VICE_DIRETOR' || userRoleNorm.includes('VICE');
 
   const kpis = useMemo(() => {
     const comSed = alunos.filter((a) => a.sedFreq !== null);

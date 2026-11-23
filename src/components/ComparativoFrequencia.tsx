@@ -104,7 +104,7 @@ export default function ComparativoFrequencia() {
       ? (window as any).obterRoleAtual() 
       : (window as any).currentUserRole) || 'PROFESSOR';
     const roleNorm = String(role).toUpperCase().replace(/-/g, '_').trim();
-    return roleNorm === 'DIRETOR' || roleNorm === 'VICE_DIRETOR' || roleNorm.includes('DIRETOR') || roleNorm.includes('VICE');
+    return roleNorm === 'DIRETOR' || roleNorm === 'SENIOR_GOE' || roleNorm === 'VICE_DIRETOR' || roleNorm.includes('DIRETOR') || roleNorm.includes('VICE');
   }, []);
 
   // Lista de turmas disponíveis

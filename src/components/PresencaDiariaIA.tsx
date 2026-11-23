@@ -3,6 +3,7 @@ import { db, collection, getDocs, setDoc, doc, onSnapshot } from '../lib/databas
 import { obterUsuarioAtivoCompleto } from '../modules/authHelper';
 import { isAlunoAtivo } from '../utils';
 import { checkDayStatus, DayStatusResult } from './agendaConstants';
+import { obterAnoLetivoVigente, ehRegistroDoAnoVigente } from '../modules/anoLetivoHelper';
 
 type StatusPresenca = 'presente' | 'atrasado' | 'falta' | 'licenca';
 type OrigemRegistro = 'manual' | 'dispensa' | 'atraso_ocorrencia' | 'pendente';
@@ -51,8 +52,6 @@ interface AlunoPresenca {
   atrasosAcumulados: number;
   faltasConsecutivas: number;
 }
-
-const ANO_LETIVO_OPERACAO = '2027';
 
 function normalizarRaChave(val: unknown): string {
   return String(val || '').replace(/\D/g, '');
@@ -159,6 +158,16 @@ function isOcorrenciaAtrasoValid(oc: any): boolean {
 }
 
 export default function PresencaDiariaIA() {
+  const [ANO_LETIVO_OPERACAO, setAnoLetivoOperacao] = useState<string>(() => String(obterAnoLetivoVigente()));
+  useEffect(() => {
+    const syncAno = (e: any) => {
+      const novo = e?.detail ? String(e.detail) : String(obterAnoLetivoVigente());
+      setAnoLetivoOperacao(novo);
+    };
+    window.addEventListener('clovis_ano_letivo_changed', syncAno);
+    return () => window.removeEventListener('clovis_ano_letivo_changed', syncAno);
+  }, []);
+
   const hojeIso = useMemo(() => {
     const dt = new Date();
     const y = dt.getFullYear();
@@ -169,7 +178,7 @@ export default function PresencaDiariaIA() {
 
   const [dataSelecionada, setDataSelecionada] = useState<string>(() => {
     try {
-      const ultima = localStorage.getItem('clovis_presenca_2027_ultima_data');
+      const ultima = localStorage.getItem(`clovis_presenca_${obterAnoLetivoVigente()}_ultima_data`) || localStorage.getItem('clovis_presenca_2027_ultima_data');
       if (ultima && /^\d{4}-\d{2}-\d{2}$/.test(ultima)) return ultima;
     } catch {}
     return hojeIso;
@@ -217,11 +226,11 @@ export default function PresencaDiariaIA() {
   // Salva última data acessada para facilitar retorno
   useEffect(() => {
     try {
-      localStorage.setItem('clovis_presenca_2027_ultima_data', dataSelecionada);
+      localStorage.setItem(`clovis_presenca_${ANO_LETIVO_OPERACAO}_ultima_data`, dataSelecionada);
     } catch {}
     setForcarChamadaDiaNaoLetivo(false);
     registrosEditadosLocalmenteRef.current = false;
-  }, [dataSelecionada]);
+  }, [dataSelecionada, ANO_LETIVO_OPERACAO]);
 
   // 1. Escutar estudantes em tempo real (captura também dispensas gravadas no documento do aluno)
   useEffect(() => {
@@ -405,7 +414,7 @@ export default function PresencaDiariaIA() {
     );
 
     return () => unsubscribe();
-  }, [dataSelecionada]);
+  }, [dataSelecionada, ANO_LETIVO_OPERACAO]);
 
   // 6. Auto-save silencioso em localStorage quando há alterações para permitir retomar depois sem perda
   useEffect(() => {
@@ -434,13 +443,18 @@ export default function PresencaDiariaIA() {
     };
   }, [registrosPresenca, dataSelecionada, statusSalvamentoDoc]);
 
-  // 7. Histórico completo de chamadas salvas em frequencia_diaria (2027)
+  // 7. Histórico completo de chamadas salvas em frequencia_diaria (filtrado para o ano letivo vigente)
   useEffect(() => {
     const unsubscribe = onSnapshot(
       collection(db, 'frequencia_diaria'),
       (snap) => {
         const lista: any[] = [];
-        snap.forEach((d: any) => lista.push({ id: d.id, ...d.data() }));
+        snap.forEach((d: any) => {
+          const item = { id: d.id, ...d.data() };
+          if (ehRegistroDoAnoVigente(item, Number(ANO_LETIVO_OPERACAO))) {
+            lista.push(item);
+          }
+        });
         (window as any).frequenciaDiariaCache = lista;
         window.dispatchEvent(new CustomEvent('frequenciadiariaupdated'));
         setHistoricoChamadas(lista);
@@ -450,9 +464,9 @@ export default function PresencaDiariaIA() {
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [ANO_LETIVO_OPERACAO]);
 
-  // 8. Ajustes manuais da 2ª métrica (2027)
+  // 8. Ajustes manuais da 2ª métrica no ano letivo vigente
   useEffect(() => {
     const ajusteKey = `licencas_ajuste_${ANO_LETIVO_OPERACAO}`;
     try {
@@ -476,7 +490,7 @@ export default function PresencaDiariaIA() {
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [ANO_LETIVO_OPERACAO]);
 
   // 9. Indexar Dispensas com Datas e Atrasos do Dia/Histórico a partir de 'ocorrencias' + 'alunos'
   const integracaoCruzada = useMemo(() => {
@@ -1526,7 +1540,7 @@ export default function PresencaDiariaIA() {
       if (resJson.data) setAnaliseIaDados(resJson.data);
     } catch {
       setAnaliseIaDados({
-        diagnosticoGeral: `Diagnóstico de Frequência 2027 para ${turmaSelecionada} em ${formatarDataBr(dataSelecionada)}: Taxa de presença em ${estatisticas.taxaPresenca}% (${historicoAgregado.resumo.diasRegistrados} dia(s) apurado(s)). A 3ª métrica isolou ${estatisticas.somaFaltasEfetivas} faltas efetivas reais após descontar dispensas e licenças.`,
+        diagnosticoGeral: `Diagnóstico de Frequência ${ANO_LETIVO_OPERACAO} para ${turmaSelecionada} em ${formatarDataBr(dataSelecionada)}: Taxa de presença em ${estatisticas.taxaPresenca}% (${historicoAgregado.resumo.diasRegistrados} dia(s) apurado(s)). A 3ª métrica isolou ${estatisticas.somaFaltasEfetivas} faltas efetivas reais após descontar dispensas e licenças.`,
         padroesDetectados: [
           {
             titulo: 'Pontualidade na 1ª Aula (07:00)',
@@ -1606,7 +1620,7 @@ export default function PresencaDiariaIA() {
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 font-medium">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold text-[11px]">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                Ano Letivo 2027
+                Ano Letivo {ANO_LETIVO_OPERACAO}
               </span>
               <span className="text-slate-300" aria-hidden="true">·</span>
               <span>Turma &amp; Ordem Alfabética</span>
@@ -1618,7 +1632,7 @@ export default function PresencaDiariaIA() {
               )}
             </div>
             <h1 className="text-lg sm:text-xl font-bold text-slate-900 mt-1 tracking-tight">
-              Presença Diária &amp; Monitoramento 2027
+              Presença Diária &amp; Monitoramento {ANO_LETIVO_OPERACAO}
             </h1>
             <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
               Integrado à Agenda PEI, dispensas do dossiê/ocorrências e atrasos em tempo real, com cálculo automático da 3ª Métrica.
@@ -1653,7 +1667,7 @@ export default function PresencaDiariaIA() {
             className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/80 text-xs font-semibold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
           >
             <i className="fa-solid fa-brain text-xs"></i>
-            <span>Análise IA 2027</span>
+            <span>Análise IA {ANO_LETIVO_OPERACAO}</span>
           </button>
 
           <button
@@ -2707,7 +2721,7 @@ export default function PresencaDiariaIA() {
                   <i className="fa-solid fa-brain"></i>
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900">Mapeamento Comportamental IA · 2027</h3>
+                  <h3 className="text-base font-bold text-slate-900">Mapeamento Comportamental IA · {ANO_LETIVO_OPERACAO}</h3>
                   <p className="text-xs text-slate-500 font-medium">
                     Padrões de atrasos, faltas consecutivas e análise da 3ª Métrica sem licenças.
                   </p>
@@ -2726,7 +2740,7 @@ export default function PresencaDiariaIA() {
               {gerandoAnaliseIa ? (
                 <div className="p-12 text-center text-slate-500 font-medium text-xs">
                   <i className="fa-solid fa-spinner animate-spin text-3xl text-indigo-600 mb-3 block"></i>
-                  Analisando histórico comportamental de frequência 2027 com IA...
+                  Analisando histórico comportamental de frequência {ANO_LETIVO_OPERACAO} com IA...
                 </div>
               ) : analiseIaDados ? (
                 <>

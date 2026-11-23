@@ -49,6 +49,15 @@
       import { matchUsuarioProfessor, isRealProfessorName, isSameProfessor, extrairEMigrarDocentesDoHorario, isRegularTeachingClass } from "./utils";
       import { gerarESalvarDossieAlunoPdf } from "./utils/dossiePdfExport";
       import { gerarRelatorioAnaliseSegmentosPdf } from "./utils/analiseSegmentosPdfExport";
+      import { obterAnoLetivoVigente, definirAnoLetivoVigenteLocal, sincronizarAnoLetivoComServidor, ehRegistroDoAnoVigente } from "./modules/anoLetivoHelper";
+
+      if (typeof window !== "undefined") {
+        window.obterAnoLetivoVigente = obterAnoLetivoVigente;
+        window.definirAnoLetivoVigenteLocal = definirAnoLetivoVigenteLocal;
+        window.sincronizarAnoLetivoComServidor = sincronizarAnoLetivoComServidor;
+        window.ehRegistroDoAnoVigente = ehRegistroDoAnoVigente;
+        sincronizarAnoLetivoComServidor().catch(() => {});
+      }
 
       // Configuração Oficial MongoDB Atlas
       const mongoConfig = {
@@ -234,22 +243,22 @@
       window.podeExcluir = function() {
         const effectiveRole = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
         const realRole = window.realUserRole || effectiveRole;
-        return ["DIRETOR", "VICE_DIRETOR", "CGPG"].includes(effectiveRole) &&
-               ["DIRETOR", "VICE_DIRETOR", "CGPG"].includes(realRole);
+        return ["DIRETOR", "SENIOR_GOE", "VICE_DIRETOR", "CGPG"].includes(effectiveRole) &&
+               ["DIRETOR", "SENIOR_GOE", "VICE_DIRETOR", "CGPG"].includes(realRole);
       };
 
       window.isDirecao = function() {
         const effectiveRole = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
         const realRole = window.realUserRole || effectiveRole;
-        return ["DIRETOR", "VICE_DIRETOR"].includes(effectiveRole) &&
-               ["DIRETOR", "VICE_DIRETOR"].includes(realRole);
+        return ["DIRETOR", "SENIOR_GOE", "VICE_DIRETOR"].includes(effectiveRole) &&
+               ["DIRETOR", "SENIOR_GOE", "VICE_DIRETOR"].includes(realRole);
       };
 
       window.podeEditarSensivel = function() {
         const effectiveRole = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
         const realRole = window.realUserRole || effectiveRole;
-        return ["DIRETOR", "VICE_DIRETOR", "CGPG", "SECRETARIA"].includes(effectiveRole) &&
-               ["DIRETOR", "VICE_DIRETOR", "CGPG", "SECRETARIA"].includes(realRole);
+        return ["DIRETOR", "SENIOR_GOE", "VICE_DIRETOR", "CGPG", "SECRETARIA"].includes(effectiveRole) &&
+               ["DIRETOR", "SENIOR_GOE", "VICE_DIRETOR", "CGPG", "SECRETARIA"].includes(realRole);
       };
 
       // FUNÇÃO AUXILIAR CENTRALIZADA DE REMOÇÃO COMPLETA DE OCORRÊNCIAS / REGISTROS
@@ -456,7 +465,7 @@
         const realRole = window.realUserRole || (window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR");
         const isDeletePermitidoCliente =
           colecao === 'usuarios' ? realRole === 'DIRETOR'
-          : colecao === 'alunos' ? ['DIRETOR', 'VICE_DIRETOR', 'SECRETARIA'].includes(realRole)
+          : colecao === 'alunos' ? ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'SECRETARIA'].includes(realRole)
           : (window.podeExcluir && window.podeExcluir());
 
         if (!isDeletePermitidoCliente) {
@@ -561,7 +570,7 @@
       window.podePublicarMural = function() {
         const roleRaw = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
         const role = window.normalizarUserRole(roleRaw);
-        return ["DIRETOR", "VICE_DIRETOR", "CGPG", "PAAC"].includes(role);
+        return ["DIRETOR", "SENIOR_GOE", "VICE_DIRETOR", "CGPG", "PAAC"].includes(role);
       };
 
       // Atualiza visualmente o badge de status em tempo real do mural
@@ -716,6 +725,11 @@
                 ...data
               };
 
+              // Ignora recados de anos letivos anteriores encerrados na Virada de Ano
+              if (!ehRegistroDoAnoVigente(item)) {
+                return;
+              }
+
               // Se for mensagem de boas-vindas do ano letivo ou alerta pedagógico de ocorrência, exclui imediatamente do banco e ignora
               if (window.eMensagemBoasVindasAnoLetivo(item) || item.tipo === 'ALERTA_PEDAGOGICO' || (item.titulo && String(item.titulo).startsWith('ALERTA PEDAGÓGICO:'))) {
                 try {
@@ -812,7 +826,16 @@
         const cargoStr = String(cargoOuRole || "").toUpperCase();
         const nomeLower = String(nome || "").toLowerCase();
 
-        // 1. Direção Escolar (Âmbar / Dourado Real)
+        // 1. Direção Escolar / Sênior/GOE (Âmbar / Dourado Real)
+        if (roleNorm === "SENIOR_GOE" || cargoStr.includes("SENIOR") || cargoStr.includes("SÊNIOR") || /\bGOE\b/.test(cargoStr) || cargoStr.includes("EXTENDIDO") || cargoStr.includes("ESTENDIDO")) {
+          return {
+            role: "SENIOR_GOE",
+            label: "Sênior/GOE",
+            badgeClass: "bg-amber-100 text-amber-950 border-amber-300 ring-1 ring-amber-400/30",
+            icon: '<i class="fa-solid fa-crown text-amber-600 text-[10px]"></i>'
+          };
+        }
+
         if (nomeLower.includes("diretor") || nomeLower.includes("direção") || nomeLower.includes("direcao") || roleNorm === "DIRETOR" || cargoStr.includes("DIRETOR")) {
           return {
             role: "DIRETOR",
@@ -1383,13 +1406,13 @@
             return myCargo.includes('PROFESSOR') || myCargo === 'DOCENTE' || myCargo === 'TUTOR';
           }
           if (destStr.includes('secretaria')) {
-            return myCargo.includes('SECRETAR') || myCargo.includes('GOE') || myCargo.includes('AOE');
+            return myCargo.includes('SECRETAR') || myCargo.includes('AOE');
           }
           if (destStr.includes('coordena') || destStr.includes('cgpg') || destStr.includes('cgpac')) {
             return myCargo.includes('COORDENADOR') || myCargo.includes('CGPG') || myCargo.includes('CGPAC');
           }
           if (destStr.includes('dire')) {
-            return myCargo.includes('DIRETOR') || myCargo.includes('VICE');
+            return myCargo.includes('DIRETOR') || myCargo.includes('SENIOR') || myCargo.includes('SÊNIOR') || /\bGOE\b/.test(myCargo) || myCargo.includes('EXTENDIDO') || myCargo.includes('VICE');
           }
           if (destStr.includes('paac')) {
             return myCargo.includes('PAAC');
@@ -1404,10 +1427,11 @@
             const cgNorm = window.normalizarUserRole ? window.normalizarUserRole(cg) : String(cg || '').toUpperCase().trim();
             if (cgNorm === myCargo) return true;
             if (cgNorm === 'PROFESSOR' && (myCargo.includes('PROFESSOR') || myCargo === 'DOCENTE' || myCargo === 'TUTOR')) return true;
-            if (cgNorm === 'DIRETOR' && (myCargo.includes('DIRETOR') || myCargo.includes('VICE'))) return true;
-            if (cgNorm === 'VICE_DIRETOR' && (myCargo.includes('VICE') || myCargo.includes('DIRETOR'))) return true;
+            if (cgNorm === 'DIRETOR' && (myCargo.includes('DIRETOR') || myCargo.includes('SENIOR') || myCargo.includes('SÊNIOR') || /\bGOE\b/.test(myCargo) || myCargo.includes('EXTENDIDO') || myCargo.includes('VICE'))) return true;
+            if ((cgNorm === 'SENIOR_GOE' || cgNorm === 'EXTENDIDO') && (myCargo.includes('SENIOR') || myCargo.includes('SÊNIOR') || /\bGOE\b/.test(myCargo) || myCargo.includes('EXTENDIDO') || myCargo.includes('DIRETOR'))) return true;
+            if (cgNorm === 'VICE_DIRETOR' && (myCargo.includes('VICE') || myCargo.includes('DIRETOR') || myCargo.includes('SENIOR') || myCargo.includes('SÊNIOR') || /\bGOE\b/.test(myCargo) || myCargo.includes('EXTENDIDO'))) return true;
             if (cgNorm === 'CGPG' && (myCargo.includes('COORDENADOR') || myCargo.includes('CGPG') || myCargo.includes('CGPAC'))) return true;
-            if (cgNorm === 'SECRETARIA' && (myCargo.includes('SECRETAR') || myCargo.includes('GOE') || myCargo.includes('AOE'))) return true;
+            if (cgNorm === 'SECRETARIA' && (myCargo.includes('SECRETAR') || myCargo.includes('AOE'))) return true;
             if (cgNorm === 'PAAC' && myCargo.includes('PAAC')) return true;
             if (cgNorm === 'OUTROS') return true;
             return false;
@@ -1620,10 +1644,10 @@
                   return cCargo.includes('PROFESSOR') || cCargo === 'DOCENTE' || cCargo === 'TUTOR';
                 }
                 if (cargoTarget === 'DIRETOR') {
-                  return cCargo.includes('DIRETOR') || cCargo.includes('VICE');
+                  return cCargo.includes('DIRETOR') || cCargo.includes('SENIOR') || cCargo.includes('SÊNIOR') || /\bGOE\b/.test(cCargo) || cCargo.includes('EXTENDIDO') || cCargo.includes('VICE');
                 }
                 if (cargoTarget === 'SECRETARIA') {
-                  return cCargo.includes('SECRETAR') || cCargo.includes('GOE') || cCargo.includes('AOE');
+                  return cCargo.includes('SECRETAR') || cCargo.includes('AOE');
                 }
                 if (cargoTarget === 'CGPG') {
                   return cCargo.includes('CGPG') || cCargo.includes('COORD');
@@ -1875,6 +1899,8 @@
               "PROFESSOR": "Professores",
               "PROFESSORES": "Professores",
               "DIRETOR": "Direção",
+              "SENIOR_GOE": "Sênior/GOE",
+              "EXTENDIDO": "Sênior/GOE",
               "VICE_DIRETOR": "Vice-Direção",
               "CGPG": "CGPG",
               "PAAC": "PAAC",
@@ -2209,6 +2235,8 @@
               "PROFESSOR": "Professores",
               "PROFESSORES": "Professores",
               "DIRETOR": "Direção",
+              "SENIOR_GOE": "Sênior/GOE",
+              "EXTENDIDO": "Sênior/GOE",
               "VICE_DIRETOR": "Vice-Direção",
               "CGPG": "CGPG",
               "PAAC": "PAAC",
@@ -3043,9 +3071,9 @@
                 const cgNorm = String(cg || "").toUpperCase().trim();
                 if (cgNorm === myCargo) return true;
                 if (cgNorm === 'PROFESSORES' && (myCargo.includes('PROFESSOR') || myCargo === 'DOCENTE')) return true;
-                if (cgNorm === 'DIRECAO' && (myCargo.includes('DIRETOR') || myCargo.includes('VICE'))) return true;
+                if (cgNorm === 'DIRECAO' && (myCargo.includes('DIRETOR') || myCargo.includes('SENIOR') || myCargo.includes('SÊNIOR') || /\bGOE\b/.test(myCargo) || myCargo.includes('EXTENDIDO') || myCargo.includes('VICE'))) return true;
                 if (cgNorm === 'COORDENACAO' && (myCargo.includes('COORDENADOR') || myCargo.includes('CGPG') || myCargo.includes('CGPAC'))) return true;
-                if (cgNorm === 'SECRETARIA' && (myCargo.includes('SECRETAR') || myCargo.includes('GOE') || myCargo.includes('AOE'))) return true;
+                if (cgNorm === 'SECRETARIA' && (myCargo.includes('SECRETAR') || myCargo.includes('AOE'))) return true;
                 if (cgNorm === 'PAAC' && myCargo.includes('PAAC')) return true;
                 if (cgNorm === 'OUTROS') return true;
                 return false;
@@ -3222,11 +3250,14 @@
 
       // Matrix de Permissão de Abas por Nível de Acesso (RBAC - Presença Diária & IA liberada para todos os perfis)
       window.PERMISSOES_ABAS = {
-        DIRETOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria"],
-        VICE_DIRETOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria"],
-        "VICE-DIRETOR": ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria"],
-        CGPG: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas"],
-        CGPCG: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas"],
+        DIRETOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria", "conselho-especial"],
+        SENIOR_GOE: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria", "conselho-especial"],
+        EXTENDIDO: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria", "conselho-especial"],
+        ESTENDIDO: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria", "conselho-especial"],
+        VICE_DIRETOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria", "conselho-especial"],
+        "VICE-DIRETOR": ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "auditoria", "conselho-especial"],
+        CGPG: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "conselho-especial"],
+        CGPCG: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei", "gerador-atas", "conselho-especial"],
         PROFESSOR_PAAC: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei"],
         PAAC: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "agenda", "admin", "rotina-pdca", "horarios", "substituicao-pei"],
         PROFESSOR: ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-aprovacao", "registros", "agenda", "admin", "horarios"],
@@ -3237,6 +3268,7 @@
       window.normalizarUserRole = function(rawRole) {
         if (!rawRole) return "PROFESSOR";
         const str = String(rawRole).trim().toUpperCase();
+        if (str === "SENIOR_GOE" || str === "SÊNIOR/GOE" || str === "SENIOR/GOE" || str === "GOE" || str === "SÊNIOR" || str === "SENIOR" || str.includes("SENIOR") || str.includes("SÊNIOR") || /\bGOE\b/.test(str) || str === "EXTENDIDO" || str === "ESTENDIDO" || str.includes("EXTENDIDO") || str.includes("ESTENDIDO")) return "SENIOR_GOE";
         if (str === "DIRETOR" || str === "DIREÇÃO" || str === "DIRECAO") return "DIRETOR";
         if (str.includes("VICE") || str === "VICE_DIRETOR" || str === "VICE-DIRETOR") return "VICE_DIRETOR";
         if (str.includes("CGPG") || str.includes("COORDENA") || str.includes("COORDENADOR") || str.includes("CGPCG")) return "CGPG";
@@ -3789,7 +3821,7 @@
         const roleNorm = window.normalizarUserRole
           ? window.normalizarUserRole(roleRaw)
           : String(roleRaw || "").toUpperCase().replace(/-/g, "_").trim();
-        return ["SECRETARIA", "CGPG", "DIRETOR", "VICE_DIRETOR"].includes(roleNorm);
+        return ["SECRETARIA", "CGPG", "DIRETOR", "SENIOR_GOE", "VICE_DIRETOR"].includes(roleNorm);
       };
 
       window.isOcorrenciaDispensa = function(oc) {
@@ -4175,10 +4207,10 @@
           atalhosProtagonismo.forEach(btn => btn.classList.remove("hidden"));
         }
 
-        // Botão de Ajuste Manual SED no cabeçalho de frequência do dossiê (Exclusivo Direção / Vice-Direção)
+        // Botão de Ajuste Manual SED no cabeçalho de frequência do dossiê (Exclusivo Direção / Sênior/GOE / Vice-Direção)
         const btnAjusteFreqModal = document.getElementById("btn-ajustar-freq-sed-modal");
         if (btnAjusteFreqModal) {
-          const isDirecao = (role === "DIRETOR" || role === "VICE_DIRETOR");
+          const isDirecao = (role === "DIRETOR" || role === "SENIOR_GOE" || role === "VICE_DIRETOR");
           if (isDirecao) {
             btnAjusteFreqModal.classList.remove("hidden");
           } else {
@@ -4186,11 +4218,11 @@
           }
         }
 
-        // Botão de Geração de Parecer Pedagógico com IA (Exclusivo Direção, Vice-Direção e CGPG)
+        // Botão de Geração de Parecer Pedagógico com IA (Exclusivo Direção, Sênior/GOE, Vice-Direção e CGPG)
         const btnGerarParecerIA = document.getElementById("btn-gerar-parecer-ia");
         if (btnGerarParecerIA) {
           const roleNorm = String(role || "").toUpperCase().replace(/-/g, '_').trim();
-          const canGerarParecer = (roleNorm === "DIRETOR" || roleNorm === "VICE_DIRETOR" || roleNorm === "CGPG" || roleNorm.includes("DIRETOR") || roleNorm.includes("VICE") || roleNorm.includes("CGPG"));
+          const canGerarParecer = (roleNorm === "DIRETOR" || roleNorm === "SENIOR_GOE" || roleNorm === "VICE_DIRETOR" || roleNorm === "CGPG" || roleNorm.includes("DIRETOR") || roleNorm.includes("VICE") || roleNorm.includes("CGPG"));
           if (canGerarParecer) {
             btnGerarParecerIA.classList.remove("hidden");
           } else {
@@ -4229,7 +4261,7 @@
         const role = String(roleRaw || "").toUpperCase().trim();
         const abasPermitidas = (window.PERMISSOES_ABAS && (window.PERMISSOES_ABAS[role] || window.PERMISSOES_ABAS[window.normalizarUserRole(role)])) || ["mural", "alunos", "registros"];
 
-        const todasAbas = ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "rotina-pdca", "agenda", "registros", "horarios", "substituicao-pei", "gerador-atas", "secretaria", "admin", "auditoria"];
+        const todasAbas = ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "rotina-pdca", "agenda", "registros", "horarios", "substituicao-pei", "gerador-atas", "secretaria", "admin", "auditoria", "conselho-especial"];
 
         todasAbas.forEach(tab => {
           const ehPermitida = abasPermitidas.includes(tab);
@@ -4370,16 +4402,16 @@
           if (btnModoPlanilha) btnModoPlanilha.classList.remove("hidden");
         }
 
-        // Controle de visibilidade para ações em massa (DIRETOR / VICE_DIRETOR)
+        // Controle de visibilidade para ações em massa (DIRETOR / SENIOR_GOE / VICE_DIRETOR)
         document.querySelectorAll(".secao-direcao-massa").forEach(el => {
-          if (role === "DIRETOR" || role === "VICE_DIRETOR") {
+          if (role === "DIRETOR" || role === "SENIOR_GOE" || role === "VICE_DIRETOR") {
             el.classList.remove("hidden");
           } else {
             el.classList.add("hidden");
           }
         });
         if (btnAtribuirLote) {
-          if (role === "DIRETOR" || role === "VICE_DIRETOR") {
+          if (role === "DIRETOR" || role === "SENIOR_GOE" || role === "VICE_DIRETOR") {
             btnAtribuirLote.classList.remove("hidden");
           } else {
             btnAtribuirLote.classList.add("hidden");
@@ -4405,10 +4437,10 @@
           renderTableRows(window.lastFilteredStudentsData);
         }
 
-        // 4a. Visibilidade da Central Operacional de Prioridades — Busca Ativa (Exclusivo DIRETOR, VICE_DIRETOR e SECRETARIA)
+        // 4a. Visibilidade da Central Operacional de Prioridades — Busca Ativa (Exclusivo DIRETOR, SENIOR_GOE, VICE_DIRETOR e SECRETARIA)
         const podeVerCentralBa = typeof window.podeAcessarCentralPrioridadesBa === "function"
           ? window.podeAcessarCentralPrioridadesBa()
-          : ["DIRETOR", "VICE_DIRETOR", "SECRETARIA"].includes(window.normalizarUserRole ? window.normalizarUserRole(role) : String(role || "").toUpperCase());
+          : ["DIRETOR", "SENIOR_GOE", "VICE_DIRETOR", "SECRETARIA"].includes(window.normalizarUserRole ? window.normalizarUserRole(role) : String(role || "").toUpperCase());
         const btnCentralBa = document.getElementById("btn-central-prioridades-ba");
         const modalCentralBa = document.getElementById("modal-central-prioridades-ba");
         if (btnCentralBa) {
@@ -4446,19 +4478,28 @@
           }
         }
 
-        // 6. Ocultar/Exibir seções exclusivas de Gestão na aba Admin (DIRETOR e VICE_DIRETOR)
+        // 6. Ocultar/Exibir seções exclusivas de Gestão na aba Admin (DIRETOR e VICE_DIRETOR — bloqueado para SENIOR_GOE)
+        const podeVerConfigAdmin = (role === "DIRETOR" || role === "VICE_DIRETOR" || role === "VICE-DIRETOR");
         document.querySelectorAll(".secao-admin-diretor").forEach(el => {
-          if (role === "DIRETOR" || role === "VICE_DIRETOR" || role === "VICE-DIRETOR") {
+          if (podeVerConfigAdmin) {
             el.classList.remove("hidden");
           } else {
             el.classList.add("hidden");
           }
         });
+        const bannerSomenteSenha = document.getElementById("banner-admin-somente-senha");
+        if (bannerSomenteSenha) {
+          bannerSomenteSenha.classList.toggle("hidden", podeVerConfigAdmin);
+        }
+        const navAdminLabel = document.getElementById("nav-admin-label");
+        if (navAdminLabel) {
+          navAdminLabel.textContent = podeVerConfigAdmin ? "Configurações & Banco" : "Alterar Minha Senha";
+        }
 
-        // 7. Acesso ao Módulo de Auditoria (Exclusivo para DIRETOR)
+        // 7. Acesso ao Módulo de Auditoria (Exclusivo para DIRETOR / SENIOR_GOE)
         const btnAuditoria = document.getElementById("container-btn-auditoria");
         if (btnAuditoria) {
-          if (role === "DIRETOR") {
+          if (role === "DIRETOR" || role === "SENIOR_GOE") {
             btnAuditoria.classList.remove("hidden");
           } else {
             btnAuditoria.classList.add("hidden");
@@ -5350,7 +5391,7 @@
 
         const seenKeys = new Set();
         const atrasosNoMes = poolBruto.filter(oc => {
-          if (!oc || window.isGatilhoAutomaticoOcorrencia(oc)) return false;
+          if (!oc || !ehRegistroDoAnoVigente(oc) || window.isGatilhoAutomaticoOcorrencia(oc)) return false;
           const isAtr = typeof window.isOcorrenciaAtraso === "function"
             ? window.isOcorrenciaAtraso(oc)
             : String(oc.tipo || oc.categoria || "").toUpperCase().includes("ATRASO");
@@ -5483,10 +5524,10 @@
           return `${ra}|${dateDay}|${desc}`;
         };
 
-        // 1. Prioridade para registros top-level da coleção 'ocorrencias'
+        // 1. Prioridade para registros top-level da coleção 'ocorrencias' (apenas do ano letivo vigente)
         if (Array.isArray(window.ocorrenciasTopLevel)) {
           window.ocorrenciasTopLevel.forEach((oc, idx) => {
-            if (!oc || (typeof window.isGatilhoAutomaticoOcorrencia === "function" && window.isGatilhoAutomaticoOcorrencia(oc))) return;
+            if (!oc || !ehRegistroDoAnoVigente(oc) || (typeof window.isGatilhoAutomaticoOcorrencia === "function" && window.isGatilhoAutomaticoOcorrencia(oc))) return;
             const ocId = oc.id ? String(oc.id).trim() : (oc._id ? String(oc._id).trim() : "");
             if (ocId && seenIds.has(ocId)) return;
 
@@ -5525,7 +5566,7 @@
 
           for (let idx = 0; idx < rawArr.length; idx++) {
             const oc = rawArr[idx];
-            if (!oc || oc.tipoContato || oc.houveResposta) continue;
+            if (!oc || !ehRegistroDoAnoVigente(oc) || oc.tipoContato || oc.houveResposta) continue;
             if (typeof window.isGatilhoAutomaticoOcorrencia === "function" && window.isGatilhoAutomaticoOcorrencia(oc)) continue;
 
             const ocId = oc.id ? String(oc.id).trim() : (oc._id ? String(oc._id).trim() : "");
@@ -12002,7 +12043,10 @@ Yasmin Seline`;
           let lista = [];
           if (qSnap && typeof qSnap.forEach === "function") {
             qSnap.forEach(docSnap => {
-              lista.push({ id: docSnap.id, ...docSnap.data() });
+              const regBa = { id: docSnap.id, ...docSnap.data() };
+              if (ehRegistroDoAnoVigente(regBa)) {
+                lista.push(regBa);
+              }
             });
           }
 
@@ -12756,7 +12800,7 @@ Yasmin Seline`;
         const checkFormVisibility = () => {
           const role = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
           const cardParent = formEv.closest(".bg-white") || formEv.parentElement;
-          if (role === "DIRETOR" || role === "VICE_DIRETOR" || role === "VICE-DIRETOR" || role === "CGPG") {
+          if (role === "DIRETOR" || role === "SENIOR_GOE" || role === "VICE_DIRETOR" || role === "VICE-DIRETOR" || role === "CGPG") {
             if (cardParent) cardParent.style.display = "block";
           } else {
             if (cardParent) cardParent.style.display = "none";
@@ -12770,7 +12814,7 @@ Yasmin Seline`;
         formEv.addEventListener("submit", async (e) => {
           e.preventDefault();
           const roleCurrent = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
-          const podeCadastrar = ["DIRETOR", "VICE_DIRETOR", "VICE-DIRETOR", "CGPG"].includes(roleCurrent);
+          const podeCadastrar = ["DIRETOR", "SENIOR_GOE", "VICE_DIRETOR", "VICE-DIRETOR", "CGPG"].includes(roleCurrent);
           if (!podeCadastrar) {
             window.showToast("Ação não permitida: Apenas Diretor, Vice-Diretor e CGPG possuem permissão para criar eventos na Agenda PEI.", 'warning', 3500);
             return;
@@ -12862,7 +12906,7 @@ Yasmin Seline`;
         }
 
         const roleCurrent = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
-        const podeExcluir = ["DIRETOR", "VICE_DIRETOR", "VICE-DIRETOR", "CGPG"].includes(roleCurrent);
+        const podeExcluir = ["DIRETOR", "SENIOR_GOE", "VICE_DIRETOR", "VICE-DIRETOR", "CGPG"].includes(roleCurrent);
 
         let html = "";
         eventos.forEach(ev => {
@@ -12907,7 +12951,7 @@ Yasmin Seline`;
         formCadastrarEvento.addEventListener("submit", async (e) => {
           e.preventDefault();
           const roleCurrent = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
-          const podeCadastrar = ["DIRETOR", "VICE_DIRETOR", "VICE-DIRETOR", "CGPG"].includes(roleCurrent);
+          const podeCadastrar = ["DIRETOR", "SENIOR_GOE", "VICE_DIRETOR", "VICE-DIRETOR", "CGPG"].includes(roleCurrent);
           if (!podeCadastrar) {
             window.showToast("Ação não permitida: Apenas Diretor, Vice-Diretor e CGPG possuem permissão para criar eventos na Agenda PEI.", 'warning', 3500);
             return;
@@ -12959,7 +13003,7 @@ Yasmin Seline`;
       window.excluirEventoAdmin = async function(id) {
         if (!id) return;
         const roleCurrent = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
-        const podeExcluir = ["DIRETOR", "VICE_DIRETOR", "VICE-DIRETOR", "CGPG"].includes(roleCurrent);
+        const podeExcluir = ["DIRETOR", "SENIOR_GOE", "VICE_DIRETOR", "VICE-DIRETOR", "CGPG"].includes(roleCurrent);
         if (!podeExcluir) {
           window.showToast("Ação não permitida: Apenas Diretor, Vice-Diretor e CGPG possuem permissão para excluir eventos.", 'warning', 3500);
           return;
@@ -13370,7 +13414,7 @@ Yasmin Seline`;
 
       const btnAbrirViradaAno = document.getElementById("btn-abrir-virada-ano");
       if (btnAbrirViradaAno) {
-        btnAbrirViradaAno.addEventListener("click", () => {
+        btnAbrirViradaAno.addEventListener("click", async () => {
           if (typeof window.obterRoleAtual === "function") window.obterRoleAtual();
           if (window.realUserRole !== "DIRETOR") {
             window.showToast?.("Acesso negado: apenas o perfil real de DIRETOR pode executar a Virada de Ano.", "error", 4000);
@@ -13380,12 +13424,56 @@ Yasmin Seline`;
           const e1 = document.getElementById("virada-etapa-1");
           const e2 = document.getElementById("virada-etapa-2");
           const inp = document.getElementById("input-confirmacao-virada");
+          const previewBox = document.getElementById("virada-preview-resumo");
 
           if (modal) {
             if (e1) e1.classList.remove("hidden");
             if (e2) e2.classList.add("hidden");
             if (inp) inp.value = "";
+            if (previewBox) {
+              previewBox.innerHTML = `<div class="flex items-center gap-2 text-slate-500"><i class="fa-solid fa-spinner animate-spin"></i><span>Calculando prévia do Conselho Final e registros a limpar...</span></div>`;
+            }
             modal.classList.remove("hidden");
+
+            try {
+              const authToken = localStorage.getItem("clovis_auth_token") || "";
+              const resp = await fetch("/api/admin/virada-ano-preview", {
+                method: "GET",
+                headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
+              });
+              if (resp.ok && previewBox) {
+                const p = await resp.json();
+                previewBox.innerHTML = `
+                  <div class="flex flex-wrap items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-200">
+                    <span class="font-bold text-blue-950 uppercase text-[11px]">Resumo Real do Banco • Virada ${p.anoAtual} → ${p.anoNovo}</span>
+                    <span class="px-2 py-0.5 bg-blue-100 text-blue-900 rounded font-bold text-[10px]">Ciclo Automático</span>
+                  </div>
+                  <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                    <div class="p-2 bg-white rounded border border-slate-200">
+                      <span class="block text-slate-500 text-[10px]">Ativos a Enturmar</span>
+                      <strong class="text-emerald-800 text-sm">${p.totalAlunosAtivos ?? 0}</strong>
+                      <span class="block text-[9px] text-slate-500">${p.comConselhoFinal ?? 0} via Conselho Final</span>
+                    </div>
+                    <div class="p-2 bg-white rounded border border-slate-200">
+                      <span class="block text-slate-500 text-[10px]">Não Ativos (Excluir)</span>
+                      <strong class="text-rose-700 text-sm">${p.alunosInativosExcluir ?? 0}</strong>
+                      <span class="block text-[9px] text-slate-500">Transferidos / Baixas / Inativos</span>
+                    </div>
+                    <div class="p-2 bg-white rounded border border-slate-200">
+                      <span class="block text-slate-500 text-[10px]">Mural & Tarefas (Excluir)</span>
+                      <strong class="text-amber-800 text-sm">${(p.muralArquivadoExcluir ?? 0) + (p.tarefasCumpridasExcluir ?? 0)}</strong>
+                      <span class="block text-[9px] text-slate-500">${p.muralArquivadoExcluir ?? 0} recados · ${p.tarefasCumpridasExcluir ?? 0} tarefas</span>
+                    </div>
+                  </div>
+                `;
+              } else if (previewBox) {
+                previewBox.innerHTML = `<span class="text-amber-800 font-medium">Prévia detalhada indisponível no momento. A Virada executará o backup automático primeiro.</span>`;
+              }
+            } catch (_ePrev) {
+              if (previewBox) {
+                previewBox.innerHTML = `<span class="text-amber-800 font-medium">Prévia detalhada indisponível no momento. A Virada executará o backup automático primeiro.</span>`;
+              }
+            }
           }
         });
       }
@@ -13416,97 +13504,110 @@ Yasmin Seline`;
           const val = inp ? inp.value.trim().toUpperCase() : "";
 
           if (val !== "VIRADA DE ANO") {
-            window.showToast("Frase de confirmação incorreta. Digite exatamente VIRADA DE ANO para prosseguir.", 'warning');
+            window.showToast("Frase de confirmação incorreta. Digite exatamente VIRADA DE ANO para prosseguir.", "warning");
             return;
           }
 
           btnConfirmarViradaFinal.disabled = true;
-          btnConfirmarViradaFinal.innerHTML = `<i class="fa-solid fa-spinner animate-spin text-xs"></i><span>Executando Virada de Ano...</span>`;
+          btnConfirmarViradaFinal.innerHTML = `<i class="fa-solid fa-spinner animate-spin text-xs"></i><span>1/2 Gerando Backup Completo...</span>`;
 
           try {
-            const querySnap = await getDocs(collection(db, "alunos"));
-            const docs = querySnap.docs;
-
-            if (docs.length === 0) {
-              window.showToast("Nenhum aluno encontrado para promoção.", 'warning');
-              fecharModalViradaAno();
+            // PASSO 1 OBRIGATÓRIO: Gerar e baixar backup integral do banco exatamente como está ANTES de qualquer alteração
+            let backupOk = null;
+            try {
+              let backupFn = window.exportarBackupCompletoJSON;
+              if (typeof backupFn !== "function") {
+                const modBkp = await import("./modules/backupManager");
+                backupFn = modBkp.exportarBackupCompleto;
+              }
+              backupOk = await backupFn();
+            } catch (errBkp) {
+              console.error("[Virada de Ano] Falha ao gerar backup obrigatório:", errBkp);
+              window.showErrorToast?.("Falha ao gerar o backup obrigatório antes da Virada de Ano. Nenhuma alteração foi feita no banco.", errBkp);
               return;
             }
 
-            const BATCH_SIZE = 400;
-            for (let i = 0; i < docs.length; i += BATCH_SIZE) {
-              const batch = writeBatch(db);
-              const chunk = docs.slice(i, i + BATCH_SIZE);
-
-              chunk.forEach(docSnap => {
-                const data = docSnap.data();
-                const resPromo = window.promoverTurma(data.turma);
-                const segPromo = typeof window.inferirSegmentoPorTurma === "function"
-                  ? window.inferirSegmentoPorTurma(resPromo.turma)
-                  : "";
-
-                const updatePayload = {
-                  turma: resPromo.turma,
-                  ...(segPromo ? { segmento: segPromo } : {}),
-                  status: resPromo.status,
-                  eletivas: "",
-                  eletiva_2_sem: "",
-                  clube: "",
-                  tutor: "",
-                  tutor_2026: "",
-                  presenca_anual: "",
-                  presenca_26_06: "",
-                  presenca_15_06: "",
-                  presenca_1_sem: "",
-                  presenca_2_sem: "",
-                  presenca_atual: "",
-                  historico_presenca: []
-                };
-
-                batch.update(docSnap.ref, updatePayload);
-              });
-
-              await batch.commit();
+            if (!backupOk) {
+              window.showToast?.("Backup obrigatório cancelado ou sem permissão. A Virada de Ano foi abortada para proteger os dados.", "error", 7000);
+              return;
             }
 
-            // Atualização imediata da memória local
-            if (typeof window.allStudentsData !== "undefined" && Array.isArray(window.allStudentsData)) {
-              (window.allStudentsData || []).forEach(aluno => {
-                const resPromo = window.promoverTurma(aluno.turma);
-                const segPromoMem = typeof window.inferirSegmentoPorTurma === "function"
-                  ? window.inferirSegmentoPorTurma(resPromo.turma)
-                  : "";
-                aluno.turma = resPromo.turma;
-                if (segPromoMem) aluno.segmento = segPromoMem;
-                aluno.status = resPromo.status;
-                aluno.eletivas = "";
-                aluno.eletiva_2_sem = "";
-                aluno.clube = "";
-                aluno.tutor = "";
-                aluno.tutor_2026 = "";
-                aluno.presenca_anual = "";
-                aluno.presenca_26_06 = "";
-                aluno.presenca_15_06 = "";
-                aluno.presenca_1_sem = "";
-                aluno.presenca_2_sem = "";
-                aluno.presenca_atual = "";
-                aluno.historico_presenca = [];
-              });
+            btnConfirmarViradaFinal.innerHTML = `<i class="fa-solid fa-spinner animate-spin text-xs"></i><span>2/2 Consolidando Novo Ano Letivo...</span>`;
+
+            // PASSO 2: Executar consolidação atômica e corte anual no servidor
+            const authToken = localStorage.getItem("clovis_auth_token") || "";
+            const response = await fetch("/api/admin/virada-ano-letivo", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+              },
+              body: JSON.stringify({
+                confirmacao: "VIRADA DE ANO",
+                backupConfirmado: true
+              })
+            });
+
+            const resJson = await response.json().catch(() => ({}));
+            if (!response.ok || !resJson?.sucesso) {
+              throw new Error(resJson?.error || `Erro HTTP ${response.status} ao consolidar Virada de Ano.`);
             }
 
-            window.showToast("Virada de Ano concluída com sucesso! Todos os estudantes foram promovidos.", 'success', 6000);
+            const anoNovo = Number(resJson.anoNovo) || (obterAnoLetivoVigente() + 1);
+            definirAnoLetivoVigenteLocal(anoNovo);
+
+            // PASSO 3: Limpar caches operacionais antigos e recarregar base consolidada
+            try {
+              localStorage.removeItem("alunos_cache");
+              localStorage.removeItem("mural_recados_memoria");
+              localStorage.removeItem("ocorrencias_cache");
+              localStorage.removeItem("busca_ativa_cache");
+            } catch (_) {}
+
+            window.ocorrenciasCache = [];
+            window.ocorrenciasTopLevel = [];
+            window.todosContatosBaCache = [];
+            window.contatosBaPorRaMap = new Map();
+            window.frequenciaDiariaCache = [];
+            window.notificacoesTutorCache = [];
+            window.muralRecadosCache = [];
+
+            const snapAlunosAtualizados = await getDocs(collection(db, "alunos"));
+            const listaAtualizada = [];
+            snapAlunosAtualizados.forEach(dSnap => {
+              listaAtualizada.push({ id: dSnap.id, ...dSnap.data() });
+            });
+            window.allStudentsData = listaAtualizada;
+            window.alunosCache = listaAtualizada;
+            try {
+              localStorage.setItem("alunos_cache", JSON.stringify(listaAtualizada));
+            } catch (_) {}
+
+            const r = resJson.resumo || {};
+            window.showToast(
+              `Virada para ${anoNovo} concluída! Backup exportado, ${r.inativosExcluidos ?? 0} inativos removidos, ${r.muralArquivadosExcluidos ?? 0} recados arquivados e ${r.tarefasCumpridasExcluidas ?? 0} tarefas cumpridas excluídas, ${r.ativosConsolidados ?? listaAtualizada.length} alunos enturmados (Notas, Eletivas, Clubes e Tutor limpos; Dossiê mantido).`,
+              "success",
+              10000
+            );
             fecharModalViradaAno();
 
+            if (typeof window.carregarMuralRecados === "function") window.carregarMuralRecados(true);
+            if (typeof window.carregarHistoricoOcorrenciasGeral === "function") await window.carregarHistoricoOcorrenciasGeral();
+            if (typeof window.carregarTodosOsContatosGeralBa === "function") await window.carregarTodosOsContatosGeralBa(true);
+            if (typeof window.carregarFrequenciaDiariaParaBuscaAtiva === "function") await window.carregarFrequenciaDiariaParaBuscaAtiva(true);
             if (typeof populateFilterSelects === "function") populateFilterSelects(window.allStudentsData || []);
             if (typeof applyStudentFilters === "function") applyStudentFilters();
             if (typeof atualizarDashboardGraficos === "function") atualizarDashboardGraficos();
             if (typeof renderBuscaAtiva === "function") renderBuscaAtiva();
 
+            window.dispatchEvent(new CustomEvent("studentsdataupdated"));
+            window.dispatchEvent(new CustomEvent("agendaeventosupdated"));
+            window.dispatchEvent(new CustomEvent("tarefasupdated"));
           } catch (err) {
-            window.showErrorToast("Erro de conexão ao realizar a Virada de Ano Letivo!", err);
+            window.showErrorToast("Erro ao realizar a Virada de Ano Letivo!", err);
           } finally {
             btnConfirmarViradaFinal.disabled = false;
-            btnConfirmarViradaFinal.innerHTML = `<i class="fa-solid fa-check-double text-xs"></i><span>Confirmar Promoção Geral</span>`;
+            btnConfirmarViradaFinal.innerHTML = `<i class="fa-solid fa-check-double text-xs"></i><span>Fazer Backup e Virar Ano Letivo</span>`;
           }
         });
       }
@@ -14570,8 +14671,11 @@ Yasmin Seline`;
 
           // Normalização de cargo para os níveis reconhecidos do sistema
           let cargoFinal = "PROFESSOR_PAAC";
-          const cUpper = cargoRaw.toUpperCase().replace(/[^A_Z0-9_]/g, "_");
-          if (cUpper.includes("DIRETOR") && !cUpper.includes("VICE")) {
+          const cRawUpper = cargoRaw.toUpperCase().trim();
+          const cUpper = cRawUpper.replace(/[^A_Z0-9_]/g, "_");
+          if (cRawUpper.includes("SENIOR") || cRawUpper.includes("SÊNIOR") || /\bGOE\b/.test(cRawUpper) || cUpper.includes("EXTENDIDO") || cUpper.includes("ESTENDIDO")) {
+            cargoFinal = "SENIOR_GOE";
+          } else if (cUpper.includes("DIRETOR") && !cUpper.includes("VICE")) {
             cargoFinal = "DIRETOR";
           } else if (cUpper.includes("VICE")) {
             cargoFinal = "VICE_DIRETOR";
@@ -14583,7 +14687,7 @@ Yasmin Seline`;
             cargoFinal = "PAAC";
           } else if (cUpper.includes("PROFESSOR")) {
             cargoFinal = "PROFESSOR_PAAC";
-          } else if (["DIRETOR", "VICE_DIRETOR", "CGPG", "PAAC", "PROFESSOR_PAAC", "SECRETARIA"].includes(cargoRaw.toUpperCase())) {
+          } else if (["DIRETOR", "SENIOR_GOE", "VICE_DIRETOR", "CGPG", "PAAC", "PROFESSOR_PAAC", "SECRETARIA"].includes(cargoRaw.toUpperCase())) {
             cargoFinal = cargoRaw.toUpperCase();
           }
 
@@ -17355,6 +17459,7 @@ Yasmin Seline`;
 
         const adicionarRegistro = (item, origemDefault = "OCORRENCIA") => {
           if (!item) return;
+          if (!ehRegistroDoAnoVigente(item)) return;
           if (typeof window.isGatilhoAutomaticoOcorrencia === "function" && window.isGatilhoAutomaticoOcorrencia(item)) return;
           const raw = item.rawDoc || item;
           const docId = item.id ? String(item.id).trim() : "";
@@ -17446,6 +17551,55 @@ Yasmin Seline`;
         return lista;
       };
 
+      // Consolida o histórico multi-ano de Pareceres Individuais do Conselho Final salvos no Dossiê do estudante
+      window.extrairConselhosFinaisAluno = function(aluno) {
+        if (!aluno || typeof aluno !== "object") return [];
+        const porAno = new Map();
+
+        const registrar = (item, fallbackAno) => {
+          if (!item || typeof item !== "object") return;
+          const ano = Number(item.anoLetivo || fallbackAno) || 2026;
+          const parecer = String(item.parecer || "").trim();
+          const resKey = String(item.resultadoFinal || "").trim().toUpperCase();
+          const resLabel = String(item.resultadoFinalLabel || item.resultadoFinal || "").trim();
+          const turmaSeg = String(item.turmaAnoSeguinte || "").trim();
+          const encKey = String(item.statusEncaminhamento || "").trim().toUpperCase();
+          const encLabel = String(item.statusEncaminhamentoLabel || item.statusEncaminhamento || "").trim();
+
+          const temConteudo = Boolean(
+            parecer ||
+            turmaSeg ||
+            (resKey && resKey !== "PENDENTE") ||
+            (encKey && encKey !== "PENDENTE")
+          );
+          if (!temConteudo) return;
+
+          porAno.set(ano, {
+            anoLetivo: ano,
+            turmaOrigem: String(item.turmaOrigem || aluno.turma || "").trim(),
+            statusEncaminhamento: encKey || "PENDENTE",
+            statusEncaminhamentoLabel: encLabel || "Pendente",
+            resultadoFinal: resKey || "PENDENTE",
+            resultadoFinalLabel: resLabel || "Pendente",
+            turmaAnoSeguinte: turmaSeg,
+            parecer,
+            atualizadoPor: String(item.atualizadoPor || "").trim(),
+            atualizadoEm: String(item.atualizadoEm || "").trim()
+          });
+        };
+
+        if (aluno.conselhos_finais_historico && typeof aluno.conselhos_finais_historico === "object") {
+          Object.entries(aluno.conselhos_finais_historico).forEach(([anoKey, val]) => {
+            registrar(val, anoKey);
+          });
+        }
+        if (aluno.conselho_final && typeof aluno.conselho_final === "object") {
+          registrar(aluno.conselho_final, aluno.conselho_final.anoLetivo);
+        }
+
+        return Array.from(porAno.values()).sort((a, b) => Number(b.anoLetivo) - Number(a.anoLetivo));
+      };
+
       // Gerador Universal do HTML Timbrado Oficial do Dossiê do Estudante
       window.gerarHtmlDossieAluno = function(aluno, options = {}) {
         if (!aluno) return "";
@@ -17520,7 +17674,7 @@ Yasmin Seline`;
             <div class="p-3 bg-slate-50 border border-slate-300 rounded-lg text-xs text-slate-700">
               <div class="flex items-center justify-between mb-2">
                 <span class="font-extrabold text-blue-950 uppercase text-[11px]">Quadro Sintético de Médias Bimestrais (SED SP)</span>
-                <span class="text-[10px] text-slate-500 font-mono">Ano Letivo 2026</span>
+                <span class="text-[10px] text-slate-500 font-mono">Ano Letivo ${escapeHtmlDossie(String(obterAnoLetivoVigente()))}</span>
               </div>
               <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center">
                 <div class="p-2 bg-white rounded border border-slate-200">
@@ -17731,7 +17885,7 @@ Yasmin Seline`;
                       <table class="w-full text-xs border-collapse border border-slate-300">
                         <tbody>
                           <tr class="border-b border-slate-200">
-                            <td class="bg-slate-100 p-2 font-bold w-1/4 border-r border-slate-300">Tutor Responsável (2026):</td>
+                            <td class="bg-slate-100 p-2 font-bold w-1/4 border-r border-slate-300">Tutor Responsável (${escapeHtmlDossie(String(obterAnoLetivoVigente()))}):</td>
                             <td class="p-2 font-bold text-slate-800 border-r border-slate-300">${tutorUpper}</td>
                             <td class="bg-slate-100 p-2 font-bold w-1/6 border-r border-slate-300">Clube Juvenil:</td>
                             <td class="p-2 text-slate-800">${clubeUpper}</td>
@@ -17758,6 +17912,36 @@ Yasmin Seline`;
                       <div class="p-3 bg-slate-50 border border-slate-300 rounded text-xs text-slate-800 leading-relaxed whitespace-pre-wrap min-h-[44px]">
                         ${evolucaoTexto && evolucaoTexto !== "—" ? evolucaoTexto : "Nenhum parecer cadastrado até o momento."}
                       </div>
+                      ${(() => {
+                        const conselhos = window.extrairConselhosFinaisAluno ? window.extrairConselhosFinaisAluno(aluno) : [];
+                        if (!conselhos.length) return "";
+                        return `
+                          <div class="mt-2.5 space-y-2">
+                            ${conselhos.map(cf => {
+                              const anoNext = Number(cf.anoLetivo) + 1;
+                              const dataFmt = cf.atualizadoEm ? new Date(cf.atualizadoEm).toLocaleDateString("pt-BR") : "";
+                              return `
+                                <div class="p-2.5 bg-blue-50/50 border border-slate-300 rounded text-[11px] text-slate-800">
+                                  <div class="flex flex-wrap items-center justify-between gap-2 pb-1.5 mb-1.5 border-b border-slate-200">
+                                    <span class="font-bold text-blue-950 uppercase text-[10.5px]">
+                                      Parecer do Conselho Final • Ano Letivo ${escapeHtmlDossie(cf.anoLetivo)}${cf.turmaOrigem ? ` (${escapeHtmlDossie(cf.turmaOrigem.toUpperCase())})` : ""}
+                                    </span>
+                                    <span class="text-[10px] text-slate-600 font-semibold">
+                                      Resultado: <strong class="text-slate-900">${escapeHtmlDossie(cf.resultadoFinalLabel)}</strong>
+                                      &bull; Turma ${escapeHtmlDossie(anoNext)}: <strong class="text-slate-900">${escapeHtmlDossie(cf.turmaAnoSeguinte ? cf.turmaAnoSeguinte.toUpperCase() : "Não definida")}</strong>
+                                    </span>
+                                  </div>
+                                  <div class="whitespace-pre-wrap leading-relaxed text-slate-800">${escapeHtmlDossie(cf.parecer || "Sem parecer descritivo registrado.")}</div>
+                                  <div class="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-[9.5px] text-slate-500">
+                                    <span>Encaminhamento oficial: <strong class="text-slate-700">${escapeHtmlDossie(cf.statusEncaminhamentoLabel)}</strong></span>
+                                    ${cf.atualizadoPor ? `<span>Registrado por ${escapeHtmlDossie(cf.atualizadoPor)}${dataFmt ? ` em ${escapeHtmlDossie(dataFmt)}` : ""}</span>` : ""}
+                                  </div>
+                                </div>
+                              `;
+                            }).join("")}
+                          </div>
+                        `;
+                      })()}
                     </div>
 
                     <!-- 4. Rendimento Escolar & Fechamento de Notas -->
@@ -17941,6 +18125,7 @@ Yasmin Seline`;
             dataEmissao,
             fechamentoNotas: aluno.fechamento_notas || {},
             situacaoFinal: aluno.situacao_final_ano || aluno.fechamento_notas?.FINAL?.situacao || "Em Curso",
+            conselhosFinais: window.extrairConselhosFinaisAluno ? window.extrairConselhosFinaisAluno(aluno) : [],
             ocorrencias: acoesList,
             extrairSomenteNomeAutor: window.extrairSomenteNomeAutor || ((raw) => String(raw || "Equipe Escolar")),
             formatarDataBR: typeof formatarDataBR === "function" ? formatarDataBR : undefined
@@ -18999,6 +19184,12 @@ Yasmin Seline`;
         const elMediaSubNew = document.getElementById("modal-display-media-sub");
         if (elMediaSubNew) elMediaSubNew.textContent = "Sem notas";
 
+        const containerCfNew = document.getElementById("container-dossie-conselho-final");
+        if (containerCfNew) {
+          containerCfNew.classList.add("hidden");
+          containerCfNew.innerHTML = "";
+        }
+
         const tabBtnBaNew = document.getElementById("tab-btn-busca-ativa");
         if (tabBtnBaNew) tabBtnBaNew.classList.add("hidden");
         switchModalTab("dossie");
@@ -19036,7 +19227,7 @@ Yasmin Seline`;
         const containerRa = document.getElementById("modal-display-ra-container");
         if (containerRa) {
           const roleAtualRa = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
-          const canEditRa = (roleAtualRa === "DIRETOR" || roleAtualRa === "VICE_DIRETOR" || roleAtualRa === "SECRETARIA");
+          const canEditRa = (roleAtualRa === "DIRETOR" || roleAtualRa === "SENIOR_GOE" || roleAtualRa === "VICE_DIRETOR" || roleAtualRa === "SECRETARIA");
           if (canEditRa) {
             containerRa.innerHTML = `
               <label for="modal-edit-ra-input" class="block text-[10px] font-bold text-slate-500 uppercase mb-1">RA (Apenas Números) <span class="text-red-500">*</span></label>
@@ -19066,7 +19257,7 @@ Yasmin Seline`;
 
         const roleAtualAjuste = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
         const roleNormAjuste = String(roleAtualAjuste).toUpperCase().replace(/-/g, '_').trim();
-        const canAjustarFreq = (roleNormAjuste === "DIRETOR" || roleNormAjuste === "VICE_DIRETOR" || roleNormAjuste.includes("DIRETOR") || roleNormAjuste.includes("VICE"));
+        const canAjustarFreq = (roleNormAjuste === "DIRETOR" || roleNormAjuste === "SENIOR_GOE" || roleNormAjuste === "VICE_DIRETOR" || roleNormAjuste.includes("DIRETOR") || roleNormAjuste.includes("VICE"));
 
         const btnAjusteModal = document.getElementById("btn-ajustar-freq-sed-modal");
         if (btnAjusteModal) {
@@ -19123,6 +19314,66 @@ Yasmin Seline`;
 
         if (document.getElementById("modal-edit-recomposicao")) document.getElementById("modal-edit-recomposicao").checked = isRecomposicao;
         if (document.getElementById("modal-edit-aee")) document.getElementById("modal-edit-aee").checked = isAEE;
+
+        const containerCf = document.getElementById("container-dossie-conselho-final");
+        if (containerCf) {
+          const conselhos = window.extrairConselhosFinaisAluno ? window.extrairConselhosFinaisAluno(aluno) : [];
+          if (conselhos.length > 0) {
+            containerCf.innerHTML = `
+              <div class="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-2.5">
+                <div class="flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-2 text-xs font-bold text-slate-800 uppercase tracking-wide">
+                    <i class="fa-solid fa-gavel text-indigo-700 text-xs"></i>
+                    <span>Histórico de Pareceres Individuais — Conselho Final</span>
+                  </div>
+                  <span class="text-[11px] font-medium text-slate-500">Consulta interanual</span>
+                </div>
+                <div class="space-y-2">
+                  ${conselhos.map(cf => {
+                    const anoNext = Number(cf.anoLetivo) + 1;
+                    const dataFmt = cf.atualizadoEm ? new Date(cf.atualizadoEm).toLocaleDateString("pt-BR") : "";
+                    const isAprov = cf.resultadoFinal.includes("APROV");
+                    const isReprov = cf.resultadoFinal.includes("RETID") || cf.resultadoFinal.includes("REPROV");
+                    const resColor = isAprov
+                      ? "text-emerald-700"
+                      : (isReprov ? "text-rose-700" : "text-amber-700");
+                    const resIcon = isAprov
+                      ? "fa-circle-check"
+                      : (isReprov ? "fa-circle-xmark" : "fa-clock");
+                    return `
+                      <div class="rounded-lg border border-slate-200 bg-white p-3 space-y-2">
+                        <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                          <div class="flex items-center gap-2 text-xs font-bold text-slate-900 tabular-nums">
+                            <span>Conselho Final ${escapeHtmlDossie(cf.anoLetivo)}</span>
+                            ${cf.turmaOrigem ? `<span class="text-slate-400">·</span><span class="text-slate-600 font-semibold">${escapeHtmlDossie(cf.turmaOrigem.toUpperCase())}</span>` : ""}
+                          </div>
+                          <div class="flex flex-wrap items-center gap-3 text-xs tabular-nums">
+                            <span class="inline-flex items-center gap-1 font-bold ${resColor}">
+                              <i class="fa-solid ${resIcon} text-[11px]"></i>
+                              ${escapeHtmlDossie(cf.resultadoFinalLabel)}
+                            </span>
+                            <span class="text-slate-600">
+                              Turma ${escapeHtmlDossie(anoNext)}: <strong class="text-slate-900">${escapeHtmlDossie(cf.turmaAnoSeguinte ? cf.turmaAnoSeguinte.toUpperCase() : "Não definida")}</strong>
+                            </span>
+                          </div>
+                        </div>
+                        <p class="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">${escapeHtmlDossie(cf.parecer || "Sem parecer individual descritivo registrado.")}</p>
+                        <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 pt-0.5">
+                          <span>Encaminhamento: <strong class="text-slate-700">${escapeHtmlDossie(cf.statusEncaminhamentoLabel)}</strong></span>
+                          ${cf.atualizadoPor ? `<span>Registrado por ${escapeHtmlDossie(cf.atualizadoPor)}${dataFmt ? ` em ${escapeHtmlDossie(dataFmt)}` : ""}</span>` : ""}
+                        </div>
+                      </div>
+                    `;
+                  }).join("")}
+                </div>
+              </div>
+            `;
+            containerCf.classList.remove("hidden");
+          } else {
+            containerCf.classList.add("hidden");
+            containerCf.innerHTML = "";
+          }
+        }
 
         window.popularSelectCategoriasOcorrencia(document.getElementById("modal-acao-tipo"));
         carregarHistoricoAcoesModal(aluno.ra);
@@ -19616,7 +19867,7 @@ Yasmin Seline`;
       window.podeAcessarCentralPrioridadesBa = function() {
         const roleRaw = typeof window.obterRoleAtual === "function" ? window.obterRoleAtual() : "PROFESSOR";
         const role = typeof window.normalizarUserRole === "function" ? window.normalizarUserRole(roleRaw) : String(roleRaw || "").toUpperCase().trim();
-        return role === "DIRETOR" || role === "VICE_DIRETOR" || role === "SECRETARIA";
+        return role === "DIRETOR" || role === "SENIOR_GOE" || role === "VICE_DIRETOR" || role === "SECRETARIA";
       };
 
       function extrairWhatsAppLinkBuscaAtiva(aluno, item) {
@@ -21098,7 +21349,7 @@ Yasmin Seline`;
       window.abrirModalGeradorParecerIA = async function() {
         const role = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
         const roleNorm = String(role || "").toUpperCase().replace(/-/g, '_').trim();
-        const canGerarParecer = (roleNorm === "DIRETOR" || roleNorm === "VICE_DIRETOR" || roleNorm === "CGPG" || roleNorm.includes("DIRETOR") || roleNorm.includes("VICE") || roleNorm.includes("CGPG"));
+        const canGerarParecer = (roleNorm === "DIRETOR" || roleNorm === "SENIOR_GOE" || roleNorm === "VICE_DIRETOR" || roleNorm === "CGPG" || roleNorm.includes("DIRETOR") || roleNorm.includes("VICE") || roleNorm.includes("CGPG"));
 
         if (!canGerarParecer) {
           if (typeof window.showToast === "function") {
@@ -23110,7 +23361,7 @@ Yasmin Seline`;
         };
 
         docs.forEach(docItem => {
-          if (!docItem || typeof docItem !== "object") return;
+          if (!docItem || typeof docItem !== "object" || !ehRegistroDoAnoVigente(docItem)) return;
           const docDataIso = extrairDataIsoChamadaBa(docItem.data || docItem.dataChamada || docItem.id);
           const statusChamada = String(docItem.statusChamada || "").trim().toLowerCase();
           const docMeta = {
@@ -24667,9 +24918,10 @@ Yasmin Seline`;
         const mesesSet = new Set([hojeIsoMes]);
         const atrasosPorRaMap = new Map();
 
-        // Passagem única O(M) pelas ocorrências
+        // Passagem única O(M) pelas ocorrências (somente do ano letivo vigente)
         for (let i = 0; i < todasOc.length; i++) {
           const oc = todasOc[i];
+          if (!oc || !ehRegistroDoAnoVigente(oc)) continue;
           const isAtr = typeof window.isOcorrenciaAtraso === "function"
             ? window.isOcorrenciaAtraso(oc)
             : String(oc.tipo || oc.categoria || "").toUpperCase().includes("ATRASO");
@@ -25241,7 +25493,7 @@ Yasmin Seline`;
         if (!ra) return;
         if (typeof window.obterRoleAtual === "function") window.obterRoleAtual();
         const realRole = window.realUserRole || "PROFESSOR";
-        if (!["DIRETOR", "VICE_DIRETOR", "SECRETARIA"].includes(realRole)) {
+        if (!["DIRETOR", "SENIOR_GOE", "VICE_DIRETOR", "SECRETARIA"].includes(realRole)) {
           window.showToast?.("Acesso negado: o seu cargo real não possui permissão para excluir estudantes.", "error", 4000);
           return;
         }
@@ -25429,7 +25681,7 @@ Yasmin Seline`;
                 email: userCred.user.email || emailDigitado,
                 nivelAcesso: roleNorm,
                 cargo: roleNorm,
-                acesso_total: roleNorm === "DIRETOR" || roleNorm === "VICE_DIRETOR"
+                acesso_total: roleNorm === "DIRETOR" || roleNorm === "SENIOR_GOE" || roleNorm === "VICE_DIRETOR"
               };
             }
           } catch (authErr) {
@@ -25552,7 +25804,7 @@ Yasmin Seline`;
               email: user.email,
               nivelAcesso: roleNorm,
               cargo: roleNorm,
-              acesso_total: roleNorm === "DIRETOR" || roleNorm === "VICE_DIRETOR"
+              acesso_total: roleNorm === "DIRETOR" || roleNorm === "SENIOR_GOE" || roleNorm === "VICE_DIRETOR"
             };
             localStorage.setItem("usuarioLogado", JSON.stringify(userObj));
             efetuarLoginSucesso(userObj);
@@ -25578,7 +25830,8 @@ Yasmin Seline`;
         "dash-pei",
         "dash-docente",
         "dash-governanca",
-        "dash-aprovacao"
+        "dash-aprovacao",
+        "conselho-especial"
       ];
       const UNIFIED_DASHBOARD_TABS = [
         "dash-evasao",
@@ -25627,7 +25880,7 @@ Yasmin Seline`;
         contents.forEach(el => el.classList.add("hidden"));
 
         // Atualizar estilos dos botões e manter a ocultação visual estrita (RBAC)
-        const todasAbas = ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "horarios", "substituicao-pei", "gerador-atas", "admin", "rotina-pdca", "auditoria"];
+        const todasAbas = ["inicio", "mural", "alunos", "dash-evasao", "dash-academico", "dash-pontualidade", "dash-convivencia", "dash-pei", "dash-docente", "dash-governanca", "dash-aprovacao", "presenca-diaria", "professores", "registros", "secretaria", "agenda", "horarios", "substituicao-pei", "gerador-atas", "admin", "rotina-pdca", "auditoria", "conselho-especial"];
         const isDashboardUnificadoAtivo = UNIFIED_DASHBOARD_TABS.includes(tabName);
         todasAbas.forEach(tab => {
           const ehPermitida = abasPermitidas.includes(tab);
@@ -25702,7 +25955,8 @@ Yasmin Seline`;
           "gerador-atas": "Gerador de Atas Inteligentes (SEDUC-SP)",
           admin: "Painel do Administrador",
           "rotina-pdca": "Gestão de Tarefas & Rotina PDCA",
-          professores: "Gestão & Acompanhamento de Professores"
+          professores: "Gestão & Acompanhamento de Professores",
+          "conselho-especial": "Especial · Conselho de Bimestre (Acesso Restrito)"
         };
         if (pageTitle && titles[tabName]) {
           pageTitle.textContent = titles[tabName];

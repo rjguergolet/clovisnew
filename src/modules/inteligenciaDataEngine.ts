@@ -1,5 +1,6 @@
 import { compararFrequenciaAluno, temDadosReaisNoMapao } from './attendanceComparisonHelper';
 import { limparNomeDisciplina } from './boletimPdfParser';
+import { ehRegistroDoAnoVigente } from './anoLetivoHelper';
 import {
   extrairEMigrarDocentesDoHorario,
   getPeriodoOrder,
@@ -347,7 +348,7 @@ export function construirIndiceFrequenciaDiaria(
   };
 
   (frequenciaDiariaDocs || []).forEach((docItem) => {
-    if (!docItem || typeof docItem !== 'object') return;
+    if (!docItem || typeof docItem !== 'object' || !ehRegistroDoAnoVigente(docItem)) return;
     const docDataIso = toIsoDate(docItem.data || docItem.dataChamada || docItem.id);
     const statusChamada = String(docItem.statusChamada || '').trim().toLowerCase();
     const docMeta = {
@@ -522,9 +523,10 @@ export function normalizarAlunos(
 ): AlunoNormalizado[] {
   const diariaIndex = construirIndiceFrequenciaDiaria(frequenciaDiariaDocs, alunosRaw);
 
-  // Índice de Busca Ativa por RA
+  // Índice de Busca Ativa por RA (apenas ano letivo vigente)
   const baPorRa = new Map<string, any[]>();
   (buscaAtivaDocs || []).forEach((ba) => {
+    if (!ba || !ehRegistroDoAnoVigente(ba)) return;
     const rk = normalizarRa(ba.ra || ba.raAluno);
     if (!rk) return;
     const arr = baPorRa.get(rk) || [];
@@ -771,7 +773,7 @@ export function unificarOcorrencias(ocorrenciasTop: any[], alunosRaw: any[]): an
   const mapa = new Map<string, any>();
 
   const adicionar = (oc: any, alunoFallback?: any) => {
-    if (!oc || typeof oc !== 'object') return;
+    if (!oc || typeof oc !== 'object' || !ehRegistroDoAnoVigente(oc)) return;
     const ra = normalizarRa(oc.ra || oc.raAluno || alunoFallback?.ra || alunoFallback?.id);
     const dataStr = String(oc.data || oc.dataRegistro || oc.criadoEm || '').slice(0, 19);
     const tipoStr = String(oc.tipo || oc.categoria || '').trim();
@@ -1167,8 +1169,8 @@ export function analisarJanelasDocentes(
       return;
     }
 
-    // 6. Verificar Equipe Gestora sem regência de aulas (Diretor / Vice-Diretor / CGPG com 0 aulas na grade)
-    if (['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(docente.tipo) && aulasSemana === 0) {
+    // 6. Verificar Equipe Gestora sem regência de aulas (Diretor / Sênior/GOE / Vice-Diretor / CGPG com 0 aulas na grade)
+    if (['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG'].includes(docente.tipo) && aulasSemana === 0) {
       indisponiveis.push({
         nome: docente.nome,
         disciplina: docente.disciplina,

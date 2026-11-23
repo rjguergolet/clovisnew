@@ -12,6 +12,15 @@ const pdfParse = (pdfParseModule as any).default || pdfParseModule;
 import { getDatabase, getDocs, getDoc, setDoc, addDoc, updateDoc, deleteDoc, countDocs, executeBatch, prewarmCache, formatMongoDoc, searchAlunosInDb, resolveCollectionName, buildDocumentQuery } from './src/server/mongodb.ts';
 import { parseBoletimSEDText, limparNomeDisciplina } from './src/modules/boletimPdfParser.ts';
 import { parseRelatorioFrequenciaSED, normalizarNomeTurmaSED, normalizarRaSED } from './src/modules/frequenciaSedPdfParser.ts';
+import {
+  parseMapaoConselhoText,
+  gerarChaveTurmaBimestre,
+  gerarChaveAlunoConselho,
+  normalizarTextoComparacao,
+  gerarChaveTurma,
+  DELIBERACAO_LABELS,
+  RESULTADO_FINAL_LABELS
+} from './src/modules/mapaoConselhoParser.ts';
 
 const AUTH_SECRET = process.env.SESSION_SECRET || process.env.JWT_SECRET || 'clovis-lucca-2026-hmac-auth-secret-shield';
 
@@ -27,6 +36,7 @@ const MOCK_FALLBACK_USERS: Record<string, any> = {
 function normalizarRoleBackend(rawRole?: any): string {
   if (!rawRole) return 'PROFESSOR';
   const str = String(rawRole).trim().toUpperCase();
+  if (str === 'SENIOR_GOE' || str === 'SÊNIOR/GOE' || str === 'SENIOR/GOE' || str === 'GOE' || str === 'SÊNIOR' || str === 'SENIOR' || str.includes('SENIOR') || str.includes('SÊNIOR') || /\bGOE\b/.test(str) || str === 'EXTENDIDO' || str === 'ESTENDIDO' || str.includes('EXTENDIDO') || str.includes('ESTENDIDO')) return 'SENIOR_GOE';
   if (str === 'DIRETOR' || str === 'DIREÇÃO' || str === 'DIRECAO' || str === 'ADMIN') return 'DIRETOR';
   if (str.includes('VICE') || str === 'VICE_DIRETOR' || str === 'VICE-DIRETOR') return 'VICE_DIRETOR';
   if (str.includes('CGPG') || str.includes('COORDENA') || str.includes('CGPCG')) return 'CGPG';
@@ -768,7 +778,7 @@ async function authorizeDbOperation(
   const isSensitiveAdminCol = ADMIN_ONLY_COLLECTIONS.has(realCol) || realCol === 'usuarios';
   const isConfigEscolaPermissionDoc =
     realCol === 'config_escola' &&
-    (!op.id || ['regras_acesso_rbac', 'permissoes', 'rbac', 'config_geral'].includes(String(op.id).toLowerCase()));
+    (!op.id || ['regras_acesso_rbac', 'permissoes', 'rbac', 'config_geral', 'ano_letivo_vigente', 'parametros_sistema', 'identidade_visual', 'colunas_alunos'].includes(String(op.id).toLowerCase()));
 
   // Operações que exigem obrigatoriamente usuário real autenticado via Bearer Token
   const requiresAuth =
@@ -778,6 +788,7 @@ async function authorizeDbOperation(
     isConfigEscolaPermissionDoc ||
     realCol === 'config_escola' ||
     realCol === 'atas_escolares' ||
+    realCol === 'conselhos_bimestre' ||
     realCol === 'alunos';
 
   if (requiresAuth && !realUser) {
@@ -810,7 +821,7 @@ async function authorizeDbOperation(
   }
 
   if (realCol === 'config_escola') {
-    if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'SECRETARIA'].includes(role)) {
+    if (!['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'SECRETARIA'].includes(role)) {
       return {
         allowed: false,
         status: 403,
@@ -855,7 +866,7 @@ async function authorizeDbOperation(
         (incomingData.cargo && normalizarRoleBackend(incomingData.cargo) !== role) ||
         (incomingData.nivel && normalizarRoleBackend(incomingData.nivel) !== role) ||
         (incomingData.nivelAcesso && normalizarRoleBackend(incomingData.nivelAcesso) !== role) ||
-        (incomingData.acesso_total === true && role !== 'DIRETOR' && role !== 'VICE_DIRETOR');
+        (incomingData.acesso_total === true && role !== 'DIRETOR' && role !== 'SENIOR_GOE' && role !== 'VICE_DIRETOR');
 
       if (attemptedRoleChange) {
         return {
@@ -869,7 +880,7 @@ async function authorizeDbOperation(
   }
 
   if (realCol === 'atas_escolares') {
-    if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(role)) {
+    if (!['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG'].includes(role)) {
       return {
         allowed: false,
         status: 403,
@@ -878,10 +889,20 @@ async function authorizeDbOperation(
     }
   }
 
+  if (realCol === 'conselhos_bimestre') {
+    if (!['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG'].includes(role)) {
+      return {
+        allowed: false,
+        status: 403,
+        message: `Acesso negado: O Módulo Especial de Conselho de Bimestre é restrito à Direção, Vice-Direção e CGPG (perfil real: ${role}).`
+      };
+    }
+  }
+
   // Regras específicas de EXCLUSÃO (DELETE) por coleção
   if (op.type === 'delete') {
     if (realCol === 'alunos') {
-      if (!['DIRETOR', 'VICE_DIRETOR', 'SECRETARIA'].includes(role)) {
+      if (!['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'SECRETARIA'].includes(role)) {
         return {
           allowed: false,
           status: 403,
@@ -889,7 +910,7 @@ async function authorizeDbOperation(
         };
       }
     } else if (['ocorrencias', 'busca_ativa', 'registros', 'atas_escolares', 'notificacoes_tutor'].includes(realCol)) {
-      if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(role)) {
+      if (!['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG'].includes(role)) {
         return {
           allowed: false,
           status: 403,
@@ -897,7 +918,7 @@ async function authorizeDbOperation(
         };
       }
     } else {
-      if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'SECRETARIA'].includes(role)) {
+      if (!['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'SECRETARIA'].includes(role)) {
         return {
           allowed: false,
           status: 403,
@@ -1102,6 +1123,16 @@ async function startServer() {
     }
 
     try {
+      const realColGet = resolveCollectionName(collection);
+      if (realColGet === 'conselhos_bimestre') {
+        const realUserGet = await resolveRealAuthenticatedUser(req);
+        if (!realUserGet || !['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG'].includes(realUserGet.realRole)) {
+          return res.status(403).json({
+            error: 'Acesso restrito: apenas Direção, Vice-Direção e CGPG podem consultar dados do Conselho de Bimestre Especial.'
+          });
+        }
+      }
+
       let docs = await getDocs(collection, queryParams, { limit, sort });
 
       // Se for coleção de recados/mural, expurga qualquer resquício de boas-vindas do ano letivo
@@ -1590,6 +1621,1402 @@ Rigorosamente retorne APENAS um JSON válido no formato:
     }
   });
 
+  // ==========================================
+  // MÓDULO ESPECIAL (RESTRITO): CONSELHO DE BIMESTRE (DIREÇÃO, VICE E CGPG)
+  // ==========================================
+  const ROLES_CONSELHO_ESPECIAL = new Set(['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG']);
+
+  async function requireConselhoEspecialUser(req: express.Request, res: express.Response) {
+    const realUser = await resolveRealAuthenticatedUser(req);
+    if (!realUser) {
+      res.status(401).json({ error: 'Autenticação obrigatória para acessar o Módulo Especial do Conselho de Bimestre.' });
+      return null;
+    }
+    if (!ROLES_CONSELHO_ESPECIAL.has(realUser.realRole)) {
+      res.status(403).json({
+        error: `Acesso restrito: apenas Direção, Vice-Direção e CGPG podem acessar o Módulo Especial (perfil: ${realUser.realRole}).`
+      });
+      return null;
+    }
+    return realUser;
+  }
+
+  // POST: Parsear 1 ou mais PDFs oficiais do Mapão SED ("Registro e Controle do Rendimento Escolar")
+  app.post('/api/conselho-especial/parse-mapao', async (req, res) => {
+    try {
+      const user = await requireConselhoEspecialUser(req, res);
+      if (!user) return;
+
+      const { files, fileBase64, fileName, text: textParam } = req.body || {};
+
+      const extractTextFromBuffer = async (buffer: Buffer): Promise<string> => {
+        const uint8 = new Uint8Array(buffer);
+        const PDFClass = (pdfParseModule as any).PDFParse || (pdfParseModule as any).default?.PDFParse;
+        if (PDFClass) {
+          const parser = new PDFClass(uint8);
+          await parser.load();
+          const pdfData = await parser.getText();
+          return typeof pdfData === 'string' ? pdfData : (pdfData.text || '');
+        } else if (typeof pdfParse === 'function') {
+          const pdfData = await pdfParse(buffer);
+          return pdfData.text || '';
+        }
+        return '';
+      };
+
+      const itens = Array.isArray(files) && files.length > 0
+        ? files
+        : [{ fileBase64, fileName: fileName || 'mapao_sed.pdf', text: textParam }];
+
+      const mapoes: any[] = [];
+      const erros: string[] = [];
+
+      for (const item of itens) {
+        const nomeArq = String(item?.fileName || 'mapao_sed.pdf');
+        try {
+          let texto = '';
+          if (item?.fileBase64) {
+            const cleanB64 = String(item.fileBase64).replace(/^data:[^;]+;base64,/, '');
+            const buf = Buffer.from(cleanB64, 'base64');
+            texto = await extractTextFromBuffer(buf);
+          } else if (item?.text) {
+            texto = String(item.text);
+          }
+
+          if (!texto || texto.trim().length < 20) {
+            erros.push(`${nomeArq}: arquivo PDF sem texto legível.`);
+            continue;
+          }
+
+          const parsed = parseMapaoConselhoText(texto, nomeArq);
+          if (parsed.sucesso && parsed.alunos.length > 0) {
+            mapoes.push(parsed);
+          } else {
+            erros.push(`${nomeArq}: ${parsed.mensagem || 'nenhum estudante localizado no Mapão.'}`);
+          }
+        } catch (itemErr: any) {
+          erros.push(`${nomeArq}: ${itemErr?.message || 'erro ao ler PDF.'}`);
+        }
+      }
+
+      if (mapoes.length === 0) {
+        return res.status(400).json({
+          sucesso: false,
+          error: erros[0] || 'Nenhum Mapão válido foi identificado nos arquivos enviados.',
+          erros
+        });
+      }
+
+      res.json({
+        sucesso: true,
+        mapoes,
+        erros
+      });
+    } catch (err: any) {
+      console.error('[API Conselho Especial] Erro ao processar Mapão:', err);
+      res.status(500).json({ error: 'Erro ao processar o PDF do Mapão.', details: err.message });
+    }
+  });
+
+  // GET: Listar todas as turmas salvas do Conselho de Bimestre
+  app.get('/api/conselho-especial/turmas', async (req, res) => {
+    try {
+      const user = await requireConselhoEspecialUser(req, res);
+      if (!user) return;
+
+      const db = await getDatabase();
+      const filter: Record<string, any> = {};
+      if (req.query.bimestreKey && String(req.query.bimestreKey).toUpperCase() !== 'TODOS') {
+        filter['metadata.bimestreKey'] = String(req.query.bimestreKey).toUpperCase();
+      }
+      if (req.query.anoLetivo) {
+        const ano = parseInt(String(req.query.anoLetivo), 10);
+        if (!Number.isNaN(ano)) filter['metadata.anoLetivo'] = ano;
+      }
+
+      const docs = await db.collection('conselhos_bimestre').find(filter).toArray();
+      const formatados = docs.map(d => {
+        const { _id, id: _legacyId, ...rest } = d;
+        return {
+          ...rest,
+          docId: _id?.toString?.() || rest.chaveTurmaBimestre
+        };
+      });
+
+      res.json({ sucesso: true, turmas: formatados });
+    } catch (err: any) {
+      console.error('[API Conselho Especial] Erro ao listar turmas:', err);
+      res.status(500).json({ error: 'Erro ao carregar conselhos salvos.', details: err.message });
+    }
+  });
+
+  // POST: Salvar ou atualizar Mapão de uma turma (preservando deliberações/ata e sincronizando boletim em alunos)
+  app.post('/api/conselho-especial/salvar-turma', async (req, res) => {
+    try {
+      const user = await requireConselhoEspecialUser(req, res);
+      if (!user) return;
+
+      const { metadata, alunosRaw, observacoesGeraisTurma, sincronizarBoletimAlunos = true } = req.body || {};
+      if (!metadata || !metadata.turmaNormalizada || !Array.isArray(alunosRaw)) {
+        return res.status(400).json({ error: 'Dados do Mapão incompletos para gravação.' });
+      }
+
+      const bimKey = String(metadata.bimestreKey || '3B').toUpperCase();
+      const chaveTurmaBimestre = gerarChaveTurmaBimestre(
+        Number(metadata.anoLetivo) || 2026,
+        bimKey as any,
+        String(metadata.turmaNormalizada)
+      );
+
+      const db = await getDatabase();
+      const col = db.collection('conselhos_bimestre');
+      const existing = await col.findOne({ chaveTurmaBimestre });
+      const nowIso = new Date().toISOString();
+
+      // Nunca inclui campos id ou _id no payload persistido
+      const payload: Record<string, any> = {
+        chaveTurmaBimestre,
+        metadata,
+        alunosRaw,
+        origemDados: 'MAPAO_UPLOAD',
+        deliberacoes: existing?.deliberacoes && typeof existing.deliberacoes === 'object' ? existing.deliberacoes : {},
+        observacoesGeraisTurma:
+          observacoesGeraisTurma !== undefined
+            ? String(observacoesGeraisTurma)
+            : String(existing?.observacoesGeraisTurma || ''),
+        ...(existing?.ataConselho ? { ataConselho: existing.ataConselho } : {}),
+        importadoPor: user.nome || user.email,
+        importadoEm: existing?.importadoEm || nowIso,
+        atualizadoEm: nowIso
+      };
+
+      await col.updateOne(
+        { chaveTurmaBimestre },
+        { $set: payload },
+        { upsert: true }
+      );
+
+      // Sincroniza fechamento_notas.<bimKey> na coleção 'alunos' para manter o boletim escolar atualizado
+      let alunosBoletimSincronizados = 0;
+      if (sincronizarBoletimAlunos !== false && alunosRaw.length > 0) {
+        try {
+          const alunosCol = db.collection('alunos');
+          const allAlunosDb = await alunosCol
+            .find({}, { projection: { _id: 1, id: 1, ra: 1, nome: 1, turma: 1, serie: 1 } })
+            .toArray();
+
+          const turmaChaveAlvo = gerarChaveTurma(String(metadata.turmaNormalizada || metadata.turmaOriginal || ''));
+          const byTurma = allAlunosDb.filter(
+            (a: any) => gerarChaveTurma(String(a.turma || a.serie || '')) === turmaChaveAlvo
+          );
+
+          const findAlunoMatch = (nomeMapao: string) => {
+            const norm = normalizarTextoComparacao(nomeMapao);
+            if (!norm) return null;
+            const exMesma = byTurma.find((a: any) => normalizarTextoComparacao(a.nome) === norm);
+            if (exMesma) return exMesma;
+            const exEscola = allAlunosDb.find((a: any) => normalizarTextoComparacao(a.nome) === norm);
+            if (exEscola) return exEscola;
+
+            const tokens = norm.split(' ').filter(Boolean);
+            if (tokens.length >= 2) {
+              const pool = byTurma.length > 0 ? byTurma : allAlunosDb;
+              return (
+                pool.find((a: any) => {
+                  const aTok = normalizarTextoComparacao(a.nome).split(' ').filter(Boolean);
+                  if (aTok.length < 2) return false;
+                  if (aTok[0] !== tokens[0] || aTok[aTok.length - 1] !== tokens[tokens.length - 1]) return false;
+                  const setA = new Set(aTok);
+                  const comuns = tokens.filter(t => setA.has(t)).length;
+                  return comuns >= Math.min(aTok.length, tokens.length) * 0.7;
+                }) || null
+              );
+            }
+            return null;
+          };
+
+          const bulkOps: any[] = [];
+          for (const al of alunosRaw) {
+            if (!al?.nome) continue;
+            const matched = findAlunoMatch(al.nome);
+            if (!matched) continue;
+
+            const disciplinasSync: Record<string, any> = {};
+            if (al.disciplinas && typeof al.disciplinas === 'object') {
+              for (const [dKey, dVal] of Object.entries<any>(al.disciplinas)) {
+                const cleanNome = limparNomeDisciplina(dVal?.nome || dKey);
+                if (!cleanNome) continue;
+                disciplinasSync[cleanNome] = {
+                  nome: cleanNome,
+                  codigo: String(dVal?.codigo || ''),
+                  mencaoNota: String(dVal?.mencao ?? '-'),
+                  notaNum: dVal?.notaNum ?? null,
+                  faltas: Number(dVal?.faltas || 0) || 0,
+                  ausenciaCompensada: Number(dVal?.ausenciaCompensada || 0) || 0,
+                  aulasDadas: dVal?.aulasDadas ?? null,
+                  numChamada: Number(al.numChamada || 0) || undefined,
+                  abaixoBasico: Boolean(dVal?.notaVermelha)
+                };
+              }
+            }
+
+            const fechPayload = {
+              bimestre: Number(metadata.bimestre) || 3,
+              bimestreKey: bimKey,
+              anoLetivo: Number(metadata.anoLetivo) || 2026,
+              turmaOriginal: String(metadata.turmaOriginal || metadata.turmaNormalizada || ''),
+              tipoFechamento: String(metadata.tipoFechamento || ''),
+              totalAulasDadas: Number(metadata.totalAulasDadas || 0) || 0,
+              totalAulasDadasEletiva: Number(metadata.totalAulasDadasEletiva || 0) || 0,
+              totalFaltas: Number(al.totalFaltasBimestre || 0) || 0,
+              frequenciaBimestre: String(al.freqBimestreStr || '—'),
+              faltasTotalAno: Number(al.faltasTotalAno ?? al.totalFaltasBimestre ?? 0) || 0,
+              frequenciaTotalAno: String(al.freqAnualStr || al.freqBimestreStr || '—'),
+              mediaGeral: al.mediaGlobalNotas ?? null,
+              qtdAbaixoBasico: Number(al.qtdNotasVermelhas || 0) || 0,
+              disciplinas: disciplinasSync,
+              atualizadoEm: nowIso
+            };
+
+            const setFields: Record<string, any> = {
+              [`fechamento_notas.${bimKey}`]: fechPayload,
+              ultima_atualizacao_notas: nowIso
+            };
+            if (bimKey === 'FINAL' && al.situacao) {
+              setFields.situacao_final_ano = String(al.situacao);
+            }
+
+            bulkOps.push({
+              updateOne: {
+                filter: { _id: matched._id },
+                update: { $set: setFields }
+              }
+            });
+          }
+
+          if (bulkOps.length > 0) {
+            await alunosCol.bulkWrite(bulkOps, { ordered: false });
+            alunosBoletimSincronizados = bulkOps.length;
+          }
+        } catch (syncErr: any) {
+          console.warn('[API Conselho Especial] Aviso ao sincronizar fechamento_notas:', syncErr?.message || syncErr);
+        }
+      }
+
+      res.json({ sucesso: true, turma: payload, alunosBoletimSincronizados });
+    } catch (err: any) {
+      console.error('[API Conselho Especial] Erro ao salvar turma:', err);
+      res.status(500).json({ error: 'Erro ao salvar Mapão do Conselho no banco de dados.', details: err.message });
+    }
+  });
+
+  // Helper interno: sincroniza parecer individual, resultado final e turma seguinte do Conselho Final no Dossiê do estudante ('alunos')
+  const sincronizarConselhoFinalNoDossieAlunos = async (
+    db: any,
+    metadata: any,
+    alunosRaw: any[],
+    deliberacoesMap: Record<string, any>,
+    chavesAlvo: string[],
+    userName: string,
+    nowIso: string
+  ): Promise<number> => {
+    try {
+      const bimKey = String(metadata?.bimestreKey || '').toUpperCase();
+      if (bimKey !== 'FINAL' || !Array.isArray(chavesAlvo) || chavesAlvo.length === 0) return 0;
+
+      const alunosCol = db.collection('alunos');
+      const allAlunosDb = await alunosCol
+        .find({}, { projection: { _id: 1, ra: 1, nome: 1, turma: 1, serie: 1 } })
+        .toArray();
+      if (!allAlunosDb.length) return 0;
+
+      const turmaChaveAlvo = gerarChaveTurma(String(metadata?.turmaNormalizada || metadata?.turmaOriginal || ''));
+      const byTurma = allAlunosDb.filter(
+        (a: any) => gerarChaveTurma(String(a.turma || a.serie || '')) === turmaChaveAlvo
+      );
+
+      const findAlunoMatch = (nomeMapao: string) => {
+        const norm = normalizarTextoComparacao(nomeMapao);
+        if (!norm) return null;
+        const exMesma = byTurma.find((a: any) => normalizarTextoComparacao(a.nome) === norm);
+        if (exMesma) return exMesma;
+        const exEscola = allAlunosDb.find((a: any) => normalizarTextoComparacao(a.nome) === norm);
+        if (exEscola) return exEscola;
+
+        const tokens = norm.split(' ').filter(Boolean);
+        if (tokens.length >= 2) {
+          const pool = byTurma.length > 0 ? byTurma : allAlunosDb;
+          return (
+            pool.find((a: any) => {
+              const aTok = normalizarTextoComparacao(a.nome).split(' ').filter(Boolean);
+              if (aTok.length < 2) return false;
+              if (aTok[0] !== tokens[0] || aTok[aTok.length - 1] !== tokens[tokens.length - 1]) return false;
+              const setA = new Set(aTok);
+              const comuns = tokens.filter(t => setA.has(t)).length;
+              return comuns >= Math.min(aTok.length, tokens.length) * 0.7;
+            }) || null
+          );
+        }
+        return null;
+      };
+
+      const anoLetivo = Number(metadata?.anoLetivo) || 2026;
+      const turmaOrigem = String(metadata?.turmaNormalizada || metadata?.turmaOriginal || '');
+      const rawMap = new Map<string, any>();
+      (Array.isArray(alunosRaw) ? alunosRaw : []).forEach((al: any) => {
+        if (al?.nome) {
+          rawMap.set(gerarChaveAlunoConselho(Number(al.numChamada) || 0, String(al.nome)), al);
+        }
+      });
+
+      const bulkOps: any[] = [];
+      for (const chaveAluno of chavesAlvo) {
+        const delib = deliberacoesMap?.[chaveAluno];
+        if (!delib || typeof delib !== 'object') continue;
+
+        const alRaw = rawMap.get(chaveAluno);
+        const nomeFallback = chaveAluno.replace(/^n\d+_/, '').replace(/_/g, ' ');
+        const nomeAlvo = alRaw?.nome || nomeFallback;
+        const matched = findAlunoMatch(nomeAlvo);
+        if (!matched) continue;
+
+        const statusKey = String(delib.status || 'PENDENTE');
+        const resFinalKey = String(delib.resultadoFinal || 'PENDENTE');
+        const statusLabel = (DELIBERACAO_LABELS as Record<string, string>)[statusKey] || statusKey;
+        const resFinalLabel = (RESULTADO_FINAL_LABELS as Record<string, string>)[resFinalKey] || resFinalKey;
+
+        // Estritamente sem id/_id conforme regra do sistema
+        const registroConselhoFinal = {
+          anoLetivo,
+          turmaOrigem,
+          statusEncaminhamento: statusKey,
+          statusEncaminhamentoLabel: statusLabel,
+          resultadoFinal: resFinalKey,
+          resultadoFinalLabel: resFinalLabel,
+          turmaAnoSeguinte: String(delib.turmaAnoSeguinte || ''),
+          parecer: String(delib.parecer || ''),
+          atualizadoPor: String(delib.atualizadoPor || userName),
+          atualizadoEm: String(delib.atualizadoEm || nowIso)
+        };
+
+        const setFields: Record<string, any> = {
+          conselho_final: registroConselhoFinal,
+          [`conselhos_finais_historico.${anoLetivo}`]: registroConselhoFinal
+        };
+        if (registroConselhoFinal.turmaAnoSeguinte) {
+          setFields.turma_ano_seguinte = registroConselhoFinal.turmaAnoSeguinte;
+        }
+        if (resFinalKey !== 'PENDENTE') {
+          setFields.situacao_final_ano = resFinalLabel;
+        }
+
+        bulkOps.push({
+          updateOne: {
+            filter: { _id: matched._id },
+            update: { $set: setFields }
+          }
+        });
+      }
+
+      if (bulkOps.length > 0) {
+        await alunosCol.bulkWrite(bulkOps, { ordered: false });
+        return bulkOps.length;
+      }
+    } catch (err: any) {
+      console.warn('[API Conselho Especial] Aviso ao sincronizar Conselho Final no dossiê:', err?.message || err);
+    }
+    return 0;
+  };
+
+  // PATCH: Atualizar deliberação individual, observação geral ou Ata do Conselho (com upsert seguro para turmas vindas do Boletim)
+  app.patch('/api/conselho-especial/deliberacao', async (req, res) => {
+    try {
+      const user = await requireConselhoEspecialUser(req, res);
+      if (!user) return;
+
+      const {
+        chaveTurmaBimestre,
+        chaveAluno,
+        deliberacao,
+        observacoesGeraisTurma,
+        ataConselho,
+        metadataFallback,
+        alunosRawFallback
+      } = req.body || {};
+
+      if (!chaveTurmaBimestre) {
+        return res.status(400).json({ error: 'Chave da turma/bimestre é obrigatória.' });
+      }
+
+      const db = await getDatabase();
+      const col = db.collection('conselhos_bimestre');
+      const nowIso = new Date().toISOString();
+      const setPayload: Record<string, any> = { atualizadoEm: nowIso };
+      const userName = user.nome || user.email;
+
+      if (chaveAluno && deliberacao && typeof deliberacao === 'object') {
+        const cleanDelib: Record<string, any> = {
+          status: String(deliberacao.status || 'PENDENTE'),
+          parecer: String(deliberacao.parecer || ''),
+          atualizadoPor: userName,
+          atualizadoEm: nowIso
+        };
+        if (deliberacao.aeeManual !== undefined) cleanDelib.aeeManual = deliberacao.aeeManual;
+        if (deliberacao.resultadoFinal !== undefined) cleanDelib.resultadoFinal = String(deliberacao.resultadoFinal);
+        if (deliberacao.turmaAnoSeguinte !== undefined) cleanDelib.turmaAnoSeguinte = String(deliberacao.turmaAnoSeguinte);
+        setPayload[`deliberacoes.${chaveAluno}`] = cleanDelib;
+      }
+
+      if (observacoesGeraisTurma !== undefined) {
+        setPayload.observacoesGeraisTurma = String(observacoesGeraisTurma);
+      }
+
+      if (ataConselho && typeof ataConselho === 'object') {
+        const { id: _ignId, _id: _ignUnder, ...cleanAta } = ataConselho;
+        setPayload.ataConselho = {
+          ...cleanAta,
+          atualizadoPor: userName,
+          atualizadoEm: nowIso
+        };
+      }
+
+      const existing = await col.findOne({ chaveTurmaBimestre: String(chaveTurmaBimestre) });
+      if (!existing) {
+        if (metadataFallback && Array.isArray(alunosRawFallback)) {
+          const novoDoc: Record<string, any> = {
+            chaveTurmaBimestre: String(chaveTurmaBimestre),
+            metadata: metadataFallback,
+            alunosRaw: alunosRawFallback,
+            origemDados: 'BOLETIM_SISTEMA',
+            deliberacoes: {},
+            observacoesGeraisTurma: observacoesGeraisTurma !== undefined ? String(observacoesGeraisTurma) : '',
+            importadoPor: userName,
+            importadoEm: nowIso,
+            ...setPayload
+          };
+          if (chaveAluno && setPayload[`deliberacoes.${chaveAluno}`]) {
+            novoDoc.deliberacoes = { [chaveAluno]: setPayload[`deliberacoes.${chaveAluno}`] };
+            delete novoDoc[`deliberacoes.${chaveAluno}`];
+          }
+          await col.updateOne(
+            { chaveTurmaBimestre: String(chaveTurmaBimestre) },
+            { $set: novoDoc },
+            { upsert: true }
+          );
+          const alunosDossieSincronizados =
+            chaveAluno && setPayload[`deliberacoes.${chaveAluno}`]
+              ? await sincronizarConselhoFinalNoDossieAlunos(
+                  db,
+                  metadataFallback,
+                  alunosRawFallback,
+                  novoDoc.deliberacoes,
+                  [chaveAluno],
+                  userName,
+                  nowIso
+                )
+              : 0;
+          return res.json({
+            sucesso: true,
+            atualizadoEm: nowIso,
+            atualizadoPor: userName,
+            alunosDossieSincronizados
+          });
+        }
+        return res.status(404).json({ error: 'Turma não encontrada neste bimestre.' });
+      }
+
+      await col.updateOne({ chaveTurmaBimestre: String(chaveTurmaBimestre) }, { $set: setPayload });
+
+      const alunosDossieSincronizados =
+        chaveAluno && setPayload[`deliberacoes.${chaveAluno}`]
+          ? await sincronizarConselhoFinalNoDossieAlunos(
+              db,
+              existing.metadata || metadataFallback,
+              existing.alunosRaw || alunosRawFallback || [],
+              { [chaveAluno]: setPayload[`deliberacoes.${chaveAluno}`] },
+              [chaveAluno],
+              userName,
+              nowIso
+            )
+          : 0;
+
+      res.json({
+        sucesso: true,
+        atualizadoEm: nowIso,
+        atualizadoPor: userName,
+        alunosDossieSincronizados
+      });
+    } catch (err: any) {
+      console.error('[API Conselho Especial] Erro ao salvar deliberação:', err);
+      res.status(500).json({ error: 'Erro ao atualizar deliberação do conselho.', details: err.message });
+    }
+  });
+
+  // POST: Aplicar deliberações/resultados finais em lote para uma turma (ex: Aprovar Regulares -> Turma Ano Seguinte)
+  app.post('/api/conselho-especial/deliberacoes-lote', async (req, res) => {
+    try {
+      const user = await requireConselhoEspecialUser(req, res);
+      if (!user) return;
+
+      const { chaveTurmaBimestre, updates, metadataFallback, alunosRawFallback } = req.body || {};
+      if (!chaveTurmaBimestre || !updates || typeof updates !== 'object') {
+        return res.status(400).json({ error: 'Chave da turma e mapa de atualizações são obrigatórios.' });
+      }
+
+      const db = await getDatabase();
+      const col = db.collection('conselhos_bimestre');
+      const nowIso = new Date().toISOString();
+      const existing = await col.findOne({ chaveTurmaBimestre: String(chaveTurmaBimestre) });
+      const deliberacoesAtuais =
+        existing?.deliberacoes && typeof existing.deliberacoes === 'object' ? { ...existing.deliberacoes } : {};
+
+      for (const [chaveAluno, patch] of Object.entries<any>(updates)) {
+        if (!chaveAluno || !patch || typeof patch !== 'object') continue;
+        const atual = deliberacoesAtuais[chaveAluno] || { status: 'PENDENTE', parecer: '' };
+        const merged: Record<string, any> = {
+          status: String(patch.status ?? atual.status ?? 'PENDENTE'),
+          parecer: String(patch.parecer ?? atual.parecer ?? ''),
+          atualizadoPor: user.nome || user.email,
+          atualizadoEm: nowIso
+        };
+        if (patch.aeeManual !== undefined || atual.aeeManual !== undefined) {
+          merged.aeeManual = patch.aeeManual !== undefined ? patch.aeeManual : atual.aeeManual;
+        }
+        if (patch.resultadoFinal !== undefined || atual.resultadoFinal !== undefined) {
+          merged.resultadoFinal = String(patch.resultadoFinal ?? atual.resultadoFinal);
+        }
+        if (patch.turmaAnoSeguinte !== undefined || atual.turmaAnoSeguinte !== undefined) {
+          merged.turmaAnoSeguinte = String(patch.turmaAnoSeguinte ?? atual.turmaAnoSeguinte);
+        }
+        deliberacoesAtuais[chaveAluno] = merged;
+      }
+
+      if (!existing) {
+        if (!metadataFallback || !Array.isArray(alunosRawFallback)) {
+          return res.status(404).json({ error: 'Turma não encontrada para atualização em lote.' });
+        }
+        await col.updateOne(
+          { chaveTurmaBimestre: String(chaveTurmaBimestre) },
+          {
+            $set: {
+              chaveTurmaBimestre: String(chaveTurmaBimestre),
+              metadata: metadataFallback,
+              alunosRaw: alunosRawFallback,
+              origemDados: 'BOLETIM_SISTEMA',
+              deliberacoes: deliberacoesAtuais,
+              observacoesGeraisTurma: '',
+              importadoPor: user.nome || user.email,
+              importadoEm: nowIso,
+              atualizadoEm: nowIso
+            }
+          },
+          { upsert: true }
+        );
+      } else {
+        await col.updateOne(
+          { chaveTurmaBimestre: String(chaveTurmaBimestre) },
+          { $set: { deliberacoes: deliberacoesAtuais, atualizadoEm: nowIso } }
+        );
+      }
+
+      const alunosDossieSincronizados = await sincronizarConselhoFinalNoDossieAlunos(
+        db,
+        existing?.metadata || metadataFallback,
+        existing?.alunosRaw || alunosRawFallback || [],
+        deliberacoesAtuais,
+        Object.keys(updates),
+        user.nome || user.email,
+        nowIso
+      );
+
+      res.json({
+        sucesso: true,
+        deliberacoes: deliberacoesAtuais,
+        atualizadoEm: nowIso,
+        atualizadoPor: user.nome || user.email,
+        alunosDossieSincronizados
+      });
+    } catch (err: any) {
+      console.error('[API Conselho Especial] Erro ao salvar lote de deliberações:', err);
+      res.status(500).json({ error: 'Erro ao atualizar lote do conselho.', details: err.message });
+    }
+  });
+
+  // GET: Listar equipe gestora e docentes da escola para seleção rápida na Ata do Conselho
+  app.get('/api/conselho-especial/participantes', async (req, res) => {
+    try {
+      const user = await requireConselhoEspecialUser(req, res);
+      if (!user) return;
+
+      const db = await getDatabase();
+      const usuariosDocs = await db
+        .collection('usuarios')
+        .find({}, { projection: { senha: 0, password: 0, hash: 0, _id: 0 } })
+        .toArray();
+
+      const seen = new Map<string, { nome: string; cargo: string; roleNorm: string; disciplina: string }>();
+
+      for (const u of usuariosDocs) {
+        const nome = String(u?.nome || '').trim();
+        if (!nome || nome.length < 2) continue;
+        const roleNorm = normalizarRoleBackend(u?.cargo || u?.nivel || u?.nivelAcesso || u?.role);
+        const key = normalizarTextoComparacao(nome);
+        if (!seen.has(key)) {
+          seen.set(key, {
+            nome,
+            cargo: String(u?.cargo || roleNorm).trim(),
+            roleNorm,
+            disciplina: String(u?.disciplina || u?.componente || '').trim()
+          });
+        }
+      }
+
+      const lista = Array.from(seen.values()).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+      const gestao = lista.filter(p => ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG'].includes(p.roleNorm));
+      const professores = lista.filter(p => ['PROFESSOR', 'PAAC'].includes(p.roleNorm));
+
+      res.json({
+        sucesso: true,
+        gestao,
+        professores,
+        todos: lista
+      });
+    } catch (err: any) {
+      console.error('[API Conselho Especial] Erro ao listar participantes:', err);
+      res.status(500).json({ error: 'Erro ao carregar lista de participantes.', details: err.message });
+    }
+  });
+
+  // DELETE: Remover Mapão de uma turma do Conselho
+  app.delete('/api/conselho-especial/turma/:chave', async (req, res) => {
+    try {
+      const user = await requireConselhoEspecialUser(req, res);
+      if (!user) return;
+
+      const chave = String(req.params.chave || '').trim();
+      if (!chave) {
+        return res.status(400).json({ error: 'Chave da turma obrigatória.' });
+      }
+
+      const db = await getDatabase();
+      await db.collection('conselhos_bimestre').deleteOne({ chaveTurmaBimestre: chave });
+      res.json({ sucesso: true });
+    } catch (err: any) {
+      console.error('[API Conselho Especial] Erro ao remover turma:', err);
+      res.status(500).json({ error: 'Erro ao excluir turma do conselho.', details: err.message });
+    }
+  });
+
+  // ==========================================
+  // ANO LETIVO VIGENTE & FERRAMENTA B: VIRADA DE ANO LETIVO (EXCLUSIVO DIRETOR)
+  // ==========================================
+  async function requireDiretorUser(req: express.Request, res: express.Response) {
+    const realUser = await resolveRealAuthenticatedUser(req);
+    if (!realUser) {
+      res.status(401).json({ error: 'Autenticação obrigatória para esta operação administrativa.' });
+      return null;
+    }
+    if (realUser.realRole !== 'DIRETOR') {
+      res.status(403).json({
+        error: `Acesso negado: apenas o perfil real de DIRETOR pode executar a Virada de Ano Letivo (perfil atual: ${realUser.realRole}).`
+      });
+      return null;
+    }
+    return realUser;
+  }
+
+  function isAlunoAtivoBackend(aluno: any): boolean {
+    if (!aluno) return false;
+    const sit = String(
+      aluno.status ??
+      aluno.situacao ??
+      aluno.situacaoMatricula ??
+      aluno.situacao_matricula ??
+      aluno.status_aluno ??
+      aluno.situacao_aluno ??
+      'ATIVO'
+    ).trim().toUpperCase();
+
+    if (
+      sit.includes('TRANSF') ||
+      sit.includes('CANCEL') ||
+      sit.includes('CESS') ||
+      sit.includes('INATIV') ||
+      sit.includes('EVAD') ||
+      sit.includes('ABANDON') ||
+      sit.includes('FALEC') ||
+      sit.includes('CONCLU') ||
+      sit.includes('DESIST') ||
+      sit.includes('REMANEJ') ||
+      sit.includes('NÃO FREQUENTA') ||
+      sit.includes('NAO FREQUENTA') ||
+      sit.includes('DESLIGADO') ||
+      sit.includes('EGRESSO') ||
+      sit.includes('FORMADO') ||
+      sit === 'INATIVO' ||
+      sit === 'INATIVA' ||
+      sit === 'N' ||
+      sit === 'NAO' ||
+      sit === 'NÃO' ||
+      sit === 'FALSE'
+    ) {
+      return false;
+    }
+
+    if (
+      sit === 'ATIVO' ||
+      sit === 'ATIVA' ||
+      sit === 'REGULAR' ||
+      sit === 'MATRICULADO' ||
+      sit === 'MATRICULADA' ||
+      sit === 'FREQUENTANDO' ||
+      sit === 'SIM' ||
+      sit === 'S' ||
+      sit === 'TRUE' ||
+      sit.startsWith('ATIV')
+    ) {
+      return true;
+    }
+
+    return sit === '' || sit === 'ATIVO';
+  }
+
+  function inferirSegmentoPorTurmaBackend(turmaStr: string): string {
+    const t = String(turmaStr || '').toUpperCase().trim();
+    if (!t || t === 'EGRESSO' || t === 'FORMADO') return 'EGRESSO';
+    if (
+      t.includes('EM') ||
+      t.includes('MÉDIO') ||
+      t.includes('MEDIO') ||
+      t.includes('SÉRIE') ||
+      t.includes('SERIE') ||
+      /^[123][ªº°\s\-]/.test(t) ||
+      /^[123][A-Z]$/.test(t)
+    ) {
+      return 'ENSINO MÉDIO';
+    }
+    if (t.includes('ANO') || /^[6789][ªº°\s\-A-Z]?/.test(t)) {
+      return 'ENSINO FUNDAMENTAL';
+    }
+    return '';
+  }
+
+  function promoverTurmaFallbackBackend(turmaAtual: string): { turma: string; status: string; segmento: string } {
+    if (!turmaAtual) return { turma: 'SEM TURMA', status: 'ativo', segmento: '' };
+    const raw = String(turmaAtual).trim().toUpperCase();
+
+    if (raw.includes('EGRESSO') || raw.includes('FORMADO') || raw.includes('CONCLU')) {
+      return { turma: 'EGRESSO', status: 'inativo', segmento: 'EGRESSO' };
+    }
+    if (/^3([ªº°\s\-]*)(S[EÉ]RIE|EM|ANO)?\s*([A-Z0-9]+)?$/i.test(raw) || raw.startsWith('3º') || raw.startsWith('3ª') || raw.startsWith('3A') || raw.startsWith('3 EM') || raw.startsWith('3EM')) {
+      return { turma: 'EGRESSO', status: 'inativo', segmento: 'EGRESSO' };
+    }
+
+    const match = raw.match(/^([1-9])([ªº°\s\-]*)(S[EÉ]RIE|ANO|EM)?\s*([A-Z0-9]+)?$/i);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      const letter = (match[4] || '').trim();
+      const suffix = letter ? ` ${letter}` : '';
+      if (num >= 6 && num <= 8) {
+        const turma = `${num + 1}º ANO${suffix}`.trim();
+        return { turma, status: 'ativo', segmento: 'ENSINO FUNDAMENTAL' };
+      }
+      if (num === 9) {
+        const turma = `1ª SÉRIE${suffix}`.trim();
+        return { turma, status: 'ativo', segmento: 'ENSINO MÉDIO' };
+      }
+      if (num === 1 || num === 2) {
+        const turma = `${num + 1}ª SÉRIE${suffix}`.trim();
+        return { turma, status: 'ativo', segmento: 'ENSINO MÉDIO' };
+      }
+    }
+
+    return { turma: raw, status: 'ativo', segmento: inferirSegmentoPorTurmaBackend(raw) };
+  }
+
+  async function obterAnoLetivoConfigServer(db: any) {
+    const colCfg = db.collection(resolveCollectionName('config_escola'));
+    const docCfg = await colCfg.findOne({ $or: [{ id: 'ano_letivo_vigente' }, { docId: 'ano_letivo_vigente' }] });
+    const anoAtual = Number(docCfg?.anoLetivo);
+    const anoLetivo = Number.isFinite(anoAtual) && anoAtual >= 2024 && anoAtual <= 2100 ? anoAtual : 2026;
+    return {
+      anoLetivo,
+      anoAnterior: docCfg?.anoAnterior ? Number(docCfg.anoAnterior) : null,
+      ultimaViradaEm: docCfg?.ultimaViradaEm || null,
+      executadoPor: docCfg?.executadoPor || null
+    };
+  }
+
+  async function construirMapaDestinoConselhoFinal(db: any, anoAtual: number) {
+    const conselhosFinalDocs = await db
+      .collection('conselhos_bimestre')
+      .find({
+        'metadata.bimestreKey': 'FINAL',
+        'metadata.anoLetivo': { $in: [anoAtual, String(anoAtual)] }
+      })
+      .toArray();
+
+    const byRa = new Map<string, any>();
+    const byTurmaNome = new Map<string, any>();
+    const byNome = new Map<string, any>();
+
+    for (const cDoc of conselhosFinalDocs) {
+      const delibs = cDoc?.deliberacoes && typeof cDoc.deliberacoes === 'object' ? cDoc.deliberacoes : {};
+      const alunosRaw = Array.isArray(cDoc?.alunosRaw) ? cDoc.alunosRaw : [];
+      const turmaOrig = String(cDoc?.metadata?.turmaNormalizada || cDoc?.metadata?.turmaOriginal || '').trim();
+      const normTurma = normalizarTextoComparacao(turmaOrig);
+
+      const rawMap = new Map<string, any>();
+      alunosRaw.forEach((al: any) => {
+        if (al?.nome) {
+          rawMap.set(gerarChaveAlunoConselho(Number(al.numChamada) || 0, String(al.nome)), al);
+        }
+      });
+
+      for (const [chave, delib] of Object.entries<any>(delibs)) {
+        if (!delib || typeof delib !== 'object') continue;
+        const alRaw = rawMap.get(chave);
+        const nomeFallback = chave.replace(/^n\d+_/, '').replace(/_/g, ' ');
+        const nomeAlvo = String(alRaw?.nome || nomeFallback || '').trim();
+        if (!nomeAlvo) continue;
+
+        const normNome = normalizarTextoComparacao(nomeAlvo);
+        const raClean = String(alRaw?.ra || delib?.ra || '').replace(/\D/g, '');
+        const entry = {
+          resultadoFinal: String(delib.resultadoFinal || 'PENDENTE').trim().toUpperCase(),
+          turmaAnoSeguinte: String(delib.turmaAnoSeguinte || '').trim(),
+          parecer: String(delib.parecer || '').trim(),
+          statusEncaminhamento: String(delib.status || 'PENDENTE').trim().toUpperCase(),
+          turmaOrigem: turmaOrig,
+          atualizadoPor: String(delib.atualizadoPor || ''),
+          atualizadoEm: String(delib.atualizadoEm || '')
+        };
+
+        if (raClean) byRa.set(raClean, entry);
+        if (normTurma && normNome) byTurmaNome.set(`${normTurma}|${normNome}`, entry);
+        if (normNome) byNome.set(normNome, entry);
+      }
+    }
+
+    const resolverParaAluno = (al: any) => {
+      const raClean = String(al?.ra || '').replace(/\D/g, '');
+      const normNome = normalizarTextoComparacao(al?.nome || '');
+      const normTurma = normalizarTextoComparacao(al?.turma || '');
+
+      const histAno =
+        al?.conselhos_finais_historico &&
+        typeof al.conselhos_finais_historico === 'object' &&
+        (al.conselhos_finais_historico[String(anoAtual)] || al.conselhos_finais_historico[anoAtual]);
+
+      const directCf =
+        al?.conselho_final && Number(al.conselho_final.anoLetivo) === anoAtual ? al.conselho_final : null;
+
+      const fromDb =
+        (raClean ? byRa.get(raClean) : null) ||
+        (normTurma && normNome ? byTurmaNome.get(`${normTurma}|${normNome}`) : null) ||
+        (normNome ? byNome.get(normNome) : null);
+
+      const candidate = [fromDb, histAno, directCf].find(
+        c => c && (String(c.turmaAnoSeguinte || '').trim() !== '' || (c.resultadoFinal && c.resultadoFinal !== 'PENDENTE'))
+      ) || fromDb || histAno || directCf || null;
+
+      return candidate;
+    };
+
+    return {
+      totalTurmasConselhoFinal: conselhosFinalDocs.length,
+      resolverParaAluno
+    };
+  }
+
+  function resolverDestinoViradaAluno(al: any, delibCf: any): {
+    turma: string;
+    status: string;
+    segmento: string;
+    origemDestino: 'CONSELHO_FINAL' | 'FALLBACK_PROMOCAO';
+  } {
+    if (delibCf) {
+      const resFinal = String(delibCf.resultadoFinal || 'PENDENTE').toUpperCase().trim();
+      const destRaw = String(delibCf.turmaAnoSeguinte || '').trim().toUpperCase();
+
+      if (
+        resFinal === 'TRANSFERIDO_BAIXA' ||
+        destRaw.includes('EGRESSO') ||
+        destRaw.includes('FORMADO') ||
+        destRaw.includes('CONCLU')
+      ) {
+        return {
+          turma: 'EGRESSO',
+          status: 'inativo',
+          segmento: 'EGRESSO',
+          origemDestino: 'CONSELHO_FINAL'
+        };
+      }
+
+      if (destRaw) {
+        return {
+          turma: destRaw,
+          status: 'ativo',
+          segmento: inferirSegmentoPorTurmaBackend(destRaw) || String(al?.segmento || ''),
+          origemDestino: 'CONSELHO_FINAL'
+        };
+      }
+    }
+
+    const fb = promoverTurmaFallbackBackend(al?.turma || '');
+    return {
+      ...fb,
+      segmento: fb.segmento || String(al?.segmento || ''),
+      origemDestino: 'FALLBACK_PROMOCAO'
+    };
+  }
+
+  // GET: Consultar o ano letivo vigente atual do sistema
+  app.get('/api/config/ano-letivo', async (_req, res) => {
+    try {
+      const db = await getDatabase();
+      const cfg = await obterAnoLetivoConfigServer(db);
+      res.json({ sucesso: true, ...cfg });
+    } catch (err: any) {
+      console.error('[API Ano Letivo] Erro ao consultar ano letivo:', err);
+      res.status(500).json({ error: 'Erro ao consultar ano letivo vigente.' });
+    }
+  });
+
+  // GET: Prévia segura da Virada de Ano Letivo (somente DIRETOR)
+  app.get('/api/admin/virada-ano-preview', async (req, res) => {
+    try {
+      const user = await requireDiretorUser(req, res);
+      if (!user) return;
+
+      const db = await getDatabase();
+      const cfg = await obterAnoLetivoConfigServer(db);
+      const anoAtual = cfg.anoLetivo;
+      const anoNovo = anoAtual + 1;
+
+      const alunos = await db.collection('alunos').find({}).toArray();
+      const { totalTurmasConselhoFinal, resolverParaAluno } = await construirMapaDestinoConselhoFinal(db, anoAtual);
+
+      let alunosNaoAtivosExcluir = 0;
+      let alunosAtivos = 0;
+      let alunosComConselhoFinal = 0;
+      let alunosFallbackPromocao = 0;
+      let alunosEgressos = 0;
+
+      for (const al of alunos) {
+        if (!isAlunoAtivoBackend(al)) {
+          alunosNaoAtivosExcluir++;
+          continue;
+        }
+        alunosAtivos++;
+        const cf = resolverParaAluno(al);
+        const destino = resolverDestinoViradaAluno(al, cf);
+        if (destino.origemDestino === 'CONSELHO_FINAL') {
+          alunosComConselhoFinal++;
+        } else {
+          alunosFallbackPromocao++;
+        }
+        if (destino.status === 'inativo') {
+          alunosEgressos++;
+        }
+      }
+
+      const muralCol = db.collection(resolveCollectionName('mural_recados'));
+      const muralArquivadasExcluir = await muralCol.countDocuments({
+        $or: [{ arquivado: true }, { arquivado: 'true' }, { status: 'arquivado' }, { status: 'ARQUIVADO' }]
+      });
+
+      const taskFilterDone = {
+        $or: [
+          { concluido: true },
+          { concluido: 'true' },
+          { concluida: true },
+          { concluida: 'true' },
+          { status: { $in: ['concluido', 'concluida', 'CONCLUIDO', 'CONCLUIDA'] } },
+          { 'concluidaPor.0': { $exists: true } },
+          { 'concluidoPor.0': { $exists: true } }
+        ]
+      };
+      const tarefasEquipeDone = await db.collection(resolveCollectionName('rotina_equipe')).countDocuments(taskFilterDone);
+      const rotinaPdcaDone = await db.collection(resolveCollectionName('rotina_pdca')).countDocuments(taskFilterDone);
+      const eventosDone = await db.collection(resolveCollectionName('eventos')).countDocuments({
+        $or: [
+          { concluido: true },
+          { concluido: 'true' },
+          { status: { $in: ['concluido', 'concluida', 'CONCLUIDO', 'CONCLUIDA'] } }
+        ]
+      });
+
+      res.json({
+        sucesso: true,
+        anoAtual,
+        anoNovo,
+        totalTurmasConselhoFinal,
+        alunosTotal: alunos.length,
+        alunosAtivos,
+        alunosNaoAtivosExcluir,
+        alunosComConselhoFinal,
+        alunosFallbackPromocao,
+        alunosEgressos,
+        muralArquivadasExcluir,
+        tarefasCumpridasExcluir: tarefasEquipeDone + rotinaPdcaDone + eventosDone
+      });
+    } catch (err: any) {
+      console.error('[API Virada Ano Preview] Erro:', err);
+      res.status(500).json({ error: 'Erro ao calcular prévia da Virada de Ano.', details: err.message });
+    }
+  });
+
+  // POST: Executar Virada de Ano Letivo Completa (somente DIRETOR, após Backup no cliente)
+  app.post('/api/admin/virada-ano-letivo', async (req, res) => {
+    try {
+      const user = await requireDiretorUser(req, res);
+      if (!user) return;
+
+      const { confirmacao, backupConfirmado } = req.body || {};
+      if (String(confirmacao || '').trim().toUpperCase() !== 'VIRADA DE ANO') {
+        return res.status(400).json({ error: 'Frase de confirmação inválida. Digite exatamente VIRADA DE ANO.' });
+      }
+      if (!backupConfirmado) {
+        return res.status(400).json({
+          error: 'O backup integral do banco precisa ser gerado antes de executar a Virada de Ano.'
+        });
+      }
+
+      const db = await getDatabase();
+      const nowIso = new Date().toISOString();
+      const cfg = await obterAnoLetivoConfigServer(db);
+      const anoAtual = cfg.anoLetivo;
+      const anoNovo = anoAtual + 1;
+      const userNome = user.nome || user.email || 'DIRETOR';
+
+      // 1. Buscar todos os alunos antes da limpeza e resolver destinos pelo Conselho Final
+      const alunosCol = db.collection('alunos');
+      const todosAlunos = await alunosCol.find({}).toArray();
+      const { resolverParaAluno } = await construirMapaDestinoConselhoFinal(db, anoAtual);
+
+      const idsNaoAtivos: any[] = [];
+      const bulkAlunosOps: any[] = [];
+      let alunosPromovidosConselho = 0;
+      let alunosPromovidosFallback = 0;
+      let alunosEgressos = 0;
+
+      for (const al of todosAlunos) {
+        if (!isAlunoAtivoBackend(al)) {
+          idsNaoAtivos.push(al._id);
+          continue;
+        }
+
+        const delibCf = resolverParaAluno(al);
+        const destino = resolverDestinoViradaAluno(al, delibCf);
+        if (destino.origemDestino === 'CONSELHO_FINAL') {
+          alunosPromovidosConselho++;
+        } else {
+          alunosPromovidosFallback++;
+        }
+        if (destino.status === 'inativo') {
+          alunosEgressos++;
+        }
+
+        // Preserva histórico de frequência e atrasos do ano que se encerra dentro do documento sem contaminar o novo ano
+        const historicoFreqAnos =
+          al.historico_frequencia_anos && typeof al.historico_frequencia_anos === 'object'
+            ? { ...al.historico_frequencia_anos }
+            : {};
+        if (al.presenca_anual || al.presenca_atual || al.frequencia_atual || al.atrasos) {
+          historicoFreqAnos[String(anoAtual)] = {
+            anoLetivo: anoAtual,
+            turma: String(al.turma || ''),
+            presenca_anual: al.presenca_anual || al.presenca_atual || al.presenca || '',
+            frequencia_atual: al.frequencia_atual || null,
+            atrasos: Number(al.atrasos) || 0,
+            encerradoEm: nowIso
+          };
+        }
+
+        // Garante que o parecer individual do Conselho Final fique guardado no histórico interanual
+        const historicoCf =
+          al.conselhos_finais_historico && typeof al.conselhos_finais_historico === 'object'
+            ? { ...al.conselhos_finais_historico }
+            : {};
+        if (delibCf && !historicoCf[String(anoAtual)]) {
+          historicoCf[String(anoAtual)] = {
+            anoLetivo: anoAtual,
+            turmaOrigem: delibCf.turmaOrigem || String(al.turma || ''),
+            statusEncaminhamento: delibCf.statusEncaminhamento || 'PENDENTE',
+            statusEncaminhamentoLabel: delibCf.statusEncaminhamentoLabel || delibCf.statusEncaminhamento || 'Pendente',
+            resultadoFinal: delibCf.resultadoFinal || 'PENDENTE',
+            resultadoFinalLabel: delibCf.resultadoFinalLabel || delibCf.resultadoFinal || 'Pendente',
+            turmaAnoSeguinte: delibCf.turmaAnoSeguinte || destino.turma,
+            parecer: delibCf.parecer || '',
+            atualizadoPor: delibCf.atualizadoPor || userNome,
+            atualizadoEm: delibCf.atualizadoEm || nowIso
+          };
+        } else if (al.conselho_final && Number(al.conselho_final.anoLetivo) === anoAtual && !historicoCf[String(anoAtual)]) {
+          historicoCf[String(anoAtual)] = al.conselho_final;
+        }
+
+        // Marca ocorrências/ações embutidas no aluno como encerradas na virada (mantidas no dossiê, ignoradas nas métricas operacionais do ano novo)
+        const marcarArrayEncerrado = (arr: any) =>
+          Array.isArray(arr)
+            ? arr.map((item: any) =>
+                item && typeof item === 'object' && !item.encerradoNaVirada && !(Number(item.anoLetivoRegistro) >= anoNovo)
+                  ? { ...item, encerradoNaVirada: true, anoLetivoRegistro: Number(item.anoLetivoRegistro) || anoAtual }
+                  : item
+              )
+            : arr;
+
+        // Atualiza turma do ano novo e limpa SOMENTE notas, eletivas, clubes, tutor e contadores vigentes de frequência/atraso do ano encerrado
+        // Preserva: AEE, recomposição, projeto de vida, protagonismo, evolução, pareceres do conselho final, contatos e histórico de dossiê
+        const updateSet: Record<string, any> = {
+          turma: destino.turma,
+          ...(destino.segmento ? { segmento: destino.segmento } : {}),
+          status: destino.status,
+          anoLetivoAtivo: anoNovo,
+          historico_frequencia_anos: historicoFreqAnos,
+          conselhos_finais_historico: historicoCf,
+          // 1. Limpar Notas
+          fechamento_notas: {},
+          fechamentos: {},
+          notas: {},
+          boletim: {},
+          media_geral: null,
+          situacao_final_ano: '',
+          turma_ano_seguinte: '',
+          // 2. Limpar Eletivas
+          eletivas: '',
+          eletiva: '',
+          eletiva_1_2026: '',
+          eletiva_2_sem: '',
+          eletiva_1: '',
+          eletiva1: '',
+          eletiva_2026: '',
+          disciplinaEletiva: '',
+          // 3. Limpar Clubes
+          clube: '',
+          clube_juvenil: '',
+          clubes: '',
+          clubeJuvenil: '',
+          clube_2026: '',
+          // 4. Limpar Tutor
+          tutor: '',
+          tutor_2026: '',
+          tutor_2027: '',
+          tutor_pei: '',
+          tutoria: '',
+          tutor2026: '',
+          professorTutor: '',
+          // 5. Zerar frequência e alertas vigentes para o novo ano letivo (histórico preservado em historico_frequencia_anos)
+          presenca_anual: '',
+          presenca_26_06: '',
+          presenca_15_06: '',
+          presenca_1_sem: '',
+          presenca_2_sem: '',
+          presenca_atual: '',
+          presenca: '',
+          frequencia_atual: null,
+          frequencia_anterior: null,
+          frequencia_ajustada_direcao: false,
+          motivo_ajuste_frequencia: '',
+          justificativa_ajuste_frequencia: '',
+          historico_presenca: [],
+          atrasos: 0,
+          sla_busca_ativa: '',
+          ultimo_contato_ba: ''
+        };
+
+        if (Array.isArray(al.ocorrencias)) updateSet.ocorrencias = marcarArrayEncerrado(al.ocorrencias);
+        if (Array.isArray(al.registros)) updateSet.registros = marcarArrayEncerrado(al.registros);
+        if (Array.isArray(al.acoes)) updateSet.acoes = marcarArrayEncerrado(al.acoes);
+
+        bulkAlunosOps.push({
+          updateOne: {
+            filter: { _id: al._id },
+            update: { $set: updateSet }
+          }
+        });
+      }
+
+      // 2. Deletar todos os alunos cujo status não seja ativo
+      let alunosNaoAtivosDeletados = 0;
+      if (idsNaoAtivos.length > 0) {
+        const delAlRes = await alunosCol.deleteMany({ _id: { $in: idsNaoAtivos } });
+        alunosNaoAtivosDeletados = delAlRes.deletedCount || idsNaoAtivos.length;
+      }
+
+      // 3. Aplicar promoções e limpeza nos alunos ativos restantes
+      if (bulkAlunosOps.length > 0) {
+        await alunosCol.bulkWrite(bulkAlunosOps, { ordered: false });
+      }
+
+      // 4. Deletar todas as mensagens arquivadas do Mural
+      const muralCol = db.collection(resolveCollectionName('mural_recados'));
+      const delMuralRes = await muralCol.deleteMany({
+        $or: [{ arquivado: true }, { arquivado: 'true' }, { status: 'arquivado' }, { status: 'ARQUIVADO' }]
+      });
+      const muralArquivadasDeletadas = delMuralRes.deletedCount || 0;
+
+      // 5. Deletar todas as tarefas já cumpridas (rotina_equipe/tarefas_equipe, rotina_pdca e eventos concluídos)
+      const taskFilterDone = {
+        $or: [
+          { concluido: true },
+          { concluido: 'true' },
+          { concluida: true },
+          { concluida: 'true' },
+          { status: { $in: ['concluido', 'concluida', 'CONCLUIDO', 'CONCLUIDA'] } },
+          { 'concluidaPor.0': { $exists: true } },
+          { 'concluidoPor.0': { $exists: true } }
+        ]
+      };
+      const tarefasEquipeCol = db.collection(resolveCollectionName('rotina_equipe'));
+      const rotinaPdcaCol = db.collection(resolveCollectionName('rotina_pdca'));
+      const eventosCol = db.collection(resolveCollectionName('eventos'));
+
+      const delTarefasEquipe = await tarefasEquipeCol.deleteMany(taskFilterDone);
+      const delRotinaPdca = await rotinaPdcaCol.deleteMany(taskFilterDone);
+      const delEventosDone = await eventosCol.deleteMany({
+        $or: [
+          { concluido: true },
+          { concluido: 'true' },
+          { status: { $in: ['concluido', 'concluida', 'CONCLUIDO', 'CONCLUIDA'] } }
+        ]
+      });
+      const tarefasCumpridasDeletadas =
+        (delTarefasEquipe.deletedCount || 0) +
+        (delRotinaPdca.deletedCount || 0) +
+        (delEventosDone.deletedCount || 0);
+
+      // 6. Marcar como encerrados todos os registros operacionais de <= anoAtual para que NADA do ano anterior continue sendo considerado no ano novo
+      const cutoffSet = {
+        $set: {
+          encerradoNaVirada: true,
+          anoLetivoRegistro: anoAtual,
+          anoCorteVigencia: anoNovo
+        }
+      };
+      const cutoffFilter = {
+        encerradoNaVirada: { $ne: true },
+        $or: [
+          { anoLetivo: { $lte: anoAtual } },
+          { anoLetivo: { $lte: String(anoAtual) } },
+          { anoLetivo: { $exists: false } },
+          { anoLetivo: null }
+        ]
+      };
+
+      const colecoesOperacionaisAno = [
+        'ocorrencias',
+        'busca_ativa',
+        'frequencia_diaria',
+        'notificacoes_tutor',
+        'auditoria_frequencia',
+        'substituicoes_diarias',
+        'substituicoes_pei',
+        'atas_escolares',
+        'historico_atrasos',
+        'professores_anotacoes',
+        'fechamento_notas'
+      ];
+
+      let registrosOperacionaisEncerrados = 0;
+      for (const colNome of colecoesOperacionaisAno) {
+        try {
+          const targetCol = db.collection(resolveCollectionName(colNome));
+          const upRes = await targetCol.updateMany(cutoffFilter, cutoffSet);
+          registrosOperacionaisEncerrados += upRes.modifiedCount || 0;
+        } catch {
+          // ignora coleção vazia/inexistente
+        }
+      }
+
+      // Encerrar recados restantes do mural de <= anoAtual e eventos/tarefas pontuais de <= anoAtual
+      const upMural = await muralCol.updateMany(cutoffFilter, cutoffSet);
+      registrosOperacionaisEncerrados += upMural.modifiedCount || 0;
+
+      // Eventos anteriores ao ano novo (ex.: 2026-*) não são considerados no ano novo, mas eventos já agendados para >= anoNovo ficam ativos
+      const upEventos = await eventosCol.updateMany(
+        {
+          encerradoNaVirada: { $ne: true },
+          data: { $lt: `${anoNovo}-01-01` }
+        },
+        cutoffSet
+      );
+      registrosOperacionaisEncerrados += upEventos.modifiedCount || 0;
+
+      // Tarefas pontuais pendentes do ano anterior são encerradas para não gerarem falsos atrasos no ano novo (rotinas recorrentes permanecem ativas)
+      const upTarefasPontuais = await tarefasEquipeCol.updateMany(
+        {
+          encerradoNaVirada: { $ne: true },
+          $or: [
+            { frequencia: { $regex: /pontual/i } },
+            { prazo: { $lt: `${anoNovo}-01-01` } },
+            { dataLimite: { $lt: `${anoNovo}-01-01` } }
+          ]
+        },
+        cutoffSet
+      );
+      registrosOperacionaisEncerrados += upTarefasPontuais.modifiedCount || 0;
+
+      // 7. Atualizar o Ano Letivo Vigente em config_escola (sem id/_id conflituoso)
+      const colConfigEscola = db.collection(resolveCollectionName('config_escola'));
+      await colConfigEscola.updateOne(
+        { $or: [{ id: 'ano_letivo_vigente' }, { docId: 'ano_letivo_vigente' }] },
+        {
+          $set: {
+            id: 'ano_letivo_vigente',
+            docId: 'ano_letivo_vigente',
+            anoLetivo: anoNovo,
+            anoAnterior: anoAtual,
+            ultimaViradaEm: nowIso,
+            executadoPor: userNome
+          }
+        },
+        { upsert: true }
+      );
+
+      // 8. Gravar trilha de auditoria (estritamente sem id ou _id)
+      await db.collection('audit_logs').insertOne({
+        modulo: 'Virada de Ano Letivo',
+        acao: 'VIRADA_ANO_LETIVO_AUTOMATICA',
+        descricao: `Virada de Ano Letivo ${anoAtual} → ${anoNovo} executada por ${userNome}: ${alunosNaoAtivosDeletados} não-ativos removidos, ${muralArquivadasDeletadas} recados arquivados removidos, ${tarefasCumpridasDeletadas} tarefas cumpridas removidas, ${bulkAlunosOps.length} alunos ativos consolidados (${alunosPromovidosConselho} via Conselho Final, ${alunosPromovidosFallback} via regra lógica).`,
+        usuario: userNome,
+        role: user.realRole,
+        data: nowIso,
+        detalhes: {
+          anoAtual,
+          anoNovo,
+          alunosNaoAtivosDeletados,
+          alunosAtivosConsolidados: bulkAlunosOps.length,
+          alunosPromovidosConselho,
+          alunosPromovidosFallback,
+          alunosEgressos,
+          muralArquivadasDeletadas,
+          tarefasCumpridasDeletadas,
+          registrosOperacionaisEncerrados
+        }
+      });
+
+      res.json({
+        sucesso: true,
+        anoAnterior: anoAtual,
+        anoNovo,
+        resumo: {
+          alunosNaoAtivosDeletados,
+          alunosAtivosConsolidados: bulkAlunosOps.length,
+          alunosPromovidosConselho,
+          alunosPromovidosFallback,
+          alunosEgressos,
+          muralArquivadasDeletadas,
+          tarefasCumpridasDeletadas,
+          registrosOperacionaisEncerrados
+        }
+      });
+    } catch (err: any) {
+      console.error('[API Virada de Ano] Erro fatal na virada:', err);
+      res.status(500).json({ error: 'Erro ao executar a Virada de Ano Letivo.', details: err.message });
+    }
+  });
+
   // Salvar Frequências Processadas em Lote no Banco (Suporta Multi-Turmas e Flags de Tendência)
   app.post('/api/frequencia-sed/salvar-lote', async (req, res) => {
     try {
@@ -1597,7 +3024,7 @@ Rigorosamente retorne APENAS um JSON válido no formato:
       if (!realUser) {
         return res.status(401).json({ error: 'Autenticação obrigatória para gravar frequência SED no banco.' });
       }
-      if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'SECRETARIA'].includes(realUser.realRole)) {
+      if (!['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'SECRETARIA'].includes(realUser.realRole)) {
         return res.status(403).json({
           error: `Acesso negado: Perfil real "${realUser.realRole}" não tem permissão para gravar frequência SED em lote.`
         });
@@ -2480,7 +3907,7 @@ Processe o áudio em anexo, diferencie todas as vozes e retorne o JSON estrutura
           error: 'Autenticação obrigatória para utilizar o Gerador de Atas Inteligentes.'
         });
       }
-      if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(realUser.realRole)) {
+      if (!['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG'].includes(realUser.realRole)) {
         return res.status(403).json({
           error: `Acesso restrito: O Gerador de Atas é exclusivo para Direção, Vice-Direção e CGPG (perfil: "${realUser.realRole}").`
         });
@@ -2742,7 +4169,7 @@ ${String(notasBrutas).trim()}`;
           error: 'Autenticação obrigatória para salvar atas e registrar histórico nos dossiês.'
         });
       }
-      if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(realUser.realRole)) {
+      if (!['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG'].includes(realUser.realRole)) {
         return res.status(403).json({
           error: `Acesso negado: O Gerador de Atas é exclusivo para Direção, Vice-Direção e CGPG (perfil real: "${realUser.realRole}").`
         });
@@ -2943,6 +4370,7 @@ ${String(notasBrutas).trim()}`;
       const funcionariosAtualizados: Array<{ id?: string; email?: string; nome: string; acoes_2026: string }> = [];
       const nivelMap: Record<string, number> = {
         DIRETOR: 1,
+        SENIOR_GOE: 1,
         VICE_DIRETOR: 2,
         CGPG: 3,
         PAAC: 4,
@@ -3058,7 +4486,7 @@ ${String(notasBrutas).trim()}`;
       if (!realUser) {
         return res.status(401).json({ error: 'Autenticação obrigatória.' });
       }
-      if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(realUser.realRole)) {
+      if (!['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG'].includes(realUser.realRole)) {
         return res.status(403).json({
           error: `Acesso negado: Apenas Direção, Vice-Direção ou CGPG podem executar esta limpeza (perfil real: "${realUser.realRole}").`
         });
@@ -3081,7 +4509,7 @@ ${String(notasBrutas).trim()}`;
       if (!realUser) {
         return res.status(401).json({ error: 'Autenticação obrigatória.' });
       }
-      if (!['DIRETOR', 'VICE_DIRETOR', 'CGPG'].includes(realUser.realRole)) {
+      if (!['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG'].includes(realUser.realRole)) {
         return res.status(403).json({
           error: `Acesso negado: Apenas Direção, Vice-Direção ou CGPG podem executar esta migração (perfil real: "${realUser.realRole}").`
         });

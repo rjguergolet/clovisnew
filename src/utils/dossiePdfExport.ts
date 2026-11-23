@@ -23,6 +23,19 @@ export interface DossiePdfOcorrencia {
   rawDoc?: any;
 }
 
+export interface DossiePdfConselhoFinal {
+  anoLetivo?: number;
+  turmaOrigem?: string;
+  statusEncaminhamento?: string;
+  statusEncaminhamentoLabel?: string;
+  resultadoFinal?: string;
+  resultadoFinalLabel?: string;
+  turmaAnoSeguinte?: string;
+  parecer?: string;
+  atualizadoPor?: string;
+  atualizadoEm?: string;
+}
+
 export interface DossiePdfInput {
   logoUrl: string;
   nome: string;
@@ -48,6 +61,7 @@ export interface DossiePdfInput {
   dataEmissao: string;
   fechamentoNotas: Record<string, any>;
   situacaoFinal?: string;
+  conselhosFinais?: DossiePdfConselhoFinal[];
   ocorrencias: DossiePdfOcorrencia[];
   extrairSomenteNomeAutor: (autorRaw: any, recordObj?: any) => string;
   formatarDataBR?: (dt: any) => string;
@@ -326,6 +340,56 @@ export async function gerarESalvarDossieAlunoPdf(dados: DossiePdfInput): Promise
   });
 
   y = getLastTableY(doc, y) + 5;
+
+  const conselhosFinais = Array.isArray(dados.conselhosFinais) ? dados.conselhosFinais : [];
+  if (conselhosFinais.length > 0) {
+    const cfRows: any[] = conselhosFinais.map((cf) => {
+      const anoLabel = cf.anoLetivo ? String(cf.anoLetivo) : '—';
+      const anoSeg = cf.anoLetivo ? Number(cf.anoLetivo) + 1 : 'Seguinte';
+      const turmaOrig = cf.turmaOrigem ? ` • Origem: ${cf.turmaOrigem.toUpperCase()}` : '';
+      const resTxt = cf.resultadoFinalLabel || cf.resultadoFinal || 'Pendente';
+      const proxTurmaTxt = cf.turmaAnoSeguinte ? cf.turmaAnoSeguinte.toUpperCase() : 'Não definida';
+      const encTxt = cf.statusEncaminhamentoLabel || cf.statusEncaminhamento || 'Pendente';
+      const parecerIndividual = String(cf.parecer || '').trim() || 'Sem parecer descritivo registrado.';
+      const autorTxt = cf.atualizadoPor ? `\nRegistrado por: ${cf.atualizadoPor}` : '';
+      const dataRegTxt = cf.atualizadoEm
+        ? ` em ${new Date(cf.atualizadoEm).toLocaleDateString('pt-BR')}`
+        : '';
+
+      return [
+        {
+          content: `Conselho Final ${anoLabel}${turmaOrig}`,
+          styles: { fontStyle: 'bold' as const, textColor: [23, 37, 84], fillColor: [239, 246, 255] }
+        },
+        {
+          content: `Resultado: ${resTxt}   |   Turma ${anoSeg}: ${proxTurmaTxt}   |   Encaminhamento: ${encTxt}\nParecer Individual: ${parecerIndividual}${autorTxt ? `${autorTxt}${dataRegTxt}` : ''}`,
+          styles: { textColor: [30, 41, 59] }
+        }
+      ];
+    });
+
+    autoTable(doc, {
+      startY: y,
+      margin: { left: margin, right: margin },
+      theme: 'grid',
+      styles: {
+        font: 'helvetica',
+        fontSize: 8,
+        cellPadding: 2.5,
+        lineColor: [203, 213, 225],
+        lineWidth: 0.2,
+        overflow: 'linebreak',
+        valign: 'top'
+      },
+      columnStyles: {
+        0: { cellWidth: 42 },
+        1: { cellWidth: contentWidth - 42 }
+      },
+      body: cfRows
+    });
+
+    y = getLastTableY(doc, y) + 5;
+  }
 
   // =========================================================================
   // 4. RENDIMENTO ESCOLAR & FECHAMENTO DE NOTAS (SED)

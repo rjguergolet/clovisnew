@@ -2,6 +2,7 @@
 // MÓDULO: DASHBOARD DE ATRASOS, FALTAS & COMPARATIVO DE PRESENÇA (BI ESCOLAR)
 // EE Clóvis de Lucca - Gestão de Assiduidade e Pontualidade
 // ============================================================================
+import { ehRegistroDoAnoVigente } from './anoLetivoHelper';
 
 let chartInstAtrasos = null;
 let chartInstFaltas = null;
@@ -148,11 +149,11 @@ export function atualizarDashboardAtrasos() {
     // Consolida ocorrências de todas as fontes disponíveis (ocorrenciasCache, ocorrenciasTopLevel e embutidas nos alunos)
     let listaOcorrencias = [];
     if (Array.isArray(window.ocorrenciasCache) && window.ocorrenciasCache.length > 0) {
-      listaOcorrencias = window.ocorrenciasCache;
+      listaOcorrencias = window.ocorrenciasCache.filter(oc => ehRegistroDoAnoVigente(oc));
     } else {
       const seenSig = new Set();
       const pushUnique = (oc, fallbackRa, fallbackNome) => {
-        if (!oc) return;
+        if (!oc || !ehRegistroDoAnoVigente(oc)) return;
         const ra = normalizarRa(oc.alunoRa || oc.ra || oc.raLimpo || fallbackRa || "");
         const dt = String(oc.data || oc.dataHora || oc.criadoEm || "").substring(0, 16);
         const desc = String(oc.descricao || oc.observacao || "").trim().toLowerCase();
@@ -206,6 +207,7 @@ export function atualizarDashboardAtrasos() {
     const anoAtual = agora.getFullYear();
 
     listaOcorrencias.forEach(oc => {
+      if (!ehRegistroDoAnoVigente(oc)) return;
       if (!isOcorrenciaAtraso(oc)) return;
 
       const raOc = normalizarRa(oc.alunoRa || oc.ra || oc.raLimpo || "");

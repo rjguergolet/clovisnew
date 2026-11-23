@@ -11,6 +11,7 @@ import PresencaDiariaIA from './components/PresencaDiariaIA';
 import CentralInteligenciaDashboards from './components/dashboards/CentralInteligenciaDashboards';
 import RelatorioAlteracoesModal from './components/RelatorioAlteracoesModal';
 import ModalImportarBoletimPDF from './components/ModalImportarBoletimPDF';
+import ConselhoBimestreEspecial from './components/ConselhoBimestreEspecial';
 import ErrorBoundary from './components/ErrorBoundary';
 
 // Inicializa módulos globais (window.*)
@@ -99,19 +100,23 @@ export default function App() {
   const roleNorm = normalizarCargo(roleUpper);
   const isProfessorComum = roleNorm === 'PROFESSOR';
   const isAuthorizedPDCA = !isProfessorComum && roleNorm !== 'SECRETARIA' && [
-    'DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC'
+    'DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC'
   ].some((r) => roleNorm === r || roleNorm.includes('VICE') || roleNorm.includes('DIRETOR') || roleNorm.includes('CGPG') || roleNorm.includes('PAAC'));
   const isAuthorizedProfessores = !isProfessorComum && (
-    ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'SECRETARIA'].includes(roleNorm) ||
+    ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'SECRETARIA'].includes(roleNorm) ||
     roleNorm.includes('VICE')
   );
   const isAuthorizedSubstituicaoPEI = !isProfessorComum;
   const isAuthorizedPresencaDiaria = !isProfessorComum;
   const isAuthorizedGeradorAtas = !isProfessorComum && (
-    ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG'].includes(roleNorm) ||
+    ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'CGPCG'].includes(roleNorm) ||
     roleNorm.includes('VICE')
   );
-  const isAuthorizedAuditoria = roleNorm === 'DIRETOR' || roleNorm === 'VICE_DIRETOR' || roleNorm.includes('VICE');
+  const isAuthorizedConselhoEspecial = !isProfessorComum && (
+    ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'CGPCG'].includes(roleNorm) ||
+    roleNorm.includes('VICE')
+  );
+  const isAuthorizedAuditoria = roleNorm === 'DIRETOR' || roleNorm === 'SENIOR_GOE' || roleNorm === 'VICE_DIRETOR' || roleNorm.includes('VICE');
 
   const renderizarConteudoDaAba = () => {
     switch (currentTab) {
@@ -202,6 +207,15 @@ export default function App() {
           <div className="p-8 text-center text-rose-700 font-bold bg-white rounded-2xl border border-rose-200 m-4 shadow-xs">
             <i className="fa-solid fa-lock text-2xl mb-2 block"></i>
             Acesso Restrito: O Gerador de Atas é exclusivo para Direção, Vice-Direção e CGPG.
+          </div>
+        );
+      case 'conselho-especial':
+        return isAuthorizedConselhoEspecial ? (
+          <ConselhoBimestreEspecial />
+        ) : (
+          <div className="p-8 text-center text-rose-700 font-bold bg-white rounded-2xl border border-rose-200 m-4 shadow-xs">
+            <i className="fa-solid fa-lock text-2xl mb-2 block"></i>
+            Acesso Sigiloso Restrito: O módulo Especial (Conselho de Bimestre) é exclusivo para Direção, Vice-Direção e CGPG.
           </div>
         );
       case 'presenca-diaria':

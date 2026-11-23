@@ -870,6 +870,29 @@
               <div data-mobile-slot="institucional" class="hidden md:hidden pl-3 pt-1 pb-1.5 space-y-1 border-l border-blue-800/80 ml-4"></div>
             </div>
 
+            <!-- CATEGORIA FLUTUANTE 5: ESPECIAL (SIGILOSO · APENAS DIREÇÃO, VICE E CGPG) -->
+            <div data-menu-group-wrap="especial" class="hidden space-y-1 pt-2 mt-2 border-t border-blue-800/70">
+              <button
+                type="button"
+                data-menu-group="especial"
+                aria-haspopup="true"
+                aria-expanded="false"
+                class="sidebar-group-btn group w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left text-sm font-semibold text-blue-100 hover:bg-blue-900/80 hover:text-white border border-transparent transition-all cursor-pointer"
+                title="Área Restrita (Direção, Vice-Direção e CGPG): Conselho de Bimestre"
+              >
+                <div class="nav-icon-tile bg-rose-400/20 border-rose-400/35 text-rose-300 group-hover:scale-110 transition-transform">
+                  <i class="fa-solid fa-lock text-xs"></i>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <div class="truncate font-bold leading-tight">Especial</div>
+                  <div data-group-subtitle="especial" class="text-[10px] text-rose-300/85 font-medium truncate mt-0.5">Conselho de Bimestre</div>
+                </div>
+                <span data-group-badge="especial" class="hidden px-1.5 py-0.5 text-[10px] font-black rounded-full bg-rose-400 text-slate-950">0</span>
+                <i data-group-chevron="especial" class="fa-solid fa-chevron-right text-[10px] text-blue-300/70 group-hover:text-white group-hover:translate-x-0.5 transition-all shrink-0"></i>
+              </button>
+              <div data-mobile-slot="especial" class="hidden md:hidden pl-3 pt-1 pb-1.5 space-y-1 border-l border-blue-800/80 ml-4"></div>
+            </div>
+
           </nav>
 
           <!-- Simulador de Nível de Acesso (Exclusivo para DIRETOR) -->
@@ -877,6 +900,7 @@
             <label for="simulador-cargo" class="block text-[10px] font-bold text-blue-300 uppercase tracking-wider mb-1">Simular Nível de Acesso</label>
             <select id="simulador-cargo" class="w-full p-2 bg-slate-900 border border-blue-700 text-white font-bold text-xs rounded-lg outline-none focus:ring-2 focus:ring-cyan-400 cursor-pointer">
               <option value="DIRETOR">DIRETOR (Acesso Total)</option>
+              <option value="SENIOR_GOE">SÊNIOR/GOE (Direção sem Configurações)</option>
               <option value="VICE_DIRETOR">VICE_DIRETOR</option>
               <option value="CGPG">CGPG</option>
               <option value="PAAC">PAAC (Apoio ao Currículo)</option>
@@ -1186,7 +1210,32 @@
               <div class="nav-icon-tile bg-purple-400/20 border-purple-400/30 text-purple-300 group-hover:scale-110 transition-transform">
                 <i class="fa-solid fa-gear text-xs"></i>
               </div>
-              <span class="truncate">Configurações &amp; Banco</span>
+              <span id="nav-admin-label" class="truncate">Configurações &amp; Banco</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Flyout 5: Especial (Sigiloso - Direção, Vice e CGPG) -->
+        <div data-flyout-panel="especial" class="sidebar-flyout-panel pointer-events-auto hidden fixed w-72 bg-slate-950/95 backdrop-blur-md text-white rounded-2xl border border-rose-800/75 shadow-[0_20px_50px_rgba(2,6,23,0.65)] p-2.5 before:content-[''] before:absolute before:-left-4 before:inset-y-0 before:w-4">
+          <div class="px-2.5 py-2 mb-1.5 border-b border-rose-900/60 flex items-center gap-2">
+            <span class="w-6 h-6 rounded-lg bg-rose-400/20 border border-rose-400/35 text-rose-300 flex items-center justify-center text-[11px]">
+              <i class="fa-solid fa-lock"></i>
+            </span>
+            <div class="min-w-0">
+              <p class="text-[11px] font-black uppercase tracking-wider text-rose-300 leading-none">Especial · Sigiloso</p>
+              <p class="text-[10px] text-blue-200/75 truncate mt-0.5">Exclusivo Direção, Vice e CGPG</p>
+            </div>
+          </div>
+          <div data-flyout-items="especial" class="space-y-1">
+            <button
+              onclick="switchTab('conselho-especial')"
+              id="nav-conselho-especial"
+              class="tab-btn group w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-semibold text-blue-200 hover:bg-blue-900/80 hover:text-white transition-all cursor-pointer hidden"
+            >
+              <div class="nav-icon-tile bg-rose-400/20 border-rose-400/35 text-rose-300 group-hover:scale-110 transition-transform">
+                <i class="fa-solid fa-scale-balanced text-xs"></i>
+              </div>
+              <span class="truncate">Conselho de Bimestre</span>
             </button>
           </div>
         </div>
@@ -1199,14 +1248,16 @@
             pedagogica: ['dash-evasao', 'dash-academico', 'dash-pontualidade', 'dash-convivencia', 'dash-pei', 'dash-docente', 'dash-governanca'],
             'vida-escolar': ['alunos', 'registros', 'presenca-diaria'],
             rotina: ['rotina-pdca', 'agenda', 'horarios', 'substituicao-pei', 'gerador-atas'],
-            institucional: ['professores', 'secretaria', 'auditoria', 'admin']
+            institucional: ['professores', 'secretaria', 'auditoria', 'admin'],
+            especial: ['conselho-especial']
           };
 
           var GROUP_DEFAULT_SUBTITLE = {
             pedagogica: 'Central BI · 7 painéis',
             'vida-escolar': 'Alunos, dossiê, busca ativa e presença',
             rotina: 'PDCA, agenda, horários e atas',
-            institucional: 'Docentes, secretaria e banco'
+            institucional: 'Docentes, secretaria e banco',
+            especial: 'Conselho de Bimestre'
           };
 
           var TAB_SHORT_LABEL = {
@@ -1228,7 +1279,8 @@
             professores: 'Professores',
             secretaria: 'Secretaria Escolar',
             auditoria: 'Auditoria',
-            admin: 'Configurações & Banco'
+            admin: 'Configurações & Banco',
+            'conselho-especial': 'Conselho de Bimestre'
           };
 
           var GROUP_BADGE_IDS = {
@@ -1397,6 +1449,14 @@
 
               btn.addEventListener('click', function(e) {
                 e.stopPropagation();
+                if (groupId === 'especial' && typeof window.switchTab === 'function') {
+                  var especialBtn = document.getElementById('nav-conselho-especial');
+                  if (especialBtn && !especialBtn.classList.contains('hidden')) {
+                    window.switchTab('conselho-especial');
+                    if (typeof window.closeSidebarFlyouts === 'function') window.closeSidebarFlyouts();
+                    return;
+                  }
+                }
                 if (isDesktopViewport()) {
                   var panel = document.querySelector('[data-flyout-panel="' + groupId + '"]');
                   var isOpenAndPinned = pinnedFlyoutGroup === groupId && panel && !panel.classList.contains('hidden');
@@ -3084,6 +3144,19 @@
           <!-- ABA 5: ADMIN -->
           <div id="content-admin" class="tab-content hidden space-y-6">
             
+            <!-- Aviso para perfis sem acesso às Configurações Globais (ex: SÊNIOR/GOE / Professores / Secretaria) -->
+            <div id="banner-admin-somente-senha" class="hidden bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-start gap-3.5">
+              <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-800 border border-blue-200 flex items-center justify-center shrink-0">
+                <i class="fa-solid fa-key text-base"></i>
+              </div>
+              <div class="min-w-0">
+                <h3 class="text-sm font-bold text-slate-900">Minha Conta &amp; Alteração de Senha</h3>
+                <p class="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                  As Configurações do Sistema e a gestão de equipe são exclusivas da Direção. Nesta área você pode atualizar apenas os seus próprios dados e alterar a sua senha de acesso clicando em <strong>Editar</strong> na sua linha abaixo.
+                </p>
+              </div>
+            </div>
+
             <!-- Painel: Exportação em Massa de Dossiês Escolares (PDF Único Global) -->
             <div class="secao-admin-diretor bg-white p-6 rounded-2xl shadow-sm border border-indigo-200 space-y-5">
               <div class="flex items-center justify-between gap-3 flex-wrap border-b border-slate-100 pb-4">
@@ -3393,6 +3466,7 @@
                   <label for="admin-user-nivel" class="block text-xs font-semibold text-slate-600 uppercase mb-1">Nível de Acesso <span class="text-red-500">*</span></label>
                   <select id="admin-user-nivel" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-cyan-300 font-medium text-slate-700" required>
                     <option value="DIRETOR">DIRETOR (Acesso Total)</option>
+                    <option value="SENIOR_GOE">SÊNIOR/GOE (Direção sem Configurações)</option>
                     <option value="VICE_DIRETOR">VICE_DIRETOR</option>
                     <option value="CGPG">CGPG</option>
                     <option value="PAAC">PAAC (Apoio ao Currículo)</option>
@@ -3734,14 +3808,15 @@
                     <span>Ferramenta B • Virada de Ano Letivo (Promoção Automática)</span>
                   </div>
                   <p class="text-xs text-slate-600 leading-relaxed">
-                    Promove automaticamente a turma de todos os alunos cadastrados (ex: 6ºA → 7ºA, 9ºA → 1ºA EM, 3ºA EM → EGRESSO/FORMADO) e zera todos os campos flutuantes.
+                    Executa backup integral automático, exclui alunos não ativos, recados arquivados do mural e tarefas já cumpridas, consolida as turmas do próximo ano letivo pelo Conselho Final preservando todo o dossiê do estudante e limpa exclusivamente notas, eletivas, clubes e tutor.
                   </p>
 
                   <div class="p-3 bg-white rounded-lg border border-blue-200/80 text-[11px] text-slate-600 space-y-1">
-                    <p class="font-bold text-blue-900 uppercase">Regras de Progressão Lógica:</p>
+                    <p class="font-bold text-blue-900 uppercase">Sequência Automática Segura (Anual):</p>
                     <ul class="list-disc list-inside space-y-0.5 text-slate-500">
-                      <li>Fund. II: 6º, 7º, 8º avançam 1 ano. 9º ano é promovido para o 1º Ano do Ensino Médio.</li>
-                      <li>Ensino Médio: 1º e 2º anos avançam 1 ano. 3º Ano é promovido para EGRESSO.</li>
+                      <li><strong>1º Passo:</strong> Download imediato do backup JSON completo antes de qualquer alteração.</li>
+                      <li><strong>2º Passo:</strong> Exclusão de não ativos, mural arquivado e tarefas já concluídas + encerramento do ano anterior.</li>
+                      <li><strong>3º Passo:</strong> Enturmação pelo Conselho Final preservando dossiê (AEE, PV, evolução, pareceres) e limpando só notas, eletivas, clubes e tutor.</li>
                     </ul>
                   </div>
 
@@ -3819,6 +3894,7 @@
                   <label for="modal-user-nivel" class="block text-xs font-bold text-slate-700 uppercase mb-1">Nível de Acesso</label>
                   <select id="modal-user-nivel" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-cyan-400">
                     <option value="DIRETOR">DIRETOR (Acesso Total)</option>
+                    <option value="SENIOR_GOE">SÊNIOR/GOE (Direção sem Configurações)</option>
                     <option value="VICE_DIRETOR">VICE_DIRETOR</option>
                     <option value="CGPG">CGPG</option>
                     <option value="PAAC">PAAC (Apoio ao Currículo)</option>
@@ -4027,6 +4103,7 @@
           </label>
           <select id="mobile-simulador-cargo" class="w-full p-2.5 bg-white border border-slate-300 text-slate-900 font-bold text-xs rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 cursor-pointer">
             <option value="DIRETOR">DIRETOR (Acesso Total)</option>
+            <option value="SENIOR_GOE">SÊNIOR/GOE (Direção sem Configurações)</option>
             <option value="VICE_DIRETOR">VICE_DIRETOR</option>
             <option value="CGPG">CGPG</option>
             <option value="PAAC">PAAC (Apoio ao Currículo)</option>
@@ -4154,6 +4231,14 @@
                 <i class="fa-solid fa-gear"></i>
               </div>
               <span class="text-[11px] font-bold text-slate-700 truncate w-full">Config</span>
+            </button>
+
+            <!-- Especial: Conselho de Bimestre (Sigiloso - Direção, Vice e CGPG) -->
+            <button type="button" onclick="window.switchTab('conselho-especial'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile hidden flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-rose-50 transition cursor-pointer" id="mob-grid-conselho-especial">
+              <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-700 to-slate-900 text-white flex items-center justify-center text-lg shadow-sm">
+                <i class="fa-solid fa-lock"></i>
+              </div>
+              <span class="text-[11px] font-bold text-rose-800 truncate w-full">Especial</span>
             </button>
 
           </div>
@@ -4432,6 +4517,9 @@
                   <textarea id="modal-edit-evolucao" rows="3" placeholder="Observações sobre o progresso e comportamento do estudante..." class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-2 focus:ring-cyan-300 font-medium text-slate-700 uppercase"></textarea>
                 </div>
               </div>
+
+              <!-- Parecer Individual e Resultado do Conselho Final (sincronizado automaticamente para consulta nos anos seguintes) -->
+              <div id="container-dossie-conselho-final" class="hidden pt-1"></div>
             </div>
 
             <div class="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100 shrink-0">
@@ -5029,7 +5117,7 @@
 
     <!-- Modal de Confirmação de Dupla Etapa para Virada de Ano Letivo -->
     <div id="modal-virada-ano" class="fixed inset-0 bg-slate-900/70  z-[999] hidden flex items-center justify-center p-4">
-      <div class="bg-white rounded-2xl shadow-2xl border border-red-200 w-full max-w-lg overflow-hidden">
+      <div class="bg-white rounded-2xl shadow-2xl border border-red-200 w-full max-w-xl overflow-hidden max-h-[92vh] overflow-y-auto">
         <div class="bg-red-700 px-6 py-4 text-white flex justify-between items-center">
           <div class="flex items-center gap-2.5">
             <i class="fa-solid fa-triangle-exclamation text-amber-300 text-lg"></i>
@@ -5041,15 +5129,24 @@
         </div>
 
         <div class="p-6 space-y-5">
+          <!-- Prévia em Tempo Real do Banco -->
+          <div id="virada-preview-resumo" class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700">
+            <div class="flex items-center gap-2 text-slate-500">
+              <i class="fa-solid fa-spinner animate-spin"></i>
+              <span>Calculando prévia do Conselho Final e registros a limpar...</span>
+            </div>
+          </div>
+
           <!-- ETAPA 1 -->
           <div id="virada-etapa-1" class="space-y-4">
             <div class="p-4 bg-red-50 border border-red-200 rounded-xl text-xs text-red-900 space-y-2">
-              <span class="font-bold uppercase tracking-wider block">Etapa 1 de 2: Confirmação do Impacto</span>
-              <p>Esta operação é irreversível e alterará os dados de <strong>TODOS os estudantes</strong> no banco de dados Firestore:</p>
-              <ul class="list-disc list-inside space-y-1 font-semibold text-red-800">
-                <li>Todos os alunos serão promovidos para a próxima turma lógica.</li>
-                <li>Alunos do 3º Ano do Ensino Médio serão marcados como EGRESSO (Inativo).</li>
-                <li>Todos os campos flutuantes (Eletiva, Clube, Tutor e Presença) serão zerados.</li>
+              <span class="font-bold uppercase tracking-wider block">Etapa 1 de 2: O que será executado exatamente</span>
+              <ul class="list-disc list-inside space-y-1.5 font-medium text-red-900">
+                <li><strong>1. Backup Integral Automático:</strong> Baixa primeiro o JSON exato do banco antes de qualquer alteração (aborta se falhar).</li>
+                <li><strong>2. Exclusões Definitivas:</strong> Apaga estudantes cujo status não seja Ativo, mensagens arquivadas do Mural e tarefas já cumpridas.</li>
+                <li><strong>3. Enturmação pelo Conselho Final:</strong> Move os estudantes ativos para as turmas definidas no Conselho Final (ou progressão lógica se pendente).</li>
+                <li><strong>4. Limpeza Seletiva + Preservação de Dossiê:</strong> Apaga apenas <strong>Notas</strong>, <strong>Eletivas</strong>, <strong>Clubes</strong> e <strong>Tutor</strong>. Todo o conhecimento do dossiê (AEE, Recomposição, Projeto de Vida, Protagonismo, Evolução e Pareceres) é mantido.</li>
+                <li><strong>5. Corte de Ano Encerrado:</strong> Ocorrências, atrasos, busca ativa e registros operacionais do ano encerrado deixam de contar nos painéis do novo ano.</li>
               </ul>
             </div>
 
@@ -5070,7 +5167,7 @@
               <span class="font-bold uppercase tracking-wider block flex items-center gap-1.5">
                 <i class="fa-solid fa-key text-amber-600"></i> Etapa 2 de 2: Verificação de Segurança
               </span>
-              <p>Para confirmar a execução da Virada de Ano, digite a frase exata <strong>VIRADA DE ANO</strong> no campo abaixo:</p>
+              <p>Ao confirmar, o backup completo do banco atual será exportado automaticamente primeiro e, em seguida, o novo ano letivo será consolidado. Digite a frase exata <strong>VIRADA DE ANO</strong>:</p>
             </div>
 
             <div>
@@ -5084,7 +5181,7 @@
               </button>
               <button type="button" id="btn-confirmar-virada-final" class="px-5 py-2 bg-red-700 hover:bg-red-800 text-white font-bold rounded-lg text-xs uppercase tracking-wider cursor-pointer shadow-sm flex items-center gap-2">
                 <i class="fa-solid fa-check-double text-xs"></i>
-                <span>Confirmar Promoção Geral</span>
+                <span>Fazer Backup e Virar Ano Letivo</span>
               </button>
             </div>
           </div>
@@ -6203,7 +6300,7 @@
               Nome, Email, Cargo, Senha
             </div>
             <div class="text-[11px] text-slate-600 pt-1 space-y-0.5">
-              <p>• <strong>Cargos válidos:</strong> DIRETOR, VICE_DIRETOR, CGPG, PAAC, PROFESSOR_PAAC, SECRETARIA.</p>
+              <p>• <strong>Cargos válidos:</strong> DIRETOR, SENIOR_GOE (ou Sênior/GOE), VICE_DIRETOR, CGPG, PAAC, PROFESSOR_PAAC, SECRETARIA.</p>
               <p>• <strong>Senha:</strong> Mínimo de 6 caracteres (ex: <code class="bg-emerald-100 text-emerald-900 px-1 rounded font-mono">Clovis@2026</code>).</p>
             </div>
           </div>

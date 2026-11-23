@@ -299,6 +299,7 @@ export default function Dashboard8AprovacaoSP({
 
   const podeAcionarBuscaAtiva =
     userRoleNorm === 'DIRETOR' ||
+    userRoleNorm === 'SENIOR_GOE' ||
     userRoleNorm === 'VICE_DIRETOR' ||
     userRoleNorm.includes('VICE') ||
     userRoleNorm === 'CGPG' ||

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { collection, db, doc, getDoc, getDocs } from '../../lib/database';
 import { normalizarCargo } from '../../modules/authHelper';
+import { obterAnoLetivoVigente, ehRegistroDoAnoVigente } from '../../modules/anoLetivoHelper';
 import {
   AlunoNormalizado,
   DashboardInteligenciaTab,
@@ -46,7 +47,7 @@ const DASHBOARD_TABS: TabMeta[] = [
     titulo: 'Evasão & Tripla Frequência',
     subtitulo: 'SED × Mapão × Diária + Busca Ativa',
     icon: 'fa-solid fa-heart-pulse',
-    rolesPermitidos: ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'PROFESSOR', 'SECRETARIA']
+    rolesPermitidos: ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'PROFESSOR', 'SECRETARIA']
   },
   {
     id: 'dash-academico',
@@ -54,7 +55,7 @@ const DASHBOARD_TABS: TabMeta[] = [
     titulo: 'Desempenho Acadêmico',
     subtitulo: 'Conselho, Heatmap & Dispersão',
     icon: 'fa-solid fa-graduation-cap',
-    rolesPermitidos: ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'PROFESSOR', 'SECRETARIA']
+    rolesPermitidos: ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'PROFESSOR', 'SECRETARIA']
   },
   {
     id: 'dash-pontualidade',
@@ -62,7 +63,7 @@ const DASHBOARD_TABS: TabMeta[] = [
     titulo: 'Pontualidade & Atrasos',
     subtitulo: 'Reincidência, Horários & Saídas',
     icon: 'fa-solid fa-clock',
-    rolesPermitidos: ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'PROFESSOR', 'SECRETARIA']
+    rolesPermitidos: ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'PROFESSOR', 'SECRETARIA']
   },
   {
     id: 'dash-convivencia',
@@ -70,7 +71,7 @@ const DASHBOARD_TABS: TabMeta[] = [
     titulo: 'Clima & Conviva SP',
     subtitulo: 'Ocorrências & Conformidade',
     icon: 'fa-solid fa-shield-halved',
-    rolesPermitidos: ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'PROFESSOR']
+    rolesPermitidos: ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'PROFESSOR']
   },
   {
     id: 'dash-pei',
@@ -78,7 +79,7 @@ const DASHBOARD_TABS: TabMeta[] = [
     titulo: 'Gestão Pedagógica PEI',
     subtitulo: 'Tutoria, Clubes, Eletivas & PV',
     icon: 'fa-solid fa-compass',
-    rolesPermitidos: ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'PROFESSOR']
+    rolesPermitidos: ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'PROFESSOR']
   },
   {
     id: 'dash-docente',
@@ -86,7 +87,7 @@ const DASHBOARD_TABS: TabMeta[] = [
     titulo: 'Operacional Docente',
     subtitulo: 'Janelas, Grade & Substituições',
     icon: 'fa-solid fa-chalkboard-user',
-    rolesPermitidos: ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'SECRETARIA']
+    rolesPermitidos: ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'SECRETARIA']
   },
   {
     id: 'dash-governanca',
@@ -94,7 +95,7 @@ const DASHBOARD_TABS: TabMeta[] = [
     titulo: 'Governança & Auditoria',
     subtitulo: 'PDCA, Agenda & Saúde da Base',
     icon: 'fa-solid fa-list-check',
-    rolesPermitidos: ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC']
+    rolesPermitidos: ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC']
   },
   {
     id: 'dash-aprovacao',
@@ -102,7 +103,7 @@ const DASHBOARD_TABS: TabMeta[] = [
     titulo: 'Aprovação & Retenção SP',
     subtitulo: 'LDB 75% · Nota 5,0 · Risco Iminente',
     icon: 'fa-solid fa-scale-balanced',
-    rolesPermitidos: ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'PROFESSOR', 'SECRETARIA']
+    rolesPermitidos: ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR_PAAC', 'PROFESSOR', 'SECRETARIA']
   }
 ];
 
@@ -305,27 +306,35 @@ export default function CentralInteligenciaDashboards({
         profsCombinados
       );
 
-      // Consolidar substituições (diarias + pei sem duplicidade)
+      const anoVig = obterAnoLetivoVigente();
+      const ocDbVig = (ocDb || []).filter((item: any) => ehRegistroDoAnoVigente(item, anoVig));
+      const baDbVig = (baDb || []).filter((item: any) => ehRegistroDoAnoVigente(item, anoVig));
+      const freqDiariaDbVig = (freqDiariaDb || []).filter((item: any) => ehRegistroDoAnoVigente(item, anoVig));
+      const pdcaDbVig = (pdcaDb || []).filter((item: any) => ehRegistroDoAnoVigente(item, anoVig));
+      const tarefasDbVig = (tarefasDb || []).filter((item: any) => ehRegistroDoAnoVigente(item, anoVig));
+      const eventosDbVig = (eventosDb || []).filter((item: any) => ehRegistroDoAnoVigente(item, anoVig));
+
+      // Consolidar substituições (diarias + pei sem duplicidade, apenas do ano letivo vigente)
       const subsMap = new Map<string, any>();
       [...(subsDiariasDb || []), ...(subsPeiDb || [])].forEach((s: any, idx: number) => {
-        if (!s) return;
+        if (!s || !ehRegistroDoAnoVigente(s, anoVig)) return;
         const key = String(s.id || `${s.data || ''}-${s.periodoId || ''}-${s.turma || ''}-${idx}`);
         if (!subsMap.has(key)) subsMap.set(key, s);
       });
 
       setAlunosRaw(alunosDb);
-      setOcorrenciasTop(ocDb);
-      setBuscaAtivaDocs(baDb);
-      (window as any).frequenciaDiariaCache = freqDiariaDb;
+      setOcorrenciasTop(ocDbVig);
+      setBuscaAtivaDocs(baDbVig);
+      (window as any).frequenciaDiariaCache = freqDiariaDbVig;
       window.dispatchEvent(new CustomEvent('frequenciadiariaupdated'));
-      setFrequenciaDiariaDocs(freqDiariaDb);
+      setFrequenciaDiariaDocs(freqDiariaDbVig);
       setHorarios(horariosNormalizados);
       setProfessores(professoresConsolidados);
       setSubstituicoes(Array.from(subsMap.values()));
       setUsuarios(usuariosDb);
-      setRotinaPdca(pdcaDb);
-      setTarefas(tarefasDb);
-      setEventosAgenda(eventosDb);
+      setRotinaPdca(pdcaDbVig);
+      setTarefas(tarefasDbVig);
+      setEventosAgenda(eventosDbVig);
       setAuditLogs(auditDb);
       setCapacidadesPEI(capFinal);
       setIndisponibilidade(indispDoc?.matriz || indispDoc || {});
@@ -339,6 +348,15 @@ export default function CentralInteligenciaDashboards({
 
   useEffect(() => {
     carregarDados(false);
+    const onReloadAno = () => {
+      carregarDados(true);
+    };
+    window.addEventListener('clovis_ano_letivo_changed', onReloadAno);
+    window.addEventListener('studentsdataupdated', onReloadAno);
+    return () => {
+      window.removeEventListener('clovis_ano_letivo_changed', onReloadAno);
+      window.removeEventListener('studentsdataupdated', onReloadAno);
+    };
   }, [carregarDados]);
 
   const ocorrenciasUnificadas = useMemo(

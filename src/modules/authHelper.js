@@ -8,6 +8,7 @@ import { auth } from '../lib/auth';
 export function normalizarCargo(cargoStr) {
   if (!cargoStr) return 'PROFESSOR';
   const str = String(cargoStr).toUpperCase().trim();
+  if (str === 'SENIOR_GOE' || str === 'SÊNIOR/GOE' || str === 'SENIOR/GOE' || str === 'GOE' || str === 'SÊNIOR' || str === 'SENIOR' || str.includes('SENIOR') || str.includes('SÊNIOR') || /\bGOE\b/.test(str) || str === 'EXTENDIDO' || str === 'ESTENDIDO' || str.includes('EXTENDIDO') || str.includes('ESTENDIDO')) return 'SENIOR_GOE';
   if (str.includes('VICE')) return 'VICE_DIRETOR';
   if (str.includes('DIRETOR')) return 'DIRETOR';
   if (str.includes('CGPG') || str.includes('COORDENADOR') || str.includes('CGPCG')) return 'CGPG';

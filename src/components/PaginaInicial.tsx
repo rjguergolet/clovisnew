@@ -19,6 +19,7 @@ import {
   DIAS_SEMANA_OPCOES
 } from './GestaoRotinaPDCA';
 import CentralPendenciasPerfil from './CentralPendenciasPerfil';
+import { obterAnoLetivoVigente, ehRegistroDoAnoVigente } from '../modules/anoLetivoHelper';
 
 declare global {
   interface Window {
@@ -250,13 +251,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
     return '/logo-clovis.svg';
   });
 
-  const [anoLetivo, setAnoLetivo] = useState<'2026' | '2027'>(() => {
-    try {
-      return typeof window !== 'undefined' && localStorage.getItem('clovis_ano_letivo') === '2027' ? '2027' : '2026';
-    } catch {
-      return '2026';
-    }
-  });
+  const [anoLetivo, setAnoLetivo] = useState<string>(() => String(obterAnoLetivoVigente()));
 
   // Sincronização do Usuário Ativo, Ano Letivo e Logotipo da Escola
   useEffect(() => {
@@ -273,7 +268,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
     };
 
     const handleAnoChanged = (e: any) => {
-      const novo = e?.detail === '2027' || localStorage.getItem('clovis_ano_letivo') === '2027' ? '2027' : '2026';
+      const novo = e?.detail ? String(e.detail) : String(obterAnoLetivoVigente());
       setAnoLetivo(novo);
     };
 
@@ -296,14 +291,15 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
   const isRealDirector = useMemo(() => {
     const rawRole = currentUser?.cargo || (typeof window !== 'undefined' ? (window.realUserRole || window.currentUserRole) : '');
     const norm = normalizarCargo(rawRole);
-    if (norm === 'DIRETOR') return true;
+    if (norm === 'DIRETOR' || norm === 'SENIOR_GOE') return true;
     const email = String(currentUser?.email || '').toLowerCase();
     const nome = String(currentUser?.nome || '').toUpperCase();
     if (email.includes('guergolet') || nome.includes('GUERGOLET') || nome.includes('DIRETOR')) return true;
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('usuarioLogado');
-      if (saved && (saved.includes('DIRETOR') || saved.toLowerCase().includes('guergolet'))) return true;
-      if (localStorage.getItem('usuario_cargo')?.toUpperCase().includes('DIRETOR')) return true;
+      if (saved && (saved.includes('DIRETOR') || saved.includes('SENIOR_GOE') || saved.includes('SÊNIOR') || saved.includes('EXTENDIDO') || saved.toLowerCase().includes('guergolet'))) return true;
+      const cargoLs = localStorage.getItem('usuario_cargo')?.toUpperCase() || '';
+      if (cargoLs.includes('DIRETOR') || cargoLs.includes('SENIOR') || cargoLs.includes('SÊNIOR') || /\bGOE\b/.test(cargoLs) || cargoLs.includes('EXTENDIDO')) return true;
     }
     return false;
   }, [currentUser]);
@@ -456,7 +452,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
   const isProfessor = roleNorm === 'PROFESSOR';
   const isPAAC = roleNorm === 'PAAC' || roleNorm === 'PROFESSOR_PAAC';
   const isCoord = roleNorm === 'CGPG' || roleNorm === 'CGPCG';
-  const isDiretorRole = roleNorm === 'DIRETOR';
+  const isDiretorRole = roleNorm === 'DIRETOR' || roleNorm === 'SENIOR_GOE';
   const isViceRole = roleNorm === 'VICE_DIRETOR' || roleNorm.includes('VICE');
   const isDirecao = isDiretorRole || isViceRole;
   const isPdcaLeadership = isDirecao || isCoord;
@@ -518,10 +514,11 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         );
       };
 
+      const anoNumVig = obterAnoLetivoVigente();
       const listaR: any[] = [];
       rSnap.forEach(d => {
         const item = { id: d.id, ...d.data() };
-        if (!isBoasVindasRecado(item) && item.tipo !== 'ALERTA_PEDAGOGICO' && !(item.titulo && String(item.titulo).startsWith('ALERTA PEDAGÓGICO:'))) {
+        if (ehRegistroDoAnoVigente(item, anoNumVig) && !isBoasVindasRecado(item) && item.tipo !== 'ALERTA_PEDAGOGICO' && !(item.titulo && String(item.titulo).startsWith('ALERTA PEDAGÓGICO:'))) {
           listaR.push(item);
         }
       });
@@ -530,7 +527,10 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       if (typeof window !== 'undefined') (window as any).muralRecadosCache = listaR;
 
       const listaT: any[] = [];
-      tSnap.forEach(d => listaT.push({ id: d.id, ...d.data() }));
+      tSnap.forEach(d => {
+        const item = { id: d.id, ...d.data() };
+        if (ehRegistroDoAnoVigente(item, anoNumVig)) listaT.push(item);
+      });
       setTarefas(listaT);
       if (typeof window !== 'undefined') {
         (window as any).rotinaEquipeCache = listaT;
@@ -538,13 +538,19 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       }
 
       const listaE: any[] = [];
-      eSnap.forEach(d => listaE.push({ id: d.id, ...d.data() }));
+      eSnap.forEach(d => {
+        const item = { id: d.id, ...d.data() };
+        if (ehRegistroDoAnoVigente(item, anoNumVig)) listaE.push(item);
+      });
       listaE.sort((a, b) => new Date(a.data || 0).getTime() - new Date(b.data || 0).getTime());
       setEventos(listaE);
       if (typeof window !== 'undefined') (window as any).eventosCache = listaE;
 
       const listaO: any[] = [];
-      oSnap.forEach(d => listaO.push({ id: d.id, ...d.data() }));
+      oSnap.forEach(d => {
+        const item = { id: d.id, ...d.data() };
+        if (ehRegistroDoAnoVigente(item, anoNumVig)) listaO.push(item);
+      });
       listaO.sort((a, b) => new Date(b.criadoEm || b.data || 0).getTime() - new Date(a.criadoEm || a.data || 0).getTime());
       setOcorrencias(listaO);
       if (typeof window !== 'undefined') {
@@ -557,17 +563,26 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       if (typeof window !== 'undefined') (window as any).gradeCache = listaH;
 
       const listaSub: any[] = [];
-      subSnap.forEach(d => listaSub.push({ id: d.id, ...d.data() }));
+      subSnap.forEach(d => {
+        const item = { id: d.id, ...d.data() };
+        if (ehRegistroDoAnoVigente(item, anoNumVig)) listaSub.push(item);
+      });
       setSubstituicoes(listaSub);
       if (typeof window !== 'undefined') (window as any).substituicoesCache = listaSub;
 
       const listaFreq: any[] = [];
-      fdSnap.forEach(d => listaFreq.push({ id: d.id, ...d.data() }));
+      fdSnap.forEach(d => {
+        const item = { id: d.id, ...d.data() };
+        if (ehRegistroDoAnoVigente(item, anoNumVig)) listaFreq.push(item);
+      });
       setFrequenciaDiaria(listaFreq);
       if (typeof window !== 'undefined') (window as any).frequenciaDiariaCache = listaFreq;
 
       const listaNT: any[] = [];
-      ntSnap.forEach(d => listaNT.push({ id: d.id, ...d.data() }));
+      ntSnap.forEach(d => {
+        const item = { id: d.id, ...d.data() };
+        if (ehRegistroDoAnoVigente(item, anoNumVig)) listaNT.push(item);
+      });
       listaNT.sort((a, b) => new Date(b.criadoEm || b.data || 0).getTime() - new Date(a.criadoEm || a.data || 0).getTime());
       setNotificacoesTutor(listaNT);
       if (typeof window !== 'undefined') (window as any).notificacoesTutorCache = listaNT;
@@ -904,7 +919,8 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
     if (!canAccessRotinaPDCA) return [];
 
     const hierarquiaVisibilidade: Record<string, string[]> = {
-      DIRETOR: ['DIRETOR', 'VICE_DIRETOR', 'VICE-DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR', 'TODA A EQUIPE'],
+      DIRETOR: ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'VICE-DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR', 'TODA A EQUIPE'],
+      SENIOR_GOE: ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'VICE-DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR', 'TODA A EQUIPE'],
       VICE_DIRETOR: ['VICE_DIRETOR', 'VICE-DIRETOR', 'CGPG', 'CGPCG', 'PAAC', 'PROFESSOR', 'TODA A EQUIPE'],
       CGPG: ['CGPG', 'CGPCG', 'PAAC', 'PROFESSOR', 'TODA A EQUIPE'],
       CGPCG: ['CGPG', 'CGPCG', 'PAAC', 'PROFESSOR', 'TODA A EQUIPE'],
@@ -1434,9 +1450,10 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
           if ((cgNorm === 'PROFESSOR' || cgNorm === 'PROFESSORES') && (uCargo.includes('PROF') || uCargo === 'DOCENTE')) return true;
           if (cgNorm === 'PAAC' && uCargo.includes('PAAC')) return true;
           if ((cgNorm === 'CGPG' || cgNorm === 'COORDENACAO') && (uCargo.includes('CGPG') || uCargo.includes('COORD'))) return true;
-          if ((cgNorm === 'DIRECAO' || cgNorm === 'DIRETOR') && (uCargo.includes('DIRETOR') || uCargo.includes('VICE'))) return true;
+          if ((cgNorm === 'DIRECAO' || cgNorm === 'DIRETOR') && (uCargo.includes('DIRETOR') || uCargo.includes('SENIOR') || uCargo.includes('SÊNIOR') || /\bGOE\b/.test(uCargo) || uCargo.includes('EXTENDIDO') || uCargo.includes('VICE'))) return true;
+          if ((cgNorm === 'SENIOR_GOE' || cgNorm === 'EXTENDIDO') && (uCargo.includes('SENIOR') || uCargo.includes('SÊNIOR') || /\bGOE\b/.test(uCargo) || uCargo.includes('EXTENDIDO') || uCargo.includes('DIRETOR'))) return true;
           if (cgNorm === 'VICE_DIRETOR' && (uCargo.includes('VICE') || uCargo.includes('DIRETOR'))) return true;
-          if (cgNorm === 'SECRETARIA' && (uCargo.includes('SECRETAR') || uCargo.includes('GOE') || uCargo.includes('AOE'))) return true;
+          if (cgNorm === 'SECRETARIA' && (uCargo.includes('SECRETAR') || uCargo.includes('AOE'))) return true;
           return false;
         });
       });
@@ -1765,7 +1782,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
     if (tipoDocumento === 'matricula') {
       titulo = 'ATESTADO DE MATRÍCULA E FREQUÊNCIA';
-      corpo = `Atestamos, para os devidos fins a pedido da parte interessada, que o(a) estudante ${alunoSelecionadoDoc.nome}, portador(a) do R.A. nº ${alunoSelecionadoDoc.ra}, encontra-se regularmente matriculado(a) e com frequência ativa no ano letivo de 2026, cursando a turma ${alunoSelecionadoDoc.turma}, no Regime de Turno Único do Programa Ensino Integral (PEI), nesta Unidade Escolar sob jurisdição da Diretoria de Ensino da Região Leste 4.`;
+      corpo = `Atestamos, para os devidos fins a pedido da parte interessada, que o(a) estudante ${alunoSelecionadoDoc.nome}, portador(a) do R.A. nº ${alunoSelecionadoDoc.ra}, encontra-se regularmente matriculado(a) e com frequência ativa no ano letivo de ${anoLetivo}, cursando a turma ${alunoSelecionadoDoc.turma}, no Regime de Turno Único do Programa Ensino Integral (PEI), nesta Unidade Escolar sob jurisdição da Diretoria de Ensino da Região Leste 4.`;
     } else if (tipoDocumento === 'frequencia') {
       titulo = 'DECLARAÇÃO DE ASSIDUIDADE E FREQUÊNCIA ESCOLAR';
       const trechoFreq = freqReal !== null
@@ -1816,9 +1833,9 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
               </span>
               <span className="text-slate-300">·</span>
               <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${
-                anoLetivo === '2027' ? 'text-cyan-800 bg-cyan-50/90 border-cyan-200/70' : 'text-indigo-700 bg-indigo-50/80 border-indigo-200/60'
+                anoLetivo !== '2026' ? 'text-cyan-800 bg-cyan-50/90 border-cyan-200/70' : 'text-indigo-700 bg-indigo-50/80 border-indigo-200/60'
               }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${anoLetivo === '2027' ? 'bg-cyan-500' : 'bg-indigo-500'}`}></span>
+                <span className={`w-1.5 h-1.5 rounded-full ${anoLetivo !== '2026' ? 'bg-cyan-500' : 'bg-indigo-500'}`}></span>
                 Semana PEI {anoLetivo}
               </span>
               {revalidando ? (
@@ -1897,7 +1914,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             </div>
 
             <div className="flex items-center gap-1 overflow-x-auto no-scrollbar pt-1.5 border-t border-slate-200/70">
-              {['PROFESSOR', 'SECRETARIA', 'PAAC', 'CGPG', 'VICE_DIRETOR', 'DIRETOR'].map(roleOption => {
+              {['PROFESSOR', 'SECRETARIA', 'PAAC', 'CGPG', 'VICE_DIRETOR', 'SENIOR_GOE', 'DIRETOR'].map(roleOption => {
                 const isActive = activeRole === roleOption;
                 const labels: Record<string, string> = {
                   PROFESSOR: 'Professor',
@@ -1905,6 +1922,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                   PAAC: 'PAAC',
                   CGPG: 'CGPG',
                   VICE_DIRETOR: 'Vice-Direção',
+                  SENIOR_GOE: 'Sênior/GOE',
                   DIRETOR: 'Direção'
                 };
                 return (
@@ -3482,8 +3500,8 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         </div>
       )}
 
-      {/* C. VISÃO GESTÃO: PAAC, CGPG, VICE-DIREÇÃO E DIREÇÃO */}
-      {['PAAC', 'CGPG', 'VICE_DIRETOR', 'DIRETOR'].includes(activeRole) && (
+      {/* C. VISÃO GESTÃO: PAAC, CGPG, VICE-DIREÇÃO, SÊNIOR/GOE E DIREÇÃO */}
+      {['PAAC', 'CGPG', 'VICE_DIRETOR', 'SENIOR_GOE', 'DIRETOR'].includes(activeRole) && (
         <div className="space-y-5 sm:space-y-6">
 
           {/* MONITORAMENTO DE LEITURA & CIÊNCIA NO MURAL */}
@@ -3625,7 +3643,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
           </section>
 
           {/* PAINEL PRIORITÁRIO: NOTIFICAÇÕES PEDAGÓGICAS DOS PROFESSORES */}
-          {['DIRETOR', 'VICE_DIRETOR', 'PAAC', 'CGPG'].includes(activeRole) && (
+          {['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'PAAC', 'CGPG'].includes(activeRole) && (
             <section id="painel-notificacoes-pedagogicas" className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-3">
@@ -4436,6 +4454,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
                     >
                       <option value="">Meu Cargo ({activeRole})</option>
                       <option value="DIRETOR">Direção</option>
+                      <option value="SENIOR_GOE">Sênior/GOE</option>
                       <option value="VICE_DIRETOR">Vice-Direção</option>
                       <option value="CGPG">CGPG</option>
                       <option value="PAAC">PAAC</option>

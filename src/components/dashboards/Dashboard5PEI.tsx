@@ -37,6 +37,10 @@ export default function Dashboard5PEI({ alunos, professores, capacidadesPEI }: D
         const cargo = profCargoMap.get(norm)?.toUpperCase() || '';
         const isGestor =
           cargo.includes('DIRETOR') ||
+          cargo.includes('SENIOR') ||
+          cargo.includes('SÊNIOR') ||
+          /\bGOE\b/.test(cargo) ||
+          cargo.includes('EXTENDIDO') ||
           cargo.includes('CGPG') ||
           cargo.includes('CGPCG') ||
           cargo.includes('PAAC') ||

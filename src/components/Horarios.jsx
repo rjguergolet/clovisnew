@@ -3,6 +3,7 @@ import { db, collection, getDocs, addDoc, updateDoc, setDoc, doc, deleteDoc, wri
 import { podeExcluir, OPCOES_AREAS_PEI, normalizarArea, encontrarAreaDisciplina, isRegularTeachingClass, isInstitutionalOrAtpcCommitment, isRealProfessorName, isRealSchoolTurma, sortTurmasPEI, normalizeHorarioItem, extrairEMigrarDocentesDoHorario, isSameProfessor, normalizeTeacherName, getPeriodoOrder, getPeriodoRotulo, isTeacherAtSchool, normalizarDia } from '../utils';
 import { registrarLogAuditoria } from '../modules/auditLogger';
 import { obterUsuarioAtivoCompleto } from '../modules/authHelper';
+import { obterAnoLetivoVigente } from '../modules/anoLetivoHelper';
 
 // Estrutura de Horários Padrão PEI (Programa Ensino Integral - São Paulo)
 const DIAS_SEMANA = [
@@ -148,7 +149,7 @@ const GERAR_HORARIOS_INICIAIS = () => {
 };
 
 export default function Horarios() {
-  const anoGrade = '2026';
+  const [anoGrade, setAnoGrade] = useState(() => String(obterAnoLetivoVigente()));
   const [horarios, setHorarios] = useState(() => {
     try {
       if (Array.isArray(window.gradeCache) && window.gradeCache.length > 0) {
@@ -197,17 +198,14 @@ export default function Horarios() {
     });
   }, []);
 
-  // Garantir que o sistema opere sempre no ano letivo vigente (2026)
+  // Sincronizar dinamicamente com o Ano Letivo Vigente (2026 -> 2027 -> 2028...)
   useEffect(() => {
-    try {
-      if (localStorage.getItem('clovis_ano_letivo') !== '2026') {
-        localStorage.setItem('clovis_ano_letivo', '2026');
-      }
-      if (typeof window !== 'undefined') {
-        window.anoLetivoAtual = '2026';
-        window.dispatchEvent(new CustomEvent('clovis_ano_letivo_changed', { detail: '2026' }));
-      }
-    } catch {}
+    const syncAno = (e) => {
+      const novo = e?.detail ? String(e.detail) : String(obterAnoLetivoVigente());
+      setAnoGrade(novo);
+    };
+    window.addEventListener('clovis_ano_letivo_changed', syncAno);
+    return () => window.removeEventListener('clovis_ano_letivo_changed', syncAno);
   }, []);
 
   // Modo de visualização: 'por_turma' | 'por_professor' | 'por_sala' | 'matriz_geral'
@@ -630,7 +628,7 @@ export default function Horarios() {
         return prev;
       });
       const upper = String(r || '').toUpperCase().trim().replace(/-/g, '_');
-      const eAutorizado = ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG'].some(roleKey => upper === roleKey || upper.includes(roleKey));
+      const eAutorizado = ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'CGPCG'].some(roleKey => upper === roleKey || upper.includes(roleKey));
       if (!eAutorizado) {
         setModoPlanilha(false);
       }
@@ -645,11 +643,11 @@ export default function Horarios() {
   }, []);
 
   const roleUpper = String(userRole || 'PROFESSOR').toUpperCase().trim().replace(/-/g, '_');
-  // Restrição EXCLUSIVA aos Perfis "DIRETOR", "VICE_DIRETOR" e "CGPG"
-  const podeEditar = ['DIRETOR', 'VICE_DIRETOR', 'CGPG', 'CGPCG'].some(
+  // Restrição EXCLUSIVA aos Perfis "DIRETOR", "SENIOR_GOE", "VICE_DIRETOR" e "CGPG"
+  const podeEditar = ['DIRETOR', 'SENIOR_GOE', 'VICE_DIRETOR', 'CGPG', 'CGPCG'].some(
     r => roleUpper === r || roleUpper.includes(r)
   );
-  const isDiretor = ['DIRETOR', 'DIRETORA', 'DIRECAO'].some(
+  const isDiretor = ['DIRETOR', 'SENIOR_GOE', 'DIRETORA', 'DIRECAO'].some(
     r => roleUpper === r || roleUpper.startsWith(r)
   ) || (typeof window.ehDiretor === 'function' ? window.ehDiretor() : false);
 
@@ -1718,7 +1716,7 @@ export default function Horarios() {
       // Persiste a remoção e a lista de deletedIds ANTES de disparar deleteDoc para evitar corrida com onSnapshot
       await persistirGradeAtual(novos, id ? [id] : []);
 
-      if (anoGrade === '2026' && id && !String(id).startsWith('init-') && !String(id).startsWith('local-')) {
+      if (Boolean(anoGrade) && id && !String(id).startsWith('init-') && !String(id).startsWith('local-')) {
         try {
           await deleteDoc(doc(db, 'horarios', String(id)));
         } catch (delErr) {
@@ -1797,7 +1795,7 @@ export default function Horarios() {
       };
 
       let newId = `${anoGrade}_local-${Date.now()}`;
-      if (anoGrade === '2026') {
+      if (Boolean(anoGrade)) {
         try {
           const docRef = await addDoc(collection(db, 'horarios'), payload);
           newId = docRef.id;
@@ -1889,7 +1887,7 @@ export default function Horarios() {
 
       if (isCriandoNovaAulaAuditoria || !aulaEmEdicaoAuditoria?.id || String(aulaEmEdicaoAuditoria.id).startsWith('init-')) {
         let novoId = `${anoGrade}_${Date.now()}`;
-        if (anoGrade === '2026') {
+        if (Boolean(anoGrade)) {
           const docRef = await addDoc(collection(db, 'horarios'), payload);
           novoId = docRef.id;
         }
@@ -1910,7 +1908,7 @@ export default function Horarios() {
           : horarios;
         await persistirGradeAtual([...baseSemAntigaInit, { id: novoId, ...payload }]);
       } else {
-        if (anoGrade === '2026') {
+        if (Boolean(anoGrade)) {
           const docRef = doc(db, 'horarios', aulaEmEdicaoAuditoria.id);
           await updateDoc(docRef, payload);
         }
@@ -1961,7 +1959,7 @@ export default function Horarios() {
           const novosHorarios = horarios.filter(h => String(h.id) !== String(aula.id));
           await persistirGradeAtual(novosHorarios, aula.id ? [aula.id] : []);
 
-          if (anoGrade === '2026' && aula.id && !String(aula.id).startsWith('init-') && !String(aula.id).startsWith('local-')) {
+          if (Boolean(anoGrade) && aula.id && !String(aula.id).startsWith('init-') && !String(aula.id).startsWith('local-')) {
             try { await deleteDoc(doc(db, 'horarios', String(aula.id))); } catch (e) {}
           }
 
@@ -2070,7 +2068,7 @@ export default function Horarios() {
 
       if (isCriandoAulaGradeAdmin || !aulaEmEdicaoGradeAdmin?.id || String(aulaEmEdicaoGradeAdmin.id).startsWith('init-')) {
         let novoId = `${anoGrade}_${Date.now()}`;
-        if (anoGrade === '2026') {
+        if (Boolean(anoGrade)) {
           const docRef = await addDoc(collection(db, 'horarios'), payload);
           novoId = docRef.id;
         }
@@ -2080,7 +2078,7 @@ export default function Horarios() {
         await persistirGradeAtual([...baseSemInit, { id: novoId, ...payload }]);
         notificar('Nova aula inserida com sucesso na Grade PEI!', 'success');
       } else {
-        if (anoGrade === '2026') {
+        if (Boolean(anoGrade)) {
           const docRef = doc(db, 'horarios', aulaEmEdicaoGradeAdmin.id);
           await updateDoc(docRef, payload);
         }
@@ -2117,7 +2115,7 @@ export default function Horarios() {
         try {
           const novosHorarios = horarios.filter(h => String(h.id) !== String(aula.id));
           await persistirGradeAtual(novosHorarios, aula.id ? [aula.id] : []);
-          if (anoGrade === '2026' && aula.id && !String(aula.id).startsWith('init-') && !String(aula.id).startsWith('local-')) {
+          if (Boolean(anoGrade) && aula.id && !String(aula.id).startsWith('init-') && !String(aula.id).startsWith('local-')) {
             try { await deleteDoc(doc(db, 'horarios', String(aula.id))); } catch (e) {}
           }
           notificar('Aula removida da Grade PEI.', 'success');
@@ -2133,7 +2131,7 @@ export default function Horarios() {
   // Exclusivo Diretor: Limpar toda a grade de aulas de um determinado professor
   const handleLimparGradeProfessorDiretor = (profNome) => {
     const roleCurrent = typeof window.obterRoleAtual === 'function' ? window.obterRoleAtual() : userRole;
-    const ehDiretorReal = roleCurrent === 'DIRETOR' || isDiretor || podeEditar;
+    const ehDiretorReal = roleCurrent === 'DIRETOR' || roleCurrent === 'SENIOR_GOE' || isDiretor || podeEditar;
     if (!ehDiretorReal) {
       notificar('Acesso restrito: Apenas a Direção Escolar tem autorização para limpar a grade completa de um professor.', 'error');
       return;
@@ -2158,7 +2156,7 @@ export default function Horarios() {
           await persistirGradeAtual(novosHorarios, idsRemovidos);
 
           const idsBanco = idsRemovidos.filter(aId => !String(aId).startsWith('init-') && !String(aId).startsWith('local-'));
-          if (anoGrade === '2026' && idsBanco.length > 0) {
+          if (Boolean(anoGrade) && idsBanco.length > 0) {
             const batch = writeBatch(db);
             idsBanco.forEach((aId) => {
               batch.delete(doc(db, 'horarios', String(aId)));
@@ -2317,7 +2315,7 @@ export default function Horarios() {
           editadoEm: new Date().toISOString()
         };
 
-        if (anoGrade === '2026' && draggedAula.id && !String(draggedAula.id).startsWith('init-') && !String(draggedAula.id).startsWith('local-')) {
+        if (Boolean(anoGrade) && draggedAula.id && !String(draggedAula.id).startsWith('init-') && !String(draggedAula.id).startsWith('local-')) {
           const docRef = doc(db, 'horarios', draggedAula.id);
           await updateDoc(docRef, payload);
         }
@@ -2362,7 +2360,7 @@ export default function Horarios() {
         setLoading(true);
         const inis = GERAR_HORARIOS_INICIAIS().map(item => ({ ...item, anoLetivo: anoGrade }));
         try {
-          if (anoGrade === '2026') {
+          if (Boolean(anoGrade)) {
             localStorage.removeItem('clovis_horarios_deleted_ids');
           }
           await persistirGradeAtual(inis);
@@ -2756,7 +2754,7 @@ export default function Horarios() {
 
     setSalvando(true);
     try {
-      if (anoGrade === '2026') {
+      if (Boolean(anoGrade)) {
         try {
           const batch = writeBatch(db);
           let count = 0;
@@ -2850,7 +2848,7 @@ export default function Horarios() {
           await persistirGradeAtual([], idsAtuais);
 
           const idsBanco = idsAtuais.filter(hId => !String(hId).startsWith('init-') && !String(hId).startsWith('local-'));
-          if (anoGrade === '2026' && idsBanco.length > 0) {
+          if (Boolean(anoGrade) && idsBanco.length > 0) {
             try {
               const chunkSize = 200;
               for (let i = 0; i < idsBanco.length; i += chunkSize) {
@@ -2917,7 +2915,7 @@ export default function Horarios() {
         await persistirGradeAtual(restantes, idsRemovidos);
 
         const idsBanco = idsRemovidos.filter(aId => !String(aId).startsWith('init-') && !String(aId).startsWith('local-'));
-        if (anoGrade === '2026' && idsBanco.length > 0) {
+        if (Boolean(anoGrade) && idsBanco.length > 0) {
           try {
             const batch = writeBatch(db);
             idsBanco.forEach(aId => batch.delete(doc(db, 'horarios', String(aId))));
@@ -2944,7 +2942,7 @@ export default function Horarios() {
       const baseAtualizada = { ...cadastrosCustom, turmas: turmasAtualizadas };
 
       const aulasAfetadas = horarios.filter(h => h.turma === antigaTurma);
-      if (anoGrade === '2026' && aulasAfetadas.length > 0) {
+      if (Boolean(anoGrade) && aulasAfetadas.length > 0) {
         const batch = writeBatch(db);
         aulasAfetadas.forEach(aula => {
           if (aula.id && !String(aula.id).startsWith('init-')) {
@@ -3057,7 +3055,7 @@ export default function Horarios() {
         await persistirGradeAtual(restantes, idsRemovidos);
 
         const idsBanco = idsRemovidos.filter(aId => !String(aId).startsWith('init-') && !String(aId).startsWith('local-'));
-        if (anoGrade === '2026' && idsBanco.length > 0) {
+        if (Boolean(anoGrade) && idsBanco.length > 0) {
           try {
             const batch = writeBatch(db);
             idsBanco.forEach(aId => batch.delete(doc(db, 'horarios', String(aId))));
@@ -3112,7 +3110,7 @@ export default function Horarios() {
       const baseAtualizada = { ...cadastrosCustom, professores: listaCustomAtualizada };
 
       const aulasAfetadas = horarios.filter(h => isSameProfessor(h.professor, antigoNome) || h.professor === antigoNome);
-      if (anoGrade === '2026' && aulasAfetadas.length > 0) {
+      if (Boolean(anoGrade) && aulasAfetadas.length > 0) {
         const batch = writeBatch(db);
         aulasAfetadas.forEach(aula => {
           if (aula.id && !String(aula.id).startsWith('init-')) {
@@ -3248,7 +3246,7 @@ export default function Horarios() {
         await persistirGradeAtual(restantes, idsRemovidos);
 
         const idsBanco = idsRemovidos.filter(aId => !String(aId).startsWith('init-') && !String(aId).startsWith('local-'));
-        if (anoGrade === '2026' && idsBanco.length > 0) {
+        if (Boolean(anoGrade) && idsBanco.length > 0) {
           try {
             const batch = writeBatch(db);
             idsBanco.forEach(aId => batch.delete(doc(db, 'horarios', String(aId))));
@@ -3275,7 +3273,7 @@ export default function Horarios() {
       const baseAtualizada = { ...cadastrosCustom, salas: salasAtualizadas };
 
       const aulasAfetadas = horarios.filter(h => h.sala === antigaSala);
-      if (anoGrade === '2026' && aulasAfetadas.length > 0) {
+      if (Boolean(anoGrade) && aulasAfetadas.length > 0) {
         const batch = writeBatch(db);
         aulasAfetadas.forEach(aula => {
           if (aula.id && !String(aula.id).startsWith('init-')) {
@@ -3418,7 +3416,7 @@ export default function Horarios() {
                 <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Grade Horária Escolar PEI</h1>
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-50 text-indigo-800 border border-indigo-200/70 text-xs font-semibold tabular-nums">
                   <i className="fa-solid fa-calendar-check text-indigo-600 text-[11px]"></i>
-                  <span>Grade 2026 (Vigente)</span>
+                  <span>Grade {anoGrade} (Vigente)</span>
                 </span>
                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border ${
                   isRealtimeConnected
@@ -3430,7 +3428,7 @@ export default function Horarios() {
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium mt-1">
-                Escola Estadual Clóvis de Lucca &bull; Ano Letivo <span className="tabular-nums font-semibold text-slate-700">2026</span> &bull; Matriz de Aulas por Turma, Professor e Sala
+                Escola Estadual Clóvis de Lucca &bull; Ano Letivo <span className="tabular-nums font-semibold text-slate-700">{anoGrade}</span> &bull; Matriz de Aulas por Turma, Professor e Sala
               </p>
             </div>
           </div>
@@ -4669,7 +4667,7 @@ export default function Horarios() {
         </div>
 
         {/* PAINEL DE AUDITORIA E GESTÃO DE GRADE EXCLUSIVO DO DIRETOR (VISUALIZAÇÃO POR PROFESSOR) */}
-        {modoVisao === 'por_professor' && (typeof window.obterRoleAtual === 'function' ? window.obterRoleAtual() === 'DIRETOR' : isDiretor) && (
+        {modoVisao === 'por_professor' && (typeof window.obterRoleAtual === 'function' ? ['DIRETOR', 'SENIOR_GOE'].includes(window.obterRoleAtual()) : isDiretor) && (
           <div className="mt-6 bg-white border border-slate-200/80 rounded-2xl shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] overflow-hidden animate-fadeIn print:hidden">
             {/* Header do Painel Diretor */}
             <div className="bg-slate-50/70 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80">

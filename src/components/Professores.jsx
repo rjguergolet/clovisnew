@@ -79,6 +79,9 @@ export const CATEGORIAS_ANOTACAO = [
 
 export function getHierarchyInfo(cargoRaw) {
   const c = String(cargoRaw || '').toUpperCase().trim();
+  if (c === 'SENIOR_GOE' || c === 'SÊNIOR/GOE' || c === 'SENIOR/GOE' || c === 'GOE' || c === 'SÊNIOR' || c === 'SENIOR' || c.includes('SENIOR') || c.includes('SÊNIOR') || /\bGOE\b/.test(c) || c.includes('EXTENDIDO') || c.includes('ESTENDIDO')) {
+    return { nivel: 1, cargo: 'SENIOR_GOE', rotulo: 'Sênior/GOE' };
+  }
   if (c.includes('SUPER') || c === 'ADMIN' || c === 'DIRETOR' || c === 'DIREÇÃO' || c === 'DIRECAO') {
     return { nivel: 1, cargo: 'DIRETOR', rotulo: 'Diretor' };
   }
@@ -91,7 +94,7 @@ export function getHierarchyInfo(cargoRaw) {
   if (c.includes('PAAC')) {
     return { nivel: 4, cargo: 'PAAC', rotulo: 'PAAC' };
   }
-  if (c.includes('SECRETAR') || c.includes('SECRETÁRIA') || c === 'SECRETARIA' || c.includes('AOE') || c.includes('GOE')) {
+  if (c.includes('SECRETAR') || c.includes('SECRETÁRIA') || c === 'SECRETARIA' || c.includes('AOE')) {
     return { nivel: 5, cargo: 'SECRETARIA', rotulo: 'Secretaria' };
   }
   return { nivel: 999, cargo: 'PROFESSOR', rotulo: 'Professor' };
@@ -596,7 +599,7 @@ export default function Professores({ userRole }) {
       nivel: formCadastro.cargo,
       disciplina: formCadastro.disciplina,
       telefone: formCadastro.telefone.trim(),
-      acesso_total: formCadastro.cargo.toUpperCase().includes('DIRETOR'),
+      acesso_total: formCadastro.cargo.toUpperCase().includes('DIRETOR') || formCadastro.cargo.toUpperCase().includes('SENIOR') || formCadastro.cargo.toUpperCase().includes('SÊNIOR') || /\bGOE\b/.test(formCadastro.cargo.toUpperCase()) || formCadastro.cargo.toUpperCase().includes('EXTENDIDO'),
       ativo: true,
       atualizadoEm: new Date().toISOString()
     };
@@ -1642,6 +1645,7 @@ export default function Professores({ userRole }) {
                     <option value="CGPG">CGPG (Coordenador Geral)</option>
                     <option value="VICE_DIRETOR">Vice-Diretor</option>
                     <option value="DIRETOR">Diretor de Escola</option>
+                    <option value="SENIOR_GOE">Sênior/GOE (Direção sem Config.)</option>
                     <option value="AOE">AOE (Organização Escolar)</option>
                     <option value="Secretaria">Secretaria Escolar</option>
                     <option value="Outro">Outro Funcionário</option>

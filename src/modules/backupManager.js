@@ -1,5 +1,6 @@
 import { db, collection, getDocs, doc, writeBatch, setDoc } from '../lib/database';
 import { registrarLogAuditoria } from './auditLogger';
+import { obterAnoLetivoVigente } from './anoLetivoHelper';
 
 /**
  * Módulo de Backup & Restauração Global do MongoDB Atlas e Sistema
@@ -32,7 +33,12 @@ export const COLECOES_SISTEMA = [
   'grades',
   'fechamento_notas',
   'avisos',
-  'historico_atrasos'
+  'historico_atrasos',
+  'conselhos_bimestre',
+  'atas_escolares',
+  'auditoria_frequencia',
+  'notificacoes_tutor',
+  'frequencia_diaria'
 ];
 
 /**
@@ -120,7 +126,7 @@ export function capturarConfiguracaoCompletaSistema() {
     escola: {
       nome: 'EE Prof. Clóvis de Lucca',
       codigoCie: '045123',
-      anoLetivo: 2026,
+      anoLetivo: obterAnoLetivoVigente(),
       versaoSistema: '20.0',
       programa: 'Programa Ensino Integral (PEI)',
       regime: 'Integral 9 Horas',
