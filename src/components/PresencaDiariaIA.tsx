@@ -76,7 +76,57 @@ function toLocalYmd(raw: unknown): string {
   if (s.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(s.slice(0, 10))) {
     return s.slice(0, 10);
   }
+  const embedded = s.match(/(\d{4}-\d{2}-\d{2})/);
+  if (embedded) return embedded[1];
   return '';
+}
+
+function normalizarStatusPresencaRegistro(raw: unknown): StatusPresenca {
+  const s = String(raw || '').trim().toLowerCase();
+  if (s === 'falta' || s === 'f' || s === 'ausente') return 'falta';
+  if (s === 'atrasado' || s === 'atraso' || s === 'a') return 'atrasado';
+  if (
+    s === 'licenca' ||
+    s === 'licença' ||
+    s === 'j' ||
+    s === 'l' ||
+    s === 'd' ||
+    s === 'justificada' ||
+    s === 'dispensa' ||
+    s === 'atestado'
+  ) {
+    return 'licenca';
+  }
+  return 'presente';
+}
+
+function extrairDataIsoChamada(docChamada: any): string {
+  if (!docChamada || typeof docChamada !== 'object') return '';
+  return toLocalYmd(docChamada.data || docChamada.dataChamada || docChamada.id);
+}
+
+function normalizarMapaRegistrosChamada(rawRegistros: any): Record<string, RegistroPresencaItem> {
+  const out: Record<string, RegistroPresencaItem> = {};
+  if (!rawRegistros || typeof rawRegistros !== 'object' || Array.isArray(rawRegistros)) return out;
+  Object.entries(rawRegistros).forEach(([raRaw, val]: [string, any]) => {
+    const raKey = normalizarRaChave(raRaw);
+    if (!raKey) return;
+    if (typeof val === 'string') {
+      out[raKey] = {
+        status: normalizarStatusPresencaRegistro(val),
+        verificado: true,
+        manualOverride: true,
+        origem: 'manual'
+      };
+    } else if (val && typeof val === 'object') {
+      out[raKey] = {
+        ...val,
+        status: normalizarStatusPresencaRegistro(val.status),
+        verificado: val.verificado !== undefined ? Boolean(val.verificado) : true
+      };
+    }
+  });
+  return out;
 }
 
 function formatarDataBr(ymd: string): string {
@@ -352,7 +402,7 @@ export default function PresencaDiariaIA() {
     }
   };
 
-  // 5. Carregar/escutar chamada salva para dataSelecionada (2027) com suporte a rascunho local
+  // 5. Carregar/escutar chamada salva para dataSelecionada (compatível com qualquer formato de ID salvo no banco)
   useEffect(() => {
     const docId = `chamada_${dataSelecionada}_${ANO_LETIVO_OPERACAO}`;
     const docRef = doc(db, 'frequencia_diaria', docId);
@@ -360,44 +410,57 @@ export default function PresencaDiariaIA() {
 
     const carregarCacheLocal = () => {
       try {
-        const raw = localStorage.getItem(`clovis_chamada_${docId}`);
-        if (!raw) return false;
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object' && parsed.registros) {
-          setRegistrosPresenca(parsed.registros);
-          setStatusSalvamentoDoc(parsed.statusChamada || 'em_andamento');
-          if (parsed.atualizadoEm) {
-            const dt = new Date(parsed.atualizadoEm);
-            if (!isNaN(dt.getTime())) {
-              setUltimoSalvamentoTexto(`Rascunho local às ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`);
+        const chavesCandidatas = [
+          `clovis_chamada_${docId}`,
+          `clovis_chamada_chamada_${dataSelecionada}`,
+          `clovis_chamada_chamada_${dataSelecionada}_2027`,
+          `clovis_chamada_chamada_${dataSelecionada}_2026`
+        ];
+        for (const chave of chavesCandidatas) {
+          const raw = localStorage.getItem(chave);
+          if (!raw) continue;
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object' && parsed.registros) {
+            setRegistrosPresenca(normalizarMapaRegistrosChamada(parsed.registros));
+            setStatusSalvamentoDoc(parsed.statusChamada || 'em_andamento');
+            if (parsed.atualizadoEm) {
+              const dt = new Date(parsed.atualizadoEm);
+              if (!isNaN(dt.getTime())) {
+                setUltimoSalvamentoTexto(`Rascunho local às ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`);
+              }
             }
+            return true;
           }
-          return true;
-        }
-        if (parsed && typeof parsed === 'object') {
-          setRegistrosPresenca(parsed);
-          return true;
+          if (parsed && typeof parsed === 'object') {
+            setRegistrosPresenca(normalizarMapaRegistrosChamada(parsed));
+            return true;
+          }
         }
       } catch {}
       return false;
+    };
+
+    const aplicarDadosDoBanco = (dataDoc: any) => {
+      carregouBanco = true;
+      setRegistrosPresenca(normalizarMapaRegistrosChamada(dataDoc.registros));
+      setStatusSalvamentoDoc(dataDoc.statusChamada || 'em_andamento');
+      if (dataDoc.atualizadoEm) {
+        const dt = new Date(dataDoc.atualizadoEm);
+        if (!isNaN(dt.getTime())) {
+          setUltimoSalvamentoTexto(
+            `Salvo em ${dt.toLocaleDateString('pt-BR')} às ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${dataDoc.atualizadoPor ? ` · ${dataDoc.atualizadoPor}` : ''}`
+          );
+        }
+      } else {
+        setUltimoSalvamentoTexto('');
+      }
     };
 
     const unsubscribe = onSnapshot(
       docRef,
       (docSnap) => {
         if (docSnap.exists() && docSnap.data()?.registros) {
-          carregouBanco = true;
-          const dataDoc = docSnap.data();
-          setRegistrosPresenca(dataDoc.registros);
-          setStatusSalvamentoDoc(dataDoc.statusChamada || 'em_andamento');
-          if (dataDoc.atualizadoEm) {
-            const dt = new Date(dataDoc.atualizadoEm);
-            if (!isNaN(dt.getTime())) {
-              setUltimoSalvamentoTexto(
-                `Salvo em ${dt.toLocaleDateString('pt-BR')} às ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${dataDoc.atualizadoPor ? ` · ${dataDoc.atualizadoPor}` : ''}`
-              );
-            }
-          }
+          aplicarDadosDoBanco(docSnap.data());
         } else if (!carregouBanco) {
           const achouLocal = carregarCacheLocal();
           if (!achouLocal) {
@@ -415,6 +478,38 @@ export default function PresencaDiariaIA() {
 
     return () => unsubscribe();
   }, [dataSelecionada, ANO_LETIVO_OPERACAO]);
+
+  // 5b. Fallback reativo pelo histórico completo (caso exista chamada da mesma data salva com outro sufixo de ID)
+  useEffect(() => {
+    if (registrosEditadosLocalmenteRef.current) return;
+    if (Object.keys(registrosPresenca).length > 0) return;
+    if (!Array.isArray(historicoChamadas) || historicoChamadas.length === 0) return;
+
+    const docsDaData = historicoChamadas
+      .filter((d) => extrairDataIsoChamada(d) === dataSelecionada && d?.registros && typeof d.registros === 'object')
+      .sort((a, b) => String(a.atualizadoEm || '').localeCompare(String(b.atualizadoEm || '')));
+
+    if (docsDaData.length === 0) return;
+
+    const merged: Record<string, RegistroPresencaItem> = {};
+    docsDaData.forEach((d) => {
+      Object.assign(merged, normalizarMapaRegistrosChamada(d.registros));
+    });
+
+    if (Object.keys(merged).length === 0) return;
+
+    const ultimo = docsDaData[docsDaData.length - 1];
+    setRegistrosPresenca(merged);
+    setStatusSalvamentoDoc(ultimo.statusChamada || 'em_andamento');
+    if (ultimo.atualizadoEm) {
+      const dt = new Date(ultimo.atualizadoEm);
+      if (!isNaN(dt.getTime())) {
+        setUltimoSalvamentoTexto(
+          `Salvo em ${dt.toLocaleDateString('pt-BR')} às ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${ultimo.atualizadoPor ? ` · ${ultimo.atualizadoPor}` : ''}`
+        );
+      }
+    }
+  }, [historicoChamadas, dataSelecionada, registrosPresenca]);
 
   // 6. Auto-save silencioso em localStorage quando há alterações para permitir retomar depois sem perda
   useEffect(() => {
@@ -441,7 +536,7 @@ export default function PresencaDiariaIA() {
     return () => {
       if (autoSaveTimerRef.current) window.clearTimeout(autoSaveTimerRef.current);
     };
-  }, [registrosPresenca, dataSelecionada, statusSalvamentoDoc]);
+  }, [registrosPresenca, dataSelecionada, statusSalvamentoDoc, ANO_LETIVO_OPERACAO]);
 
   // 7. Histórico completo de chamadas salvas em frequencia_diaria (filtrado para o ano letivo vigente)
   useEffect(() => {
@@ -723,18 +818,25 @@ export default function PresencaDiariaIA() {
     const diasNomes = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
     const sessoesPorData = new Map<string, Record<string, RegistroPresencaItem>>();
+    const temRegistrosAtuais = Object.keys(registrosPresenca).length > 0;
 
     historicoChamadas.forEach((docChamada) => {
-      const anoDoc = String(docChamada.anoLetivo || ANO_LETIVO_OPERACAO);
-      if (anoDoc !== ANO_LETIVO_OPERACAO) return;
-      if (docChamada.id === docIdAtual) return;
-      if (docChamada.data && docChamada.registros && typeof docChamada.registros === 'object') {
-        sessoesPorData.set(String(docChamada.data), docChamada.registros);
+      if (!docChamada || docChamada.encerradoNaVirada === true || docChamada.arquivadoVirada === true) return;
+      const dataIso = extrairDataIsoChamada(docChamada);
+      if (!dataIso) return;
+      const anoDataReal = dataIso.slice(0, 4);
+      const anoDoc = String(docChamada.anoLetivo || anoDataReal || ANO_LETIVO_OPERACAO);
+      if (anoDataReal !== ANO_LETIVO_OPERACAO && anoDoc !== ANO_LETIVO_OPERACAO) return;
+      if (temRegistrosAtuais && (docChamada.id === docIdAtual || dataIso === dataSelecionada)) return;
+      if (docChamada.registros && typeof docChamada.registros === 'object') {
+        const regNorm = normalizarMapaRegistrosChamada(docChamada.registros);
+        const existente = sessoesPorData.get(dataIso) || {};
+        sessoesPorData.set(dataIso, { ...existente, ...regNorm });
       }
     });
 
-    if (Object.keys(registrosPresenca).length > 0) {
-      sessoesPorData.set(dataSelecionada, registrosPresenca);
+    if (temRegistrosAtuais) {
+      sessoesPorData.set(dataSelecionada, normalizarMapaRegistrosChamada(registrosPresenca));
     }
 
     const datasOrdenadasDesc = Array.from(sessoesPorData.keys()).sort((a, b) => b.localeCompare(a));
@@ -854,9 +956,28 @@ export default function PresencaDiariaIA() {
   // 12. Montagem da lista enriquecida: ordenação estrita por TURMA -> ALFABÉTICA, cruzando Dispensas + Atrasos
   // Regra de precedência: falta sempre perde para atraso ou afastamento/dispensa lançado para o mesmo estudante.
   const listaAlunosEnriquecida: AlunoPresenca[] = useMemo(() => {
+    const registrosSemZeroMap = new Map<string, RegistroPresencaItem>();
+    Object.entries(registrosPresenca).forEach(([k, v]) => {
+      const clean = normalizarRaChave(k);
+      if (clean) {
+        registrosSemZeroMap.set(clean, v);
+        registrosSemZeroMap.set(clean.replace(/^0+/, ''), v);
+      }
+    });
+
+    const histSemZeroMap = new Map<string, (typeof historicoAgregado.mapaPorRa)[string]>();
+    Object.entries(historicoAgregado.mapaPorRa).forEach(([k, v]) => {
+      const clean = normalizarRaChave(k);
+      if (clean) {
+        histSemZeroMap.set(clean, v);
+        histSemZeroMap.set(clean.replace(/^0+/, ''), v);
+      }
+    });
+
     const lista = alunosBase.map((a) => {
       const raKey = normalizarRaChave(a.ra || a.id);
-      const regSalvo = registrosPresenca[raKey];
+      const raSemZeros = raKey.replace(/^0+/, '');
+      const regSalvo = registrosPresenca[raKey] || registrosSemZeroMap.get(raKey) || registrosSemZeroMap.get(raSemZeros);
 
       const dispensasDoAluno = integracaoCruzada.dispensasPorRa[raKey] || [];
       const dispensaAtiva = dispensasDoAluno.find(
@@ -901,7 +1022,7 @@ export default function PresencaDiariaIA() {
         motivoLicenca = regSalvo.motivoLicenca || (dispensaAtiva?.motivo ?? '');
       }
 
-      const hist = historicoAgregado.mapaPorRa[raKey] || {
+      const hist = historicoAgregado.mapaPorRa[raKey] || histSemZeroMap.get(raSemZeros) || {
         faltasDiario: 0,
         licencasDiario: 0,
         datasLicencaRegistradas: new Set<string>(),

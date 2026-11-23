@@ -9,7 +9,7 @@ import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
 import * as pdfParseModule from 'pdf-parse';
 const pdfParse = (pdfParseModule as any).default || pdfParseModule;
-import { getDatabase, getDocs, getDoc, setDoc, addDoc, updateDoc, deleteDoc, countDocs, executeBatch, prewarmCache, formatMongoDoc, searchAlunosInDb, resolveCollectionName, buildDocumentQuery } from './src/server/mongodb.ts';
+import { getDatabase, getDocs, getDoc, setDoc, addDoc, updateDoc, deleteDoc, countDocs, executeBatch, prewarmCache, formatMongoDoc, searchAlunosInDb, resolveCollectionName, buildDocumentQuery, invalidateCollectionCache } from './src/server/mongodb.ts';
 import { parseBoletimSEDText, limparNomeDisciplina } from './src/modules/boletimPdfParser.ts';
 import { parseRelatorioFrequenciaSED, normalizarNomeTurmaSED, normalizarRaSED } from './src/modules/frequenciaSedPdfParser.ts';
 import {
@@ -696,6 +696,98 @@ async function sincronizarSegmentosAlunosPorTurmaNoBanco(): Promise<{
   return { alunosAtualizados: bulkOps.length, ensinoFundamental, ensinoMedio };
 }
 
+async function normalizarAnoFrequenciaDiariaNoBanco(): Promise<{
+  normalizados: number;
+  mesclados: number;
+}> {
+  const db = await getDatabase();
+  const col = db.collection('frequencia_diaria');
+  const docs = await col.find({}).toArray();
+
+  let normalizados = 0;
+  let mesclados = 0;
+
+  const extrairDataDoc = (d: any): string => {
+    const raw = String(d?.data || d?.dataChamada || '').trim();
+    const mRaw = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (mRaw) return mRaw[1];
+    const idStr = String(d?.id || '').trim();
+    const mId = idStr.match(/(\d{4}-\d{2}-\d{2})/);
+    return mId ? mId[1] : '';
+  };
+
+  for (const d of docs) {
+    if (d?.encerradoNaVirada === true || d?.arquivadoVirada === true) continue;
+    const dataIso = extrairDataDoc(d);
+    if (!dataIso) continue;
+
+    const anoReal = dataIso.slice(0, 4);
+    const idAtual = String(d.id || '').trim();
+    const anoAtualDoc = String(d.anoLetivo || '').trim();
+    const idEsperado = `chamada_${dataIso}_${anoReal}`;
+
+    const precisaCorrigirAno = anoAtualDoc !== anoReal;
+    const precisaCorrigirId = idAtual.startsWith('chamada_') && idAtual !== idEsperado;
+
+    if (!precisaCorrigirAno && !precisaCorrigirId) continue;
+
+    const destinoExistente = await col.findOne({
+      id: idEsperado,
+      _id: { $ne: d._id }
+    });
+
+    if (destinoExistente) {
+      const regAntigo = d.registros && typeof d.registros === 'object' ? d.registros : {};
+      const regDestino = destinoExistente.registros && typeof destinoExistente.registros === 'object' ? destinoExistente.registros : {};
+      const mergedRegistros = { ...regAntigo, ...regDestino };
+
+      const turmasSet = new Set<string>([
+        ...(Array.isArray(d.turmasConcluidas) ? d.turmasConcluidas : []),
+        ...(Array.isArray(destinoExistente.turmasConcluidas) ? destinoExistente.turmasConcluidas : [])
+      ]);
+
+      await col.updateOne(
+        { _id: destinoExistente._id },
+        {
+          $set: {
+            data: dataIso,
+            anoLetivo: anoReal,
+            registros: mergedRegistros,
+            turmasConcluidas: Array.from(turmasSet),
+            statusChamada:
+              destinoExistente.statusChamada === 'concluida' || d.statusChamada === 'concluida'
+                ? 'concluida'
+                : destinoExistente.statusChamada || d.statusChamada || 'em_andamento'
+          }
+        }
+      );
+      await col.deleteOne({ _id: d._id });
+      mesclados++;
+    } else {
+      await col.updateOne(
+        { _id: d._id },
+        {
+          $set: {
+            id: idEsperado,
+            data: dataIso,
+            anoLetivo: anoReal
+          }
+        }
+      );
+      normalizados++;
+    }
+  }
+
+  if (normalizados > 0 || mesclados > 0) {
+    invalidateCollectionCache('frequencia_diaria');
+    console.log(
+      `[Normalização Frequência Diária] ${normalizados} chamada(s) corrigida(s) para o ano letivo da data real e ${mesclados} duplicidade(s) mesclada(s).`
+    );
+  }
+
+  return { normalizados, mesclados };
+}
+
 function signSessionToken(payload: { id: string; email: string; realRole: string }): string {
   const data = {
     ...payload,
@@ -1194,7 +1286,45 @@ async function startServer() {
     const { collection, id } = req.params;
 
     try {
-      const doc = await getDoc(collection, id);
+      let doc = await getDoc(collection, id);
+      if (!doc && resolveCollectionName(collection) === 'frequencia_diaria') {
+        const matchData = String(id || '').match(/(\d{4}-\d{2}-\d{2})/);
+        if (matchData) {
+          const dataAlvo = matchData[1];
+          const todosFreq = await getDocs<any>('frequencia_diaria');
+          const candidatos = todosFreq
+            .filter((item: any) => {
+              if (!item || item.encerradoNaVirada === true || item.arquivadoVirada === true) return false;
+              const dIso = String(item.data || item.dataChamada || '').slice(0, 10);
+              return dIso === dataAlvo || String(item.id || '').includes(dataAlvo);
+            })
+            .sort((a: any, b: any) => String(a.atualizadoEm || '').localeCompare(String(b.atualizadoEm || '')));
+
+          if (candidatos.length === 1) {
+            doc = candidatos[0];
+          } else if (candidatos.length > 1) {
+            const ultimo = candidatos[candidatos.length - 1];
+            const mergedRegistros: Record<string, any> = {};
+            const turmasConcluidasSet = new Set<string>();
+            candidatos.forEach((c: any) => {
+              if (c.registros && typeof c.registros === 'object') {
+                Object.assign(mergedRegistros, c.registros);
+              }
+              if (Array.isArray(c.turmasConcluidas)) {
+                c.turmasConcluidas.forEach((t: string) => turmasConcluidasSet.add(t));
+              }
+            });
+            doc = {
+              ...ultimo,
+              id: String(id),
+              data: dataAlvo,
+              anoLetivo: dataAlvo.slice(0, 4),
+              registros: mergedRegistros,
+              turmasConcluidas: Array.from(turmasConcluidasSet)
+            };
+          }
+        }
+      }
       if (!doc) {
         return res.status(404).json({ error: 'Documento não encontrado' });
       }
@@ -2900,7 +3030,8 @@ Rigorosamente retorne APENAS um JSON válido no formato:
           { anoLetivo: { $lte: anoAtual } },
           { anoLetivo: { $lte: String(anoAtual) } },
           { anoLetivo: { $exists: false } },
-          { anoLetivo: null }
+          { anoLetivo: null },
+          { data: { $lt: `${anoNovo}-01-01` } }
         ]
       };
 
@@ -6361,6 +6492,8 @@ Direção e Equipe Gestora`;
       .catch(err => console.warn('[Limpeza Logs Silenciosos Dossiê] Erro inicial:', err?.message || err))
       .then(() => sincronizarSegmentosAlunosPorTurmaNoBanco())
       .catch(err => console.warn('[Sincronização Segmentos] Erro inicial:', err?.message || err))
+      .then(() => normalizarAnoFrequenciaDiariaNoBanco())
+      .catch(err => console.warn('[Normalização Frequência Diária] Erro inicial:', err?.message || err))
       .finally(() => {
         prewarmCache().catch(err => console.warn('[MongoDB Prewarm] Erro inicial:', err.message));
       });

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { db, doc, getDoc, setDoc } from '../../lib/database';
 import { obterUsuarioAtivoCompleto } from '../../modules/authHelper';
+import { obterAnoLetivoVigente } from '../../modules/anoLetivoHelper';
 import {
   AlunoNormalizado,
   normalizarRa,
@@ -121,15 +122,27 @@ export default function ChamadaDiariaConsolidacaoModal({
   const handleSalvar = async () => {
     setSalvando(true);
     try {
-      const docId = `chamada_${dataChamada}`;
+      const anoRef = dataChamada.slice(0, 4) || String(obterAnoLetivoVigente());
+      const docId = `chamada_${dataChamada}_${anoRef}`;
       const docRef = doc(db, 'frequencia_diaria', docId);
       const user = obterUsuarioAtivoCompleto();
 
       let existingRegistros: Record<string, any> = {};
+      (frequenciaDiariaDocs || [])
+        .filter((d) => {
+          const dIso = String(d?.data || d?.dataChamada || '').slice(0, 10);
+          return dIso === dataChamada || String(d?.id || '').includes(dataChamada);
+        })
+        .forEach((d) => {
+          if (d?.registros && typeof d.registros === 'object') {
+            existingRegistros = { ...existingRegistros, ...d.registros };
+          }
+        });
+
       try {
         const snap = await getDoc(docRef);
         if (snap.exists() && snap.data()?.registros) {
-          existingRegistros = { ...snap.data().registros };
+          existingRegistros = { ...existingRegistros, ...snap.data().registros };
         }
       } catch {
         // segue com registros locais
@@ -137,13 +150,19 @@ export default function ChamadaDiariaConsolidacaoModal({
 
       const agoraIso = new Date().toISOString();
       const mergedRegistros: Record<string, any> = { ...existingRegistros };
+      const statusParaPresenca = { P: 'presente', F: 'falta', J: 'licenca' } as const;
 
       alunosTurma.forEach((al) => {
         const rk = normalizarRa(al.ra);
         const st = statusMap[rk];
         if (st) {
-          mergedRegistros[al.ra || rk] = {
-            status: st,
+          const chaveRa = String(al.ra || rk).replace(/\D/g, '') || rk;
+          mergedRegistros[chaveRa] = {
+            ...(mergedRegistros[chaveRa] || {}),
+            status: statusParaPresenca[st],
+            verificado: true,
+            manualOverride: true,
+            origem: 'manual',
             nome: al.nome,
             turma: al.turma,
             atualizadoEm: agoraIso
@@ -154,7 +173,7 @@ export default function ChamadaDiariaConsolidacaoModal({
       // Payload estritamente sem id / _id (AGENTS.md)
       const payload = sanitizarPayloadMongo({
         data: dataChamada,
-        anoLetivo: dataChamada.slice(0, 4),
+        anoLetivo: anoRef,
         turmaUltimaEdicao: turmaFiltro || 'TODAS',
         registros: mergedRegistros,
         atualizadoPor: user.nome || user.email,
@@ -163,6 +182,7 @@ export default function ChamadaDiariaConsolidacaoModal({
       });
 
       await setDoc(docRef, payload, { merge: true });
+      window.dispatchEvent(new CustomEvent('frequenciadiariaupdated'));
       await onSaved();
 
       if (typeof (window as any).showToast === 'function') {

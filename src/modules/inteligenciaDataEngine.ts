@@ -204,6 +204,8 @@ export function toIsoDate(raw: unknown): string {
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
   const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
   if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  const embeddedIso = s.match(/(\d{4}-\d{2}-\d{2})/);
+  if (embeddedIso) return embeddedIso[1];
   const dt = new Date(s);
   if (!isNaN(dt.getTime())) {
     const y = dt.getFullYear();
