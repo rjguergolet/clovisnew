@@ -4283,6 +4283,11 @@
           }
         });
 
+        const mobBuscaAtivaEl = document.getElementById("mob-grid-busca-ativa");
+        if (mobBuscaAtivaEl) {
+          mobBuscaAtivaEl.classList.toggle("hidden", !abasPermitidas.includes("alunos"));
+        }
+
         // Visibilidade do botão de novo recado no mural conforme o perfil (Direção, CGPG, Vice-Direção, PAAC)
         const btnNovoRecadoMural = document.getElementById("btn-novo-recado-mural");
         if (btnNovoRecadoMural) {
@@ -5858,19 +5863,30 @@
 
       function renderHistoricoOcorrencias(lista) {
         if (!tabelaHistoricoBody) return;
+        const mobileListEl = document.getElementById("registros-mobile-list");
         const listaOrdenada = [...(lista || [])].sort((a, b) => extrairTimestampOcorrencia(b) - extrairTimestampOcorrencia(a));
         window._ultimaListaHistoricoOcorrencias = listaOrdenada;
 
         if (!listaOrdenada || listaOrdenada.length === 0) {
           tabelaHistoricoBody.innerHTML = window.getMascoteSaraEmptyStateHtml('Nenhuma ocorrência ou registro localizado!', 'Sua escola está com o ambiente tranquilo ou ajuste a busca por aluno/turma.', 10);
+          if (mobileListEl) {
+            mobileListEl.innerHTML = `
+              <div class="p-6 text-center space-y-1.5">
+                <p class="text-sm font-bold text-slate-800">Nenhuma ocorrência ou registro localizado!</p>
+                <p class="text-xs text-slate-500">Ajuste os filtros ou a busca por aluno/turma.</p>
+              </div>
+            `;
+          }
           return;
         }
 
         const limite = window.limiteRenderHistoricoOcorrencias || 60;
         const totalRegistros = listaOrdenada.length;
         const fatiaRender = listaOrdenada.slice(0, limite);
+        const podeExcluirReg = typeof window.podeExcluir === "function" ? window.podeExcluir() : true;
 
         let html = "";
+        let mobileHtml = "";
         fatiaRender.forEach(oc => {
           const dataFmt = oc.data ? new Date(oc.data).toLocaleString("pt-BR") : "-";
           const nome = (oc.nomeAluno || "ALUNO SEM NOME").toUpperCase();
@@ -5937,7 +5953,6 @@
                    </div>`)
             : `<span class="text-[10px] text-slate-400 italic font-medium">N/A (Pedagógico)</span>`;
 
-          const roleAtual = window.obterRoleAtual ? window.obterRoleAtual() : "PROFESSOR";
           const podeEditarOcorrencia = (typeof window.podeEditarSensivel === "function" ? window.podeEditarSensivel() : true);
 
           const btnEditarHtml = podeEditarOcorrencia ? `
@@ -5951,6 +5966,21 @@
               <span>Editar</span>
             </button>
           ` : "";
+
+          const btnExcluirHtml = `
+            <button 
+              type="button"
+              data-action="excluir"
+              data-collection="ocorrencias"
+              data-id="${oc.id}"
+              onclick="window.deletarRegistroUniversal('ocorrencias', '${oc.id}')"
+              class="${podeExcluirReg ? '' : 'hidden '}px-2 py-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded text-[11px] transition cursor-pointer inline-flex items-center gap-1 shadow-2xs"
+              title="Excluir Ocorrência"
+            >
+              <i class="fa-solid fa-trash-can text-[10px]"></i>
+              <span>Excluir</span>
+            </button>
+          `;
 
           html += `
             <tr class="${rowBg} transition-colors">
@@ -5980,53 +6010,91 @@
               <td class="px-3.5 py-3 text-slate-500 text-[11px]">${usuario}</td>
               <td class="px-3.5 py-3 text-right whitespace-nowrap">
                 ${btnEditarHtml}
-                <button 
-                  type="button"
-                  data-action="excluir"
-                  data-collection="ocorrencias"
-                  data-id="${oc.id}"
-                  onclick="window.deletarRegistroUniversal('ocorrencias', '${oc.id}')"
-                  class="px-2 py-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded text-[11px] transition cursor-pointer inline-flex items-center gap-1 shadow-2xs"
-                  title="Excluir Ocorrência"
-                >
-                  <i class="fa-solid fa-trash-can text-[10px]"></i>
-                  <span>Excluir</span>
-                </button>
+                ${btnExcluirHtml}
               </td>
             </tr>
+          `;
+
+          mobileHtml += `
+            <div class="p-3.5 space-y-2.5 ${countReinc > 1 ? 'bg-amber-50/70' : 'bg-white'}">
+              <div class="flex items-start justify-between gap-2">
+                <div class="min-w-0">
+                  <div class="flex items-center flex-wrap gap-1">
+                    <button
+                      type="button"
+                      onclick="window.navegarEAbrirFichaAluno('${oc.ra || ra}')"
+                      class="text-left font-bold text-xs text-blue-700 hover:underline leading-snug cursor-pointer"
+                    >
+                      ${nome}
+                    </button>
+                    ${reincBadge}
+                  </div>
+                  <div class="text-[11px] text-slate-500 mt-0.5 font-mono tabular-nums">
+                    ${turma} · RA ${ra} · ${dataFmt}
+                  </div>
+                </div>
+                <span class="px-2 py-0.5 ${tipoTag} border rounded text-[10px] font-bold uppercase tracking-wider shrink-0">
+                  ${tipo}
+                </span>
+              </div>
+              ${dispensaPeriodoHtml}
+              <p class="text-xs text-slate-700 leading-relaxed break-words">${desc}</p>
+              <div class="flex flex-wrap items-center gap-2 pt-1">
+                ${htmlCiencia}
+                ${isDisciplinarRow ? htmlConviva : ''}
+              </div>
+              <div class="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                <span class="text-[11px] text-slate-500 truncate">Por: ${usuario}</span>
+                <div class="inline-flex items-center gap-1 shrink-0">
+                  ${btnEditarHtml}
+                  ${btnExcluirHtml}
+                </div>
+              </div>
+            </div>
           `;
         });
 
         if (totalRegistros > limite) {
           const restantes = totalRegistros - limite;
+          const paginacaoButtons = `
+            <div class="flex items-center justify-center gap-2.5 flex-wrap">
+              <span class="text-xs font-bold text-slate-600">
+                Exibindo <strong>${fatiaRender.length}</strong> de <strong>${totalRegistros}</strong> registros
+              </span>
+              <button
+                type="button"
+                onclick="window.carregarMaisHistoricoOcorrencias(false)"
+                class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-lg text-xs transition cursor-pointer shadow-2xs"
+              >
+                <i class="fa-solid fa-plus mr-1"></i> Carregar +100 (${restantes} restantes)
+              </button>
+              <button
+                type="button"
+                onclick="window.carregarMaisHistoricoOcorrencias(true)"
+                class="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-lg text-xs transition cursor-pointer"
+              >
+                Mostrar Todos (${totalRegistros})
+              </button>
+            </div>
+          `;
           html += `
             <tr class="bg-slate-50 border-t border-slate-200">
               <td colspan="10" class="px-4 py-3 text-center">
-                <div class="flex items-center justify-center gap-3 flex-wrap">
-                  <span class="text-xs font-bold text-slate-600">
-                    Exibindo <strong>${fatiaRender.length}</strong> de <strong>${totalRegistros}</strong> registros
-                  </span>
-                  <button
-                    type="button"
-                    onclick="window.carregarMaisHistoricoOcorrencias(false)"
-                    class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-lg text-xs transition cursor-pointer shadow-2xs"
-                  >
-                    <i class="fa-solid fa-plus mr-1"></i> Carregar +100 (${restantes} restantes)
-                  </button>
-                  <button
-                    type="button"
-                    onclick="window.carregarMaisHistoricoOcorrencias(true)"
-                    class="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-lg text-xs transition cursor-pointer"
-                  >
-                    Mostrar Todos (${totalRegistros})
-                  </button>
-                </div>
+                ${paginacaoButtons}
               </td>
             </tr>
+          `;
+          mobileHtml += `
+            <div class="p-3.5 bg-slate-50 text-center">
+              ${paginacaoButtons}
+            </div>
           `;
         }
 
         tabelaHistoricoBody.innerHTML = html;
+        if (mobileListEl) {
+          mobileListEl.innerHTML = mobileHtml;
+        }
       }
 
       // =========================================================
@@ -16014,13 +16082,19 @@ Yasmin Seline`;
 
       function renderTableRows(students) {
         const tabelaBody = document.getElementById("tabela-alunos-body");
-        if (!tabelaBody) return;
+        const mobileListEl = document.getElementById("alunos-mobile-list");
+        if (!tabelaBody && !mobileListEl) return;
 
         const totalCols = 10 + (customColumns ? customColumns.length : 0);
         const podeVerBaDossie = window.podeAcessarBuscaAtivaDossie();
 
         if (!students || students.length === 0) {
-          tabelaBody.innerHTML = `<tr><td colspan="${totalCols}" class="px-6 py-8 text-center text-slate-500 text-xs font-medium">Nenhum estudante encontrado com os filtros selecionados.</td></tr>`;
+          if (tabelaBody) {
+            tabelaBody.innerHTML = `<tr><td colspan="${totalCols}" class="px-6 py-8 text-center text-slate-500 text-xs font-medium">Nenhum estudante encontrado com os filtros selecionados.</td></tr>`;
+          }
+          if (mobileListEl) {
+            mobileListEl.innerHTML = `<div class="px-4 py-8 text-center text-slate-500 text-xs font-medium">Nenhum estudante encontrado com os filtros selecionados.</div>`;
+          }
           return;
         }
 
@@ -16029,6 +16103,7 @@ Yasmin Seline`;
         const atrasosMap = window._lastAtrasosMap || montarMapaAtrasosPorRa();
 
         let html = "";
+        let mobileHtml = "";
         studentsParaRenderizar.forEach((aluno) => {
           const nome = (aluno.nome || "Sem nome").toUpperCase();
           const ra = aluno.ra || "-";
@@ -16076,17 +16151,17 @@ Yasmin Seline`;
           if (isSpreadsheetMode) {
             html += `
               <tr class="${rowClass}" data-ra="${ra}">
-                <td class="px-3 py-2 text-center sticky left-0 z-10 ${stickyBg} min-w-[44px] w-[44px]">
+                <td class="px-3 py-2 text-center md:sticky md:left-0 z-10 ${stickyBg} min-w-[44px] w-[44px]">
                   <input type="checkbox" class="aluno-checkbox w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" data-ra="${ra}" onchange="window.atualizarContadorSelecaoAlunos()" />
                 </td>
-                <td class="px-4 py-2 sticky left-[44px] z-10 ${stickyBg} min-w-[230px]">
+                <td class="px-4 py-2 md:sticky md:left-[44px] z-10 ${stickyBg} min-w-[230px]">
                   <button type="button" onclick="window.abrirFichaAluno('${raEsc}', 'dossie')" class="cursor-pointer text-slate-900 hover:text-blue-700 hover:underline font-semibold uppercase text-xs text-left block leading-snug">
                     ${nome}
                   </button>
                   <span class="text-[11px] text-slate-500 block mt-0.5">${metaInline}</span>
                 </td>
-                <td class="px-3 py-2 font-mono tabular-nums text-xs sticky left-[274px] z-10 ${stickyBg} text-slate-700 min-w-[115px]">${ra}</td>
-                <td class="px-2 py-2 sticky left-[389px] z-10 ${stickyBg} min-w-[90px] border-r border-slate-200">
+                <td class="px-3 py-2 font-mono tabular-nums text-xs md:sticky md:left-[274px] z-10 ${stickyBg} text-slate-700 min-w-[115px]">${ra}</td>
+                <td class="px-2 py-2 md:sticky md:left-[389px] z-10 ${stickyBg} min-w-[90px] border-r border-slate-200">
                   <input type="text" class="input-turma border border-slate-300 p-1.5 rounded-md w-full text-xs font-semibold text-slate-900 bg-white focus:ring-2 focus:ring-blue-400 outline-none uppercase" value="${turma}" placeholder="TURMA" />
                 </td>
                 <td class="px-2 py-2 min-w-[130px]">
@@ -16118,10 +16193,10 @@ Yasmin Seline`;
           } else {
             html += `
               <tr class="${rowClass}" data-ra="${ra}">
-                <td class="px-3 py-2.5 text-center sticky left-0 z-10 ${stickyBg} min-w-[44px] w-[44px]">
+                <td class="px-3 py-2.5 text-center md:sticky md:left-0 z-10 ${stickyBg} min-w-[44px] w-[44px]">
                   <input type="checkbox" class="aluno-checkbox w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" data-ra="${ra}" onchange="window.atualizarContadorSelecaoAlunos()" />
                 </td>
-                <td class="px-4 py-2.5 sticky left-[44px] z-10 ${stickyBg} min-w-[230px]">
+                <td class="px-4 py-2.5 md:sticky md:left-[44px] z-10 ${stickyBg} min-w-[230px]">
                   <button
                     type="button"
                     onclick="window.abrirFichaAluno('${raEsc}', 'dossie')"
@@ -16132,8 +16207,8 @@ Yasmin Seline`;
                   </button>
                   <span class="text-[11px] text-slate-500 block mt-0.5 tabular-nums">${metaInline}</span>
                 </td>
-                <td class="px-3 py-2.5 font-mono tabular-nums text-xs sticky left-[274px] z-10 ${stickyBg} ${isAtivo ? 'text-slate-700 font-medium' : 'text-slate-400'} min-w-[115px]">${ra}</td>
-                <td class="px-3 py-2.5 sticky left-[389px] z-10 ${stickyBg} min-w-[90px] border-r border-slate-200">
+                <td class="px-3 py-2.5 font-mono tabular-nums text-xs md:sticky md:left-[274px] z-10 ${stickyBg} ${isAtivo ? 'text-slate-700 font-medium' : 'text-slate-400'} min-w-[115px]">${ra}</td>
+                <td class="px-3 py-2.5 md:sticky md:left-[389px] z-10 ${stickyBg} min-w-[90px] border-r border-slate-200">
                   <span class="text-xs font-semibold text-slate-800 uppercase">${turma}</span>
                 </td>
                 <td class="px-3 py-2.5 text-slate-600 text-xs uppercase min-w-[130px] truncate max-w-[160px]" title="${tutor2026 || 'Sem tutor'}">${tutor2026 || "—"}</td>
@@ -16176,28 +16251,92 @@ Yasmin Seline`;
               </tr>
             `;
           }
+
+          mobileHtml += `
+            <div class="p-3.5 space-y-2.5 ${!isAtivo ? 'bg-slate-50/90 opacity-80' : (resumoPres.isBuscaAtivaAlert ? 'bg-rose-50/30' : 'bg-white')}">
+              <div class="flex items-start justify-between gap-2.5">
+                <div class="min-w-0 flex-1">
+                  <button
+                    type="button"
+                    onclick="window.abrirFichaAluno('${raEsc}', 'dossie')"
+                    class="cursor-pointer text-slate-900 hover:text-blue-700 font-bold uppercase text-xs text-left block leading-snug"
+                  >
+                    ${nome}
+                  </button>
+                  <div class="text-[11px] text-slate-500 mt-0.5 tabular-nums flex flex-wrap items-center gap-x-1.5">
+                    <span class="font-semibold text-slate-700 uppercase">${turma}</span>
+                    <span>·</span>
+                    <span class="font-mono">RA ${ra}</span>
+                    ${metaInline ? `<span>·</span><span>${metaInline}</span>` : ''}
+                  </div>
+                  ${tutor2026 ? `<div class="text-[11px] text-slate-500 mt-0.5 truncate">Tutor: <span class="font-medium text-slate-700">${tutor2026}</span></div>` : ''}
+                </div>
+                <div class="text-right shrink-0">
+                  <span class="text-sm font-mono tabular-nums ${freqColor} block leading-tight">${resumoPres.freqStr}</span>
+                  <span class="text-[10px] text-slate-400 block">${dataAtualizacao || 'SED'}</span>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap items-center justify-between gap-2 px-2.5 py-2 rounded-lg bg-slate-50 border border-slate-200/80">
+                <div class="min-w-0">
+                  <span class="text-xs ${resumoPres.statusClass} block leading-tight">${resumoPres.statusLabel}</span>
+                  ${resumoPres.subDetail ? `<span class="text-[11px] text-slate-500 font-mono tabular-nums block mt-0.5">${resumoPres.subDetail}</span>` : ''}
+                </div>
+                <div class="shrink-0">${evolucaoObj.html}</div>
+              </div>
+
+              <div class="flex items-center gap-2 pt-0.5">
+                <button
+                  type="button"
+                  onclick="window.abrirFichaAluno('${raEsc}', 'dossie')"
+                  class="flex-1 py-2 px-3 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <i class="fa-solid fa-address-card text-[11px] text-slate-500"></i>
+                  <span>Dossiê</span>
+                </button>
+                ${podeVerBaDossie ? `
+                <button
+                  type="button"
+                  onclick="window.abrirFichaAluno('${raEsc}', 'busca-ativa')"
+                  class="flex-1 py-2 px-3 ${resumoPres.isBuscaAtivaAlert ? 'bg-rose-600 hover:bg-rose-700 text-white' : (resumoPres.isAtrasosRecorrentes ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-slate-900 hover:bg-slate-800 text-white')} rounded-lg text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <i class="fa-solid fa-user-check text-[11px]"></i>
+                  <span>Busca Ativa</span>
+                </button>` : ''}
+              </div>
+            </div>
+          `;
         });
 
         if (isLimited) {
+          const paginacaoAlunosInner = `
+            <div class="flex items-center justify-center gap-2.5 text-xs font-medium text-slate-600 flex-wrap">
+              <span>Exibindo <strong class="font-mono tabular-nums">${studentsParaRenderizar.length}</strong> de <strong class="font-mono tabular-nums">${students.length}</strong> estudantes</span>
+              <button type="button" onclick="window.carregarMaisAlunosTabela()" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold text-xs transition cursor-pointer inline-flex items-center gap-1.5">
+                <i class="fa-solid fa-arrow-down text-[11px]"></i>
+                <span>Carregar Mais (+60)</span>
+              </button>
+              <button type="button" onclick="window.mostrarTodosAlunosTabelaFn()" class="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg font-semibold text-xs transition cursor-pointer">
+                <span>Mostrar Todos (${students.length})</span>
+              </button>
+            </div>
+          `;
           html += `
             <tr id="linha-paginacao-alunos" class="bg-slate-50 border-t border-slate-200">
               <td colspan="${totalCols}" class="p-3.5 text-center">
-                <div class="flex items-center justify-center gap-3 text-xs font-medium text-slate-600 flex-wrap">
-                  <span>Exibindo <strong class="font-mono tabular-nums">${studentsParaRenderizar.length}</strong> de <strong class="font-mono tabular-nums">${students.length}</strong> estudantes</span>
-                  <button type="button" onclick="window.carregarMaisAlunosTabela()" class="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold text-xs transition cursor-pointer inline-flex items-center gap-1.5">
-                    <i class="fa-solid fa-arrow-down text-[11px]"></i>
-                    <span>Carregar Mais (+60)</span>
-                  </button>
-                  <button type="button" onclick="window.mostrarTodosAlunosTabelaFn()" class="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg font-semibold text-xs transition cursor-pointer">
-                    <span>Mostrar Todos (${students.length})</span>
-                  </button>
-                </div>
+                ${paginacaoAlunosInner}
               </td>
             </tr>
           `;
+          mobileHtml += `
+            <div class="p-3.5 bg-slate-50 text-center">
+              ${paginacaoAlunosInner}
+            </div>
+          `;
         }
 
-        tabelaBody.innerHTML = html;
+        if (tabelaBody) tabelaBody.innerHTML = html;
+        if (mobileListEl) mobileListEl.innerHTML = mobileHtml;
         if (typeof window.atualizarContadorSelecaoAlunos === "function") {
           window.atualizarContadorSelecaoAlunos();
         }
@@ -20456,6 +20595,8 @@ Yasmin Seline`;
         }
         setTxt("cpba-footer-resumo", `Exibindo ${exibidos.length} de ${listaFinal.length} estudante(s) nesta fila`);
 
+        const mobileList = document.getElementById("cpba-mobile-list");
+
         if (exibidos.length === 0) {
           tbody.innerHTML = `
             <tr>
@@ -20465,9 +20606,18 @@ Yasmin Seline`;
               </td>
             </tr>
           `;
+          if (mobileList) {
+            mobileList.innerHTML = `
+              <div class="px-4 py-10 text-center space-y-1.5">
+                <p class="text-sm font-semibold text-slate-800">Nenhum estudante encontrado com os filtros atuais.</p>
+                <p class="text-xs text-slate-500">Ajuste os filtros acima ou clique em "Limpar filtros" para ver toda a fila de busca ativa.</p>
+              </div>
+            `;
+          }
           return;
         }
 
+        const mobileCards = [];
         tbody.innerHTML = exibidos.map((it, idx) => {
           const raEsc = it.ra.replace(/'/g, "\\'");
           const freqTone = !isNaN(it.freqNum) && it.freqNum < 75 ? "text-rose-700 font-semibold" : "text-slate-800 font-medium";
@@ -20502,8 +20652,73 @@ Yasmin Seline`;
           }
 
           const whatsBtn = it.whatsAppUrl
-            ? `<a href="${it.whatsAppUrl}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="px-2 py-1.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-slate-200 hover:border-emerald-300 rounded-md text-xs transition inline-flex items-center justify-center shrink-0" title="Abrir WhatsApp da família com mensagem pronta"><i class="fa-brands fa-whatsapp text-sm"></i></a>`
+            ? `<a href="${it.whatsAppUrl}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="px-2.5 py-1.5 bg-white hover:bg-emerald-50 text-emerald-700 border border-slate-200 hover:border-emerald-300 rounded-md text-xs transition inline-flex items-center justify-center shrink-0" title="Abrir WhatsApp da família com mensagem pronta"><i class="fa-brands fa-whatsapp text-sm"></i></a>`
             : "";
+
+          mobileCards.push(`
+            <div class="p-3.5 space-y-2.5 bg-white">
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex items-start gap-2 min-w-0">
+                  <span class="font-mono tabular-nums text-[11px] text-slate-400 pt-0.5 shrink-0">${idx + 1}.</span>
+                  <div class="min-w-0">
+                    <button
+                      type="button"
+                      onclick="window.abrirAcaoRapidaCentralBa('${raEsc}', 'CONTATO')"
+                      class="text-left font-bold text-xs text-slate-900 hover:text-blue-700 leading-snug cursor-pointer block"
+                    >
+                      ${escHtmlCpba(it.nome)}
+                    </button>
+                    <div class="text-[11px] text-slate-500 mt-0.5 flex flex-wrap items-center gap-x-1.5">
+                      <span class="font-semibold text-slate-700">${escHtmlCpba(it.turma)}</span>
+                      <span>·</span>
+                      <span>${escHtmlCpba(it.segmentoCurto)}</span>
+                      <span>·</span>
+                      <span class="font-mono tabular-nums">RA ${escHtmlCpba(it.ra)}</span>
+                      ${it.tutor ? `<span>·</span><span>Tutor: ${escHtmlCpba(it.tutor)}</span>` : ""}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="px-2.5 py-2 rounded-lg bg-slate-50 border border-slate-200/80 space-y-1">
+                <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono tabular-nums text-xs">
+                  <span class="${freqTone}">Freq. ${escHtmlCpba(it.freqStr)}</span>
+                  <span class="text-slate-300">·</span>
+                  <span class="${consTone}">${it.faltasConsecutivas} cons.</span>
+                  <span class="text-slate-300">·</span>
+                  <span class="${atrTone}">${it.totalAtrasos} atr.</span>
+                </div>
+                <div class="text-[11px] ${it.urgenciaClass}">${escHtmlCpba(it.urgenciaLabel)}</div>
+              </div>
+
+              <div class="text-xs space-y-0.5">
+                ${contatoHtml}
+                ${encHtml}
+              </div>
+
+              <p class="text-[11px] text-slate-600 leading-relaxed bg-blue-50/50 border border-blue-100 rounded-lg px-2.5 py-1.5">
+                <strong class="text-slate-800">Próximo passo:</strong> ${escHtmlCpba(it.proximoPasso)}
+              </p>
+
+              <div class="flex items-center gap-2 pt-0.5">
+                ${whatsBtn}
+                <button
+                  type="button"
+                  onclick="window.abrirAcaoRapidaCentralBa('${raEsc}', 'CONTATO')"
+                  class="flex-1 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap"
+                >
+                  Registrar Contato
+                </button>
+                <button
+                  type="button"
+                  onclick="window.abrirAcaoRapidaCentralBa('${raEsc}', 'DOSSIE')"
+                  class="py-2 px-3 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap"
+                >
+                  Dossiê
+                </button>
+              </div>
+            </div>
+          `);
 
           return `
             <tr class="hover:bg-slate-50/90 transition-colors align-top">
@@ -20570,6 +20785,10 @@ Yasmin Seline`;
             </tr>
           `;
         }).join("");
+
+        if (mobileList) {
+          mobileList.innerHTML = mobileCards.join("");
+        }
       };
 
       // Fecha a Central com Escape apenas quando o Dossiê não estiver aberto acima dela
@@ -25908,6 +26127,11 @@ Yasmin Seline`;
           }
         });
 
+        const mobBuscaAtivaBtn = document.getElementById("mob-grid-busca-ativa");
+        if (mobBuscaAtivaBtn) {
+          mobBuscaAtivaBtn.classList.toggle("hidden", !abasPermitidas.includes("alunos"));
+        }
+
         if (typeof window.syncSidebarFloatingMenus === "function") {
           window.syncSidebarFloatingMenus(tabName);
         }
@@ -25931,8 +26155,9 @@ Yasmin Seline`;
         // Disparar evento para que o React atualize seu estado
         window.dispatchEvent(new CustomEvent('taborrolechange', { detail: { tab: tabName } }));
 
-        // Atualizar título do cabeçalho
+        // Atualizar título do cabeçalho (Desktop e Mobile)
         const pageTitle = document.getElementById("pageTitle");
+        const mobilePageTitle = document.getElementById("mobilePageTitle");
         const titles = {
           inicio: "Página Inicial & Painel do Usuário",
           "presenca-diaria": "Presença Diária & Inteligência Comportamental 2027",
@@ -25958,9 +26183,49 @@ Yasmin Seline`;
           professores: "Gestão & Acompanhamento de Professores",
           "conselho-especial": "Especial · Conselho de Bimestre (Acesso Restrito)"
         };
+        const mobileShortTitles = {
+          inicio: "Página Inicial",
+          mural: "Mural de Recados",
+          alunos: abrirComFiltroBuscaAtiva ? "Busca Ativa" : "Alunos & Busca Ativa",
+          registros: "Registros & Ocorrências",
+          horarios: "Horários PEI",
+          "presenca-diaria": "Presença Diária",
+          "rotina-pdca": "Tarefas PDCA",
+          agenda: "Agenda PEI",
+          secretaria: "Secretaria",
+          professores: "Professores",
+          auditoria: "Auditoria",
+          admin: "Configurações",
+          "substituicao-pei": "Substituição PEI",
+          "gerador-atas": "Gerador de Atas",
+          "conselho-especial": "Conselho Especial"
+        };
         if (pageTitle && titles[tabName]) {
           pageTitle.textContent = titles[tabName];
         }
+        if (mobilePageTitle) {
+          mobilePageTitle.textContent = mobileShortTitles[tabName] || (titles[tabName] || "Sistema Clóvis");
+        }
+
+        // Atualizar destaque ativo na barra inferior mobile (#mobileBottomNav)
+        const mobilePrimaryTabs = ["inicio", "mural", "alunos", "horarios"];
+        const activeMobileBottomKey = mobilePrimaryTabs.includes(tabName) ? tabName : "mais";
+        ["inicio", "mural", "alunos", "horarios", "mais"].forEach(key => {
+          const btn = document.getElementById(`mobile-tab-${key}`);
+          if (!btn) return;
+          const isActive = key === activeMobileBottomKey;
+          btn.classList.toggle("text-cyan-600", isActive);
+          btn.classList.toggle("text-slate-400", !isActive);
+          const iconWrap = btn.querySelector(".mobile-nav-icon-wrapper");
+          if (iconWrap) {
+            iconWrap.classList.toggle("bg-cyan-50", isActive);
+            iconWrap.classList.toggle("text-cyan-700", isActive);
+          }
+          const dot = btn.querySelector(".mobile-active-dot");
+          if (dot) {
+            dot.classList.toggle("hidden", !isActive);
+          }
+        });
 
         if (tabName === "mural") {
           if (typeof window.iniciarListenerMural === "function") {

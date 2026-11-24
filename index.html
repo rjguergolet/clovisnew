@@ -1959,7 +1959,7 @@
                   </button>
                 </div>
 
-                <div class="flex flex-wrap items-center gap-2 justify-end">
+                <div class="flex flex-wrap items-center gap-2 justify-start lg:justify-end">
                   <button
                     type="button"
                     id="btn-central-prioridades-ba"
@@ -2156,16 +2156,20 @@
 
             <!-- Listagem de Alunos Limpa e Direta -->
             <div class="bg-white rounded-xl border border-slate-200 overflow-hidden w-full max-w-full">
-              <div class="overflow-auto max-h-[calc(100vh-290px)] min-h-[400px] w-full relative custom-table-scrollbar">
+              <!-- Visão Mobile em Cards (Frequência, Situação de Presença, Dossiê e Busca Ativa sem corte lateral) -->
+              <div id="alunos-mobile-list" class="md:hidden divide-y divide-slate-200"></div>
+
+              <!-- Visão Desktop em Tabela -->
+              <div class="hidden md:block overflow-auto max-h-[calc(100vh-290px)] min-h-[400px] w-full relative custom-table-scrollbar">
                 <table class="w-full text-left border-collapse min-w-[1220px]">
                   <thead class="bg-slate-50 text-slate-600 text-[11px] font-semibold border-b border-slate-200 sticky top-0 z-20">
                     <tr id="tabela-alunos-head-row">
-                      <th class="px-3 py-3 sticky top-0 left-0 z-30 bg-slate-50 min-w-[44px] w-[44px] text-center border-b border-slate-200">
+                      <th class="px-3 py-3 sticky top-0 md:left-0 z-30 bg-slate-50 min-w-[44px] w-[44px] text-center border-b border-slate-200">
                         <input type="checkbox" id="checkbox-selecionar-todos-alunos" onchange="window.toggleSelecionarTodosAlunos(this)" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer" title="Selecionar Todos" />
                       </th>
-                      <th class="px-4 py-3 sticky top-0 left-[44px] z-30 bg-slate-50 min-w-[230px] border-b border-slate-200">Estudante &amp; Segmento</th>
-                      <th class="px-3 py-3 sticky top-0 left-[274px] z-30 bg-slate-50 min-w-[115px] border-b border-slate-200">RA</th>
-                      <th class="px-3 py-3 sticky top-0 left-[389px] z-30 bg-slate-50 min-w-[90px] border-r border-slate-200 border-b border-slate-200">Turma</th>
+                      <th class="px-4 py-3 sticky top-0 md:left-[44px] z-30 bg-slate-50 min-w-[230px] border-b border-slate-200">Estudante &amp; Segmento</th>
+                      <th class="px-3 py-3 sticky top-0 md:left-[274px] z-30 bg-slate-50 min-w-[115px] border-b border-slate-200">RA</th>
+                      <th class="px-3 py-3 sticky top-0 md:left-[389px] z-30 bg-slate-50 min-w-[90px] border-r border-slate-200 border-b border-slate-200">Turma</th>
                       <th class="px-3 py-3 min-w-[130px]">Tutor 2026</th>
                       <th class="px-3 py-3 min-w-[120px]">Clube / Eletiva</th>
                       <th class="px-3 py-3 text-center min-w-[115px]">Frequência SED</th>
@@ -2670,8 +2674,13 @@
                 </div>
               </div>
 
-              <!-- Tabela de Registros -->
-              <div class="overflow-x-auto">
+              <!-- Lista Mobile de Registros -->
+              <div id="registros-mobile-list" class="md:hidden divide-y divide-slate-200">
+                <div class="px-4 py-8 text-center text-xs text-slate-400">Carregando histórico de ocorrências...</div>
+              </div>
+
+              <!-- Tabela Desktop de Registros -->
+              <div class="hidden md:block overflow-x-auto">
                 <table class="w-full text-left border-collapse min-w-[960px]">
                   <thead class="bg-slate-50 text-slate-600 text-[11px] font-semibold border-b border-slate-200">
                     <tr>
@@ -4143,6 +4152,22 @@
               <span class="text-[11px] font-bold text-slate-700 truncate w-full">Alunos</span>
             </button>
 
+            <!-- Busca Ativa -->
+            <button type="button" onclick="window.switchTab('busca-ativa'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-rose-50 transition cursor-pointer" id="mob-grid-busca-ativa">
+              <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-600 to-red-700 text-white flex items-center justify-center text-lg shadow-sm">
+                <i class="fa-solid fa-user-check"></i>
+              </div>
+              <span class="text-[11px] font-bold text-slate-700 truncate w-full">Busca Ativa</span>
+            </button>
+
+            <!-- Registros & Ocorrências -->
+            <button type="button" onclick="window.switchTab('registros'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-registros">
+              <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-600 to-indigo-600 text-white flex items-center justify-center text-lg shadow-sm">
+                <i class="fa-solid fa-clipboard-list"></i>
+              </div>
+              <span class="text-[11px] font-bold text-slate-700 truncate w-full">Registros</span>
+            </button>
+
             <!-- Presença Diária & IA 2027 -->
             <button type="button" onclick="window.switchTab('presenca-diaria'); window.toggleMobileMenuSheet(false);" class="mobile-app-tile hidden flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 transition cursor-pointer" id="mob-grid-presenca-diaria">
               <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-700 text-white flex items-center justify-center text-lg shadow-sm">
@@ -4615,7 +4640,7 @@
         </div>
 
         <!-- Conteúdo Aba: Busca Ativa & Frequência (Integrada ao Dossiê) -->
-        <div id="modal-content-busca-ativa" class="modal-tab-content p-5 sm:p-6 overflow-y-auto custom-scrollbar hidden flex-1 space-y-5">
+        <div id="modal-content-busca-ativa" class="modal-tab-content p-4 sm:p-6 overflow-y-auto custom-scrollbar hidden flex-1 space-y-5">
           <!-- Indicadores Objetivos de Frequência e SLA -->
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pb-4 border-b border-slate-200">
             <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
@@ -4643,9 +4668,9 @@
 
           <!-- Formulário Enxuto de Registro Rápido (Contato, Atraso, Falta ou Encaminhamento) -->
           <form id="form-dossie-busca-ativa-rapida" class="space-y-3.5 pb-5 border-b border-slate-200">
-            <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <h4 class="text-sm font-semibold text-slate-900">Registro Rápido de Frequência e Busca Ativa</h4>
-              <div class="flex items-center gap-1 p-1 bg-slate-100 rounded-lg" role="group" aria-label="Tipo de registro rápido">
+              <div class="flex items-center gap-1 p-1 bg-slate-100 rounded-lg overflow-x-auto max-w-full" role="group" aria-label="Tipo de registro rápido">
                 <button type="button" data-dossie-ba-mode="CONTATO" onclick="window.setModoRegistroBaDossie('CONTATO')" class="px-2.5 py-1 rounded-md text-xs font-semibold bg-white text-slate-900 shadow-2xs transition cursor-pointer whitespace-nowrap shrink-0">Contato / Busca Ativa</button>
                 <button type="button" data-dossie-ba-mode="ATRASO" onclick="window.setModoRegistroBaDossie('ATRASO')" class="px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer whitespace-nowrap shrink-0">Atraso</button>
                 <button type="button" data-dossie-ba-mode="FALTA" onclick="window.setModoRegistroBaDossie('FALTA')" class="px-2.5 py-1 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 transition cursor-pointer whitespace-nowrap shrink-0">Falta / Justificativa</button>
@@ -6462,29 +6487,31 @@
           </div>
         </div>
 
+        <!-- Corpo Rolável no Mobile (KPIs + Filtros + Lista) e Layout Fixo no Desktop -->
+        <div class="flex-1 overflow-y-auto md:overflow-hidden md:flex md:flex-col custom-scrollbar">
         <!-- Faixa de Indicadores Operacionais (Single-Elevation, Clicáveis) -->
-        <div class="grid grid-cols-2 sm:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-slate-200 border-b border-slate-200 bg-white shrink-0">
-          <button type="button" onclick="window.selecionarAbaCentralPrioridadesBa('TODOS')" class="px-4 py-3 text-left hover:bg-slate-50 transition cursor-pointer">
+        <div class="grid grid-cols-2 sm:grid-cols-5 divide-y sm:divide-y-0 sm:divide-x divide-slate-200 border-b border-slate-200 bg-white md:shrink-0">
+          <button type="button" onclick="window.selecionarAbaCentralPrioridadesBa('TODOS')" class="px-3 sm:px-4 py-2.5 sm:py-3 text-left hover:bg-slate-50 transition cursor-pointer">
             <span class="block text-[11px] font-medium text-slate-500">Na Fila de Prioridade</span>
             <span id="cpba-kpi-total" class="block text-xl font-bold font-mono tabular-nums text-slate-900 mt-0.5">0</span>
             <span class="block text-[11px] text-slate-400">Faltas ou atrasos recorrentes</span>
           </button>
-          <button type="button" onclick="window.selecionarAbaCentralPrioridadesBa('NUNCA_CONTATADOS')" class="px-4 py-3 text-left hover:bg-rose-50/50 transition cursor-pointer">
+          <button type="button" onclick="window.selecionarAbaCentralPrioridadesBa('NUNCA_CONTATADOS')" class="px-3 sm:px-4 py-2.5 sm:py-3 text-left hover:bg-rose-50/50 transition cursor-pointer">
             <span class="block text-[11px] font-medium text-rose-700">Nunca Contatados</span>
             <span id="cpba-kpi-sem-contato" class="block text-xl font-bold font-mono tabular-nums text-rose-700 mt-0.5">0</span>
             <span class="block text-[11px] text-slate-500">0 contatos · Prioridade de 1º contato</span>
           </button>
-          <button type="button" onclick="window.selecionarAbaCentralPrioridadesBa('SEM_RETORNO')" class="px-4 py-3 text-left hover:bg-amber-50/50 transition cursor-pointer">
+          <button type="button" onclick="window.selecionarAbaCentralPrioridadesBa('SEM_RETORNO')" class="px-3 sm:px-4 py-2.5 sm:py-3 text-left hover:bg-amber-50/50 transition cursor-pointer">
             <span class="block text-[11px] font-medium text-amber-700">Sem Retorno / +15 dias</span>
             <span id="cpba-kpi-sem-retorno" class="block text-xl font-bold font-mono tabular-nums text-amber-700 mt-0.5">0</span>
             <span class="block text-[11px] text-slate-500">Aguardando família ou hiato longo</span>
           </button>
-          <button type="button" onclick="window.selecionarAbaCentralPrioridadesBa('FALTAS_CRITICAS')" class="px-4 py-3 text-left hover:bg-rose-50/40 transition cursor-pointer" title="Considera apenas os últimos 30 dias para Busca Ativa">
+          <button type="button" onclick="window.selecionarAbaCentralPrioridadesBa('FALTAS_CRITICAS')" class="px-3 sm:px-4 py-2.5 sm:py-3 text-left hover:bg-rose-50/40 transition cursor-pointer" title="Considera apenas os últimos 30 dias para Busca Ativa">
             <span class="block text-[11px] font-medium text-slate-600">Faltas Consecutivas (30d)</span>
             <span id="cpba-kpi-faltas-consec" class="block text-xl font-bold font-mono tabular-nums text-rose-700 mt-0.5">0</span>
             <span class="block text-[11px] text-slate-500">2+ seguidas · Alerta SEDUC 39/2023</span>
           </button>
-          <div class="px-4 py-3 text-left col-span-2 sm:col-span-1">
+          <div class="px-3 sm:px-4 py-2.5 sm:py-3 text-left col-span-2 sm:col-span-1">
             <span class="block text-[11px] font-medium text-emerald-700">Contatados (Últimos 7d)</span>
             <div class="flex items-baseline gap-2 mt-0.5">
               <span id="cpba-kpi-cobertura-7d" class="text-xl font-bold font-mono tabular-nums text-emerald-700">0</span>
@@ -6495,7 +6522,7 @@
         </div>
 
         <!-- Abas de Fila + Filtros Combináveis -->
-        <div class="px-5 sm:px-6 py-3 bg-slate-50 border-b border-slate-200 space-y-2.5 shrink-0">
+        <div class="px-4 sm:px-6 py-3 bg-slate-50 border-b border-slate-200 space-y-2.5 md:shrink-0">
           <!-- Abas Rápidas -->
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="flex items-center gap-1 p-1 bg-slate-200/70 rounded-lg overflow-x-auto max-w-full" role="tablist" aria-label="Filas operacionais de busca ativa">
@@ -6581,9 +6608,12 @@
           </div>
         </div>
 
-        <!-- Tabela Operacional Clicável -->
-        <div class="flex-1 overflow-auto custom-scrollbar bg-white">
-          <table class="w-full text-left border-collapse min-w-[960px]">
+        <!-- Lista Mobile em Cards + Tabela Operacional Desktop -->
+        <div class="md:flex-1 md:overflow-auto custom-scrollbar bg-white">
+          <div id="cpba-mobile-list" class="md:hidden divide-y divide-slate-200 bg-white">
+            <div class="px-4 py-10 text-center text-xs text-slate-400">Carregando fila operacional de busca ativa...</div>
+          </div>
+          <table class="hidden md:table w-full text-left border-collapse min-w-[960px]">
             <thead class="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-600 sticky top-0 z-10">
               <tr>
                 <th class="px-4 py-2.5 w-[24%]">Estudante &amp; Turma</th>
@@ -6601,6 +6631,7 @@
               </tr>
             </tbody>
           </table>
+        </div>
         </div>
 
         <!-- Rodapé -->
