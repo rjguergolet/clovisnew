@@ -142,6 +142,8 @@ function avaliarAlunoCriteriosSP(
         : (al.notasPorBimestre[periodo]?.mediaGeral ?? al.mediaGeralAtual);
 
   // 2. Frequência efetiva (LDB Art. 24: mínimo 75% independente do rendimento)
+  // Apuração normativa considera exclusivamente fontes oficiais consolidadas (SED e Mapão);
+  // Presença diária e faltas consecutivas são indicadores de Busca Ativa e não colocam o estudante em risco de retenção.
   const fontesFreq: Array<{ valor: number; fonte: string }> = [];
   if (al.sedFreq !== null) fontesFreq.push({ valor: al.sedFreq, fonte: 'SED' });
   if (periodo !== 'ANUAL' && al.notasPorBimestre[periodo]?.frequencia !== null) {
@@ -152,14 +154,11 @@ function avaliarAlunoCriteriosSP(
   } else if (al.mapaoFreq !== null) {
     fontesFreq.push({ valor: al.mapaoFreq, fonte: al.mapaoBimestre ? `Mapão ${al.mapaoBimestre}` : 'Mapão' });
   }
-  if (al.diariaFreq !== null && al.diariaTotalDias >= 5) {
-    fontesFreq.push({ valor: al.diariaFreq, fonte: 'Chamada Diária' });
-  }
 
   let freqReferencia: number | null = null;
   let fonteFreq = '—';
   if (fontesFreq.length > 0) {
-    // Prioriza SED como referência oficial, mas se outra fonte consolidada já indicar <75%, destaca a menor
+    // Prioriza SED como referência oficial, mas se o Mapão consolidado indicar <75%, destaca o menor índice oficial
     const abaixo75 = fontesFreq.filter((f) => f.valor < 75).sort((a, b) => a.valor - b.valor);
     if (abaixo75.length > 0) {
       freqReferencia = abaixo75[0].valor;
@@ -230,11 +229,10 @@ function avaliarAlunoCriteriosSP(
       qtdAbaixo5 === 3
         ? 'Atenção máxima: está no limite de 3 disciplinas. Garantir recuperação imediata em ao menos 1 componente.'
         : 'Encaminhar atividades de recuperação paralela e acompanhar fechamento com o Tutor.';
-  } else if (freqLimitrofe || al.faltasConsecutivas >= 3 || disciplinasMargem.length >= 3) {
+  } else if (freqLimitrofe || disciplinasMargem.length >= 3) {
     nivel = 'MARGEM_LIMITE';
     const razoes: string[] = [];
     if (freqLimitrofe && freqReferencia !== null) razoes.push(`frequência limítrofe (${freqReferencia.toFixed(1)}%)`);
-    if (al.faltasConsecutivas >= 3) razoes.push(`${al.faltasConsecutivas} faltas consecutivas (30d)`);
     if (disciplinasMargem.length >= 3) razoes.push(`${disciplinasMargem.length} disciplinas entre 5,0 e 5,9`);
     rotuloNivel = 'Zona limítrofe · Prevenção';
     motivoNormativo = `Em margem estreita de aprovação: ${razoes.join(' · ')}.`;
@@ -260,7 +258,6 @@ function avaliarAlunoCriteriosSP(
     scoreGravidade += Math.round((75 - freqReferencia) * 20);
   }
   scoreGravidade += qtdAbaixo5 * 95;
-  scoreGravidade += al.faltasConsecutivas * 35;
   if (isTerceiraEM) scoreGravidade += 120;
   if (isNonoEF) scoreGravidade += 60;
   if (mediaGeral !== null && mediaGeral < 5) scoreGravidade += Math.round((5 - mediaGeral) * 50);
@@ -524,9 +521,9 @@ export default function Dashboard8AprovacaoSP({
         {mostrarCriterios && (
           <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 text-xs text-slate-700">
             <div>
-              <div className="font-bold text-slate-900 mb-1">1. Frequência Mínima (75%)</div>
+              <div className="font-bold text-slate-900 mb-1">1. Frequência Mínima (75% · SED / Mapão)</div>
               <p className="leading-relaxed text-slate-600">
-                Exigência legal de <strong>75% do total de horas letivas</strong> (LDB Art. 24). A apuração é <strong>independente das notas</strong>: abaixo de 75%, o estudante pode ser retido por falta mesmo com média suficiente, exigindo Busca Ativa e Compensação de Ausências.
+                Exigência legal de <strong>75% do total de horas letivas</strong> (LDB Art. 24), apurada sobre registros consolidados (<strong>SED e Mapão</strong>). Chamada diária e faltas consecutivas servem apenas à Busca Ativa e não geram risco de retenção.
               </p>
             </div>
             <div>
@@ -624,7 +621,7 @@ export default function Dashboard8AprovacaoSP({
               filtroRisco === 'MARGEM_LIMITE' ? 'bg-slate-100' : 'bg-white hover:bg-slate-50'
             }`}
           >
-            <span className="block text-[11px] font-semibold text-slate-700">Zona Limítrofe (75–80% / 3+ cons.)</span>
+            <span className="block text-[11px] font-semibold text-slate-700">Zona Limítrofe (75–80% / Notas 5–5,9)</span>
             <span className="block text-2xl font-bold font-mono tabular-nums text-slate-900 mt-1">
               {kpis.margemLimite}
             </span>
@@ -821,7 +818,6 @@ export default function Dashboard8AprovacaoSP({
                         </div>
                         <div className="text-[10px] font-sans text-slate-400">
                           {av.fonteFreq}
-                          {aluno.faltasConsecutivas >= 2 ? ` · ${aluno.faltasConsecutivas}d cons.` : ''}
                         </div>
                       </td>
 
@@ -963,14 +959,14 @@ export default function Dashboard8AprovacaoSP({
                                   </span>
                                 </div>
                                 <div className="flex justify-between py-1 border-b border-slate-200/70">
-                                  <span className="text-slate-500">Chamada Diária ({aluno.diariaTotalDias}d)</span>
-                                  <span className={`font-mono font-semibold ${aluno.diariaFreq !== null && aluno.diariaFreq < 75 ? 'text-rose-700' : 'text-slate-900'}`}>
+                                  <span className="text-slate-500">Chamada Diária ({aluno.diariaTotalDias}d · informativo)</span>
+                                  <span className="font-mono font-semibold text-slate-600">
                                     {aluno.diariaFreq !== null ? `${aluno.diariaFreq.toFixed(1)}%` : '—'}
                                   </span>
                                 </div>
                                 <div className="flex justify-between py-1">
-                                  <span className="text-slate-500">Faltas consecutivas (últimos 30d)</span>
-                                  <span className={`font-mono font-semibold ${aluno.faltasConsecutivas >= 3 ? 'text-rose-700' : 'text-slate-900'}`}>
+                                  <span className="text-slate-500">Faltas consecutivas (30d · informativo)</span>
+                                  <span className="font-mono font-semibold text-slate-600">
                                     {aluno.faltasConsecutivas} dia(s)
                                   </span>
                                 </div>
