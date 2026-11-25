@@ -4,6 +4,7 @@ import { obterUsuarioAtivoCompleto } from '../modules/authHelper';
 import { isAlunoAtivo } from '../utils';
 import { checkDayStatus, DayStatusResult } from './agendaConstants';
 import { obterAnoLetivoVigente, ehRegistroDoAnoVigente } from '../modules/anoLetivoHelper';
+import { inferirSegmento } from '../modules/inteligenciaDataEngine';
 
 type StatusPresenca = 'presente' | 'atrasado' | 'falta' | 'licenca';
 type OrigemRegistro = 'manual' | 'dispensa' | 'atraso_ocorrencia' | 'pendente';
@@ -37,6 +38,7 @@ interface AlunoPresenca {
   ra: string;
   nome: string;
   turma: string;
+  segmento: string;
   tutor: string;
   telefone: string;
   status: StatusPresenca;
@@ -234,6 +236,7 @@ export default function PresencaDiariaIA() {
     return hojeIso;
   });
 
+  const [segmentoSelecionado, setSegmentoSelecionado] = useState<'TODOS' | 'Ensino Fundamental' | 'Ensino Médio'>('TODOS');
   const [turmaSelecionada, setTurmaSelecionada] = useState<string>('TODAS');
   const [filtroBusca, setFiltroBusca] = useState<string>('');
   const [filtroStatus, setFiltroStatus] = useState<string>('TODOS');
@@ -775,14 +778,34 @@ export default function PresencaDiariaIA() {
     });
   }, [registrosPresenca, integracaoCruzada, dataSelecionada]);
 
-  // 10. Lista única de turmas na ordem escolar (6º -> 9º -> 1ª EM -> 3ª EM)
+  // 10. Lista única de turmas na ordem escolar (6º -> 9º -> 1ª EM -> 3ª EM), respeitando o segmento selecionado
   const listaTurmas = useMemo(() => {
     const s = new Set<string>();
     alunosBase.forEach((a) => {
-      if (a.turma) s.add(String(a.turma).trim().toUpperCase());
+      if (!a.turma) return;
+      if (segmentoSelecionado !== 'TODOS' && inferirSegmento(a) !== segmentoSelecionado) return;
+      s.add(String(a.turma).trim().toUpperCase());
     });
     return Array.from(s).sort(compararTurmas);
-  }, [alunosBase]);
+  }, [alunosBase, segmentoSelecionado]);
+
+  // Ao trocar o segmento, limpa a turma selecionada caso ela não pertença ao novo segmento
+  const handleSelecionarSegmento = useCallback(
+    (novoSegmento: 'TODOS' | 'Ensino Fundamental' | 'Ensino Médio') => {
+      setSegmentoSelecionado(novoSegmento);
+      if (novoSegmento !== 'TODOS' && turmaSelecionada !== 'TODAS') {
+        const pertence = alunosBase.some(
+          (a) =>
+            String(a.turma || '').trim().toUpperCase() === turmaSelecionada.toUpperCase() &&
+            inferirSegmento(a) === novoSegmento
+        );
+        if (!pertence) {
+          setTurmaSelecionada('TODAS');
+        }
+      }
+    },
+    [alunosBase, turmaSelecionada]
+  );
 
   // 11. Agregação contínua multi-dias (considerando dispensas e atrasos cruzados sobrepondo faltas)
   const historicoAgregado = useMemo(() => {
@@ -1067,6 +1090,7 @@ export default function PresencaDiariaIA() {
         ra: raKey,
         nome: String(a.nome || 'Estudante').trim().toUpperCase(),
         turma: String(a.turma || 'SEM TURMA').trim().toUpperCase(),
+        segmento: inferirSegmento(a),
         tutor,
         telefone: a.telefone || a.contato || a.fone_responsavel || '',
         status: statusEfetivo,
@@ -1092,12 +1116,28 @@ export default function PresencaDiariaIA() {
     });
   }, [alunosBase, registrosPresenca, integracaoCruzada, dataSelecionada, historicoAgregado, licencasAjuste]);
 
-  // Progresso por turma para "Salvar e Continuar Depois"
-  const progressoPorTurma = useMemo(() => {
-    const mapa: Record<string, { turma: string; total: number; verificados: number; concluidosPorcentagem: number; estado: 'concluida' | 'em_andamento' | 'pendente' }> = {};
+  // Contagem rápida por segmento e subconjunto ativo do segmento
+  const contagemPorSegmento = useMemo(() => {
+    let ef = 0;
+    let em = 0;
+    listaAlunosEnriquecida.forEach((a) => {
+      if (a.segmento === 'Ensino Fundamental') ef++;
+      else if (a.segmento === 'Ensino Médio') em++;
+    });
+    return { todos: listaAlunosEnriquecida.length, ef, em };
+  }, [listaAlunosEnriquecida]);
+
+  const alunosNoSegmento = useMemo(() => {
+    if (segmentoSelecionado === 'TODOS') return listaAlunosEnriquecida;
+    return listaAlunosEnriquecida.filter((a) => a.segmento === segmentoSelecionado);
+  }, [listaAlunosEnriquecida, segmentoSelecionado]);
+
+  // Progresso global por turma (preserva integridade ao salvar chamada completa da escola)
+  const progressoPorTurmaGlobal = useMemo(() => {
+    const mapa: Record<string, { turma: string; segmento: string; total: number; verificados: number; concluidosPorcentagem: number; estado: 'concluida' | 'em_andamento' | 'pendente' }> = {};
     listaAlunosEnriquecida.forEach((al) => {
       if (!mapa[al.turma]) {
-        mapa[al.turma] = { turma: al.turma, total: 0, verificados: 0, concluidosPorcentagem: 0, estado: 'pendente' };
+        mapa[al.turma] = { turma: al.turma, segmento: al.segmento, total: 0, verificados: 0, concluidosPorcentagem: 0, estado: 'pendente' };
       }
       mapa[al.turma].total++;
       if (al.verificado) mapa[al.turma].verificados++;
@@ -1117,17 +1157,23 @@ export default function PresencaDiariaIA() {
       .sort((a, b) => compararTurmas(a.turma, b.turma));
   }, [listaAlunosEnriquecida]);
 
+  // Progresso por turma visível conforme o segmento selecionado
+  const progressoPorTurma = useMemo(() => {
+    if (segmentoSelecionado === 'TODOS') return progressoPorTurmaGlobal;
+    return progressoPorTurmaGlobal.filter((t) => t.segmento === segmentoSelecionado);
+  }, [progressoPorTurmaGlobal, segmentoSelecionado]);
+
   const resumoProgressoDia = useMemo(() => {
     const totalTurmas = progressoPorTurma.length;
     const turmasConcluidas = progressoPorTurma.filter((t) => t.estado === 'concluida').length;
-    const totalAlunos = listaAlunosEnriquecida.length;
-    const verificadosAlunos = listaAlunosEnriquecida.filter((a) => a.verificado).length;
+    const totalAlunos = alunosNoSegmento.length;
+    const verificadosAlunos = alunosNoSegmento.filter((a) => a.verificado).length;
     return { totalTurmas, turmasConcluidas, totalAlunos, verificadosAlunos };
-  }, [progressoPorTurma, listaAlunosEnriquecida]);
+  }, [progressoPorTurma, alunosNoSegmento]);
 
   // Filtros aplicados mantendo ordenação Turma -> Alfabética
   const alunosFiltrados = useMemo(() => {
-    return listaAlunosEnriquecida.filter((a) => {
+    return alunosNoSegmento.filter((a) => {
       if (turmaSelecionada !== 'TODAS' && a.turma !== turmaSelecionada.toUpperCase()) {
         return false;
       }
@@ -1138,12 +1184,12 @@ export default function PresencaDiariaIA() {
       }
       if (filtroBusca.trim()) {
         const termo = filtroBusca.toLowerCase().trim();
-        const textoBusca = `${a.nome} ${a.ra} ${a.turma} ${a.tutor}`.toLowerCase();
+        const textoBusca = `${a.nome} ${a.ra} ${a.turma} ${a.segmento} ${a.tutor}`.toLowerCase();
         if (!textoBusca.includes(termo)) return false;
       }
       return true;
     });
-  }, [listaAlunosEnriquecida, turmaSelecionada, filtroStatus, filtroBusca]);
+  }, [alunosNoSegmento, turmaSelecionada, filtroStatus, filtroBusca]);
 
   // Agrupamento visual por Turma (cada grupo já vem ordenado alfabeticamente)
   const gruposPorTurma = useMemo(() => {
@@ -1156,6 +1202,7 @@ export default function PresencaDiariaIA() {
       const prog = progressoPorTurma.find((p) => p.turma === turma);
       return {
         turma,
+        segmento: prog?.segmento ?? alunos[0]?.segmento ?? '',
         alunos,
         totalTurma: prog?.total ?? alunos.length,
         verificadosTurma: prog?.verificados ?? alunos.filter((x) => x.verificado).length,
@@ -1164,12 +1211,12 @@ export default function PresencaDiariaIA() {
     });
   }, [alunosFiltrados, progressoPorTurma]);
 
-  // Estatísticas globais ou da turma selecionada
+  // Estatísticas globais, do segmento ou da turma selecionada
   const estatisticas = useMemo(() => {
     const base =
       turmaSelecionada === 'TODAS'
-        ? listaAlunosEnriquecida
-        : listaAlunosEnriquecida.filter((a) => a.turma === turmaSelecionada.toUpperCase());
+        ? alunosNoSegmento
+        : alunosNoSegmento.filter((a) => a.turma === turmaSelecionada.toUpperCase());
     const total = base.length;
     let presentes = 0;
     let atrasados = 0;
@@ -1204,7 +1251,7 @@ export default function PresencaDiariaIA() {
       somaLicencas,
       somaFaltasEfetivas
     };
-  }, [listaAlunosEnriquecida, turmaSelecionada]);
+  }, [alunosNoSegmento, turmaSelecionada]);
 
   // Ação: Alterar status individual
   const handleAlterarStatus = (
@@ -1445,9 +1492,9 @@ export default function PresencaDiariaIA() {
       }
     });
 
-    const turmasConcluidasLista = progressoPorTurma.filter((t) => t.estado === 'concluida').map((t) => t.turma);
+    const turmasConcluidasLista = progressoPorTurmaGlobal.filter((t) => t.estado === 'concluida').map((t) => t.turma);
     const statusChamada: 'em_andamento' | 'concluida' =
-      modo === 'parcial' || turmasConcluidasLista.length < progressoPorTurma.length ? 'em_andamento' : 'concluida';
+      modo === 'parcial' || turmasConcluidasLista.length < progressoPorTurmaGlobal.length ? 'em_andamento' : 'concluida';
 
     const payload = {
       data: dataSelecionada,
@@ -1485,7 +1532,7 @@ export default function PresencaDiariaIA() {
       if (typeof (window as any).showToast === 'function') {
         (window as any).showToast(
           modo === 'parcial'
-            ? `Progresso salvo (${turmasConcluidasLista.length}/${progressoPorTurma.length} turmas concluídas). Você pode retomar depois!`
+            ? `Progresso salvo (${turmasConcluidasLista.length}/${progressoPorTurmaGlobal.length} turmas concluídas). Você pode retomar depois!`
             : 'Chamada diária salva e sincronizada com o banco de dados!',
           'success'
         );
@@ -1540,7 +1587,14 @@ export default function PresencaDiariaIA() {
     const atrasadosPorTurma: Record<string, string[]> = {};
     const faltasConsecutivasAlerta: { turma: string; dias: number }[] = [];
 
-    listaAlunosEnriquecida.forEach((a) => {
+    const escopoComunicado =
+      turmaSelecionada !== 'TODAS'
+        ? turmaSelecionada
+        : segmentoSelecionado !== 'TODOS'
+        ? segmentoSelecionado
+        : 'TODAS';
+
+    alunosNoSegmento.forEach((a) => {
       if (turmaSelecionada !== 'TODAS' && a.turma !== turmaSelecionada.toUpperCase()) return;
 
       const t = a.turma;
@@ -1561,7 +1615,7 @@ export default function PresencaDiariaIA() {
       const dataFormatada = formatarDataBr(dataSelecionada);
       let msg = `*EE PROF. CLÓVIS DE LUCCA - PROGRAMA ENSINO INTEGRAL*\n`;
       msg += `📋 *BOLETIM DIÁRIO DE FREQUÊNCIA - ${dataFormatada}*\n`;
-      msg += `Ano Letivo ${ANO_LETIVO_OPERACAO} • Comunicação aos Responsáveis\n\n`;
+      msg += `Ano Letivo ${ANO_LETIVO_OPERACAO}${escopoComunicado !== 'TODAS' ? ` • ${escopoComunicado}` : ''} • Comunicação aos Responsáveis\n\n`;
 
       msg += `🚫 *ESTUDANTES AUSENTES NO DIA*\n`;
       const turmasFaltosas = Object.keys(faltososPorTurma).sort(compararTurmas);
@@ -1605,7 +1659,7 @@ export default function PresencaDiariaIA() {
         body: JSON.stringify({
           data: dataSelecionada,
           anoLetivo: ANO_LETIVO_OPERACAO,
-          turma: turmaSelecionada,
+          turma: escopoComunicado,
           estatisticas,
           faltososPorTurma,
           atrasadosPorTurma,
@@ -1635,7 +1689,19 @@ export default function PresencaDiariaIA() {
     setGerandoAnaliseIa(true);
     setModalIaAnaliseAberto(true);
 
-    const amostraPriorizada = [...listaAlunosEnriquecida]
+    const escopoAnalise =
+      turmaSelecionada !== 'TODAS'
+        ? turmaSelecionada
+        : segmentoSelecionado !== 'TODOS'
+        ? segmentoSelecionado
+        : 'TODAS';
+
+    const baseAnalise =
+      turmaSelecionada === 'TODAS'
+        ? alunosNoSegmento
+        : alunosNoSegmento.filter((a) => a.turma === turmaSelecionada.toUpperCase());
+
+    const amostraPriorizada = [...baseAnalise]
       .sort((a, b) => {
         const pesoA = (a.status === 'falta' ? 40 : a.status === 'atrasado' ? 25 : 0) + a.faltasConsecutivas * 20 + a.faltasEfetivas + a.atrasosAcumulados * 3;
         const pesoB = (b.status === 'falta' ? 40 : b.status === 'atrasado' ? 25 : 0) + b.faltasConsecutivas * 20 + b.faltasEfetivas + b.atrasosAcumulados * 3;
@@ -1648,7 +1714,7 @@ export default function PresencaDiariaIA() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          turma: turmaSelecionada,
+          turma: escopoAnalise,
           dataReferencia: dataSelecionada,
           anoLetivoAlvo: ANO_LETIVO_OPERACAO,
           estatisticas,
@@ -1661,7 +1727,7 @@ export default function PresencaDiariaIA() {
       if (resJson.data) setAnaliseIaDados(resJson.data);
     } catch {
       setAnaliseIaDados({
-        diagnosticoGeral: `Diagnóstico de Frequência ${ANO_LETIVO_OPERACAO} para ${turmaSelecionada} em ${formatarDataBr(dataSelecionada)}: Taxa de presença em ${estatisticas.taxaPresenca}% (${historicoAgregado.resumo.diasRegistrados} dia(s) apurado(s)). A 3ª métrica isolou ${estatisticas.somaFaltasEfetivas} faltas efetivas reais após descontar dispensas e licenças.`,
+        diagnosticoGeral: `Diagnóstico de Frequência ${ANO_LETIVO_OPERACAO} para ${escopoAnalise} em ${formatarDataBr(dataSelecionada)}: Taxa de presença em ${estatisticas.taxaPresenca}% (${historicoAgregado.resumo.diasRegistrados} dia(s) apurado(s)). A 3ª métrica isolou ${estatisticas.somaFaltasEfetivas} faltas efetivas reais após descontar dispensas e licenças.`,
         padroesDetectados: [
           {
             titulo: 'Pontualidade na 1ª Aula (07:00)',
@@ -2006,7 +2072,32 @@ export default function PresencaDiariaIA() {
               {resumoProgressoDia.turmasConcluidas}/{resumoProgressoDia.totalTurmas} turmas concluídas ({resumoProgressoDia.verificadosAlunos}/{resumoProgressoDia.totalAlunos} verificados)
             </span>
           </div>
-          <div className="flex items-center gap-2 text-[11px] font-semibold">
+          <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold">
+            <div className="inline-flex items-center p-0.5 bg-slate-100 rounded-xl border border-slate-200/80" role="group" aria-label="Filtrar por segmento">
+              {(
+                [
+                  { id: 'TODOS', label: 'Todos', count: contagemPorSegmento.todos },
+                  { id: 'Ensino Fundamental', label: 'Fundamental', count: contagemPorSegmento.ef },
+                  { id: 'Ensino Médio', label: 'Ensino Médio', count: contagemPorSegmento.em }
+                ] as const
+              ).map((seg) => {
+                const ativo = segmentoSelecionado === seg.id;
+                return (
+                  <button
+                    key={seg.id}
+                    type="button"
+                    onClick={() => handleSelecionarSegmento(seg.id)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition cursor-pointer whitespace-nowrap tabular-nums ${
+                      ativo
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {seg.label} <span className={ativo ? 'text-indigo-100' : 'text-slate-400'}>({seg.count})</span>
+                  </button>
+                );
+              })}
+            </div>
             <span
               className={`px-2.5 py-0.5 rounded-full border-l-4 ${
                 statusSalvamentoDoc === 'concluida'
@@ -2033,7 +2124,9 @@ export default function PresencaDiariaIA() {
                 : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
             }`}
           >
-            Todas ({listaAlunosEnriquecida.length})
+            {segmentoSelecionado === 'TODOS'
+              ? `Todas (${alunosNoSegmento.length})`
+              : `Todas — ${segmentoSelecionado === 'Ensino Fundamental' ? 'EF' : 'EM'} (${alunosNoSegmento.length})`}
           </button>
           {progressoPorTurma.map((p) => {
             const ativo = turmaSelecionada === p.turma;
@@ -2082,6 +2175,24 @@ export default function PresencaDiariaIA() {
           </div>
 
           <div className="flex items-center gap-2">
+            <label htmlFor="selectSegmentoChamada" className="text-xs font-medium text-slate-500">
+              Segmento:
+            </label>
+            <select
+              id="selectSegmentoChamada"
+              value={segmentoSelecionado}
+              onChange={(e) =>
+                handleSelecionarSegmento(e.target.value as 'TODOS' | 'Ensino Fundamental' | 'Ensino Médio')
+              }
+              className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/30 cursor-pointer"
+            >
+              <option value="TODOS">Todos os Segmentos ({contagemPorSegmento.todos})</option>
+              <option value="Ensino Fundamental">Ensino Fundamental ({contagemPorSegmento.ef})</option>
+              <option value="Ensino Médio">Ensino Médio ({contagemPorSegmento.em})</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
             <label htmlFor="selectTurmaChamada" className="text-xs font-medium text-slate-500">
               Turma:
             </label>
@@ -2091,7 +2202,11 @@ export default function PresencaDiariaIA() {
               onChange={(e) => setTurmaSelecionada(e.target.value)}
               className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/30 cursor-pointer"
             >
-              <option value="TODAS">Todas as Turmas ({alunosBase.length} alunos)</option>
+              <option value="TODAS">
+                {segmentoSelecionado === 'TODOS'
+                  ? `Todas as Turmas (${alunosNoSegmento.length} alunos)`
+                  : `Todas — ${segmentoSelecionado} (${alunosNoSegmento.length} alunos)`}
+              </option>
               {listaTurmas.map((t) => (
                 <option key={t} value={t}>
                   {t}

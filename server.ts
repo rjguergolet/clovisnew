@@ -24,6 +24,49 @@ import {
 
 const AUTH_SECRET = process.env.SESSION_SECRET || process.env.JWT_SECRET || 'clovis-lucca-2026-hmac-auth-secret-shield';
 
+let sharedGeminiClient: GoogleGenAI | null = null;
+let sharedGeminiApiKey = '';
+
+function getGeminiApiKey(): string {
+  return String(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.API_KEY || '').trim();
+}
+
+function getSharedGeminiClient(): GoogleGenAI | null {
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) return null;
+  if (!sharedGeminiClient || sharedGeminiApiKey !== apiKey) {
+    sharedGeminiApiKey = apiKey;
+    sharedGeminiClient = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build'
+        }
+      }
+    });
+  }
+  return sharedGeminiClient;
+}
+
+function isTransientGeminiError(err: any): boolean {
+  const status = Number(err?.status || err?.code || 0);
+  const raw = String(err?.message || err || '').toLowerCase();
+  return (
+    status === 503 ||
+    status === 500 ||
+    status === 502 ||
+    status === 504 ||
+    raw.includes('"code":503') ||
+    raw.includes('unavailable') ||
+    raw.includes('high demand') ||
+    raw.includes('overloaded') ||
+    raw.includes('try again later') ||
+    raw.includes('econnreset') ||
+    raw.includes('etimedout') ||
+    raw.includes('fetch failed')
+  );
+}
+
 const MOCK_FALLBACK_USERS: Record<string, any> = {
   'diretor@clovis.com': { id: 'usr-diretor', nome: 'Diretor Escolar', email: 'diretor@clovis.com', cargo: 'DIRETOR', nivel: 'DIRETOR', nivelAcesso: 'DIRETOR', acesso_total: true },
   'vice@clovis.com': { id: 'usr-vice', nome: 'Vice-Diretor Escolar', email: 'vice@clovis.com', cargo: 'VICE_DIRETOR', nivel: 'VICE_DIRETOR', nivelAcesso: 'VICE_DIRETOR', acesso_total: true },
@@ -1493,11 +1536,10 @@ async function startServer() {
       let parsedData = parseBoletimSEDText(extractedText);
 
       // Se o parser via Regex não detectou disciplinas ou se o texto extraído for insuficiente,
-      // utiliza a IA Gemini 3.8 Flash com o binário do PDF para leitura multimodal perfeita
-      const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-      if (apiKey && (!parsedData.sucesso || parsedData.totalDisciplinas === 0)) {
+      // utiliza a IA Gemini 4 Hydrogen com o binário do PDF para leitura multimodal
+      const ai = getSharedGeminiClient();
+      if (ai && (!parsedData.sucesso || parsedData.totalDisciplinas === 0)) {
         try {
-          const ai = new GoogleGenAI({ apiKey });
           const prompt = `Analise este Boletim Escolar oficial da SED (Secretaria da Educação do Estado de São Paulo) e extraia um JSON estruturado com os dados cadastrais do aluno e o quadro completo de notas e faltas dos 4 bimestres (1B, 2B, 3B, 4B).
 Rigorosamente retorne APENAS um JSON válido no formato:
 {
@@ -1547,7 +1589,7 @@ Rigorosamente retorne APENAS um JSON válido no formato:
           if (fileBase64) {
             const cleanBase64 = String(fileBase64).replace(/^data:application\/pdf;base64,/, '');
             aiResponse = await ai.models.generateContent({
-              model: 'gemini-3.8-flash',
+              model: 'gemini-4-hydrogen',
               contents: [
                 {
                   role: 'user',
@@ -1563,7 +1605,7 @@ Rigorosamente retorne APENAS um JSON válido no formato:
             });
           } else {
             aiResponse = await ai.models.generateContent({
-              model: 'gemini-3.8-flash',
+              model: 'gemini-4-hydrogen',
               contents: [
                 {
                   role: 'user',
@@ -3312,8 +3354,7 @@ Rigorosamente retorne APENAS um JSON válido no formato:
         return res.status(400).json({ error: 'Dados do estudante são obrigatórios para a análise individualizada.' });
       }
 
-      const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-      const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+      const ai = getSharedGeminiClient();
 
       const nomeAluno = String(aluno.nome || '').toUpperCase();
       const turmaAluno = String(aluno.turma || aluno.serie || 'Não informada').toUpperCase();
@@ -3406,7 +3447,7 @@ DIRETRIZ DE ESTÁGIO:
 ${estagioDesejado && estagioDesejado !== 'auto' ? `O operador solicitou explicitamente o estágio: "${estagioDesejado}". Ajuste a mensagem para atender com precisão esta etapa.` : 'Identifique AUTOMATICAMENTE o estágio ideal conforme a Resolução SEDUC nº 39/2023, avaliando o excesso de contatos sem resposta, histórico de reincidência, gravidade das ausências e se já esgotou as instâncias escolares para Conselho Tutelar ou Ministério Público.'}
 `;
 
-      const modelosDisponiveis = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+      const modelosDisponiveis = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
       let jsonResult: any;
       let sucesso = false;
 
@@ -3414,15 +3455,18 @@ ${estagioDesejado && estagioDesejado !== 'auto' ? `O operador solicitou explicit
         for (const modelo of modelosDisponiveis) {
           if (sucesso) break;
           try {
-            const response = await ai.models.generateContent({
-            model: modelo,
-            contents: promptUser,
-            config: {
+            const configPayload: any = {
               systemInstruction,
-              temperature: 0.3,
               responseMimeType: 'application/json'
+            };
+            if (modelo !== 'gemini-4-hydrogen') {
+              configPayload.temperature = 0.3;
             }
-          });
+            const response = await ai.models.generateContent({
+              model: modelo,
+              contents: promptUser,
+              config: configPayload
+            });
 
           const responseText = response.text || '{}';
           try {
@@ -3900,12 +3944,10 @@ ${resumoDossieTexto ? `\n• Síntese Integrada do Dossiê:\n${resumoDossieTexto
         return res.status(400).json({ error: 'Nenhum áudio fornecido para transcrição e diarização.' });
       }
 
-      const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-      if (!apiKey) {
+      const ai = getSharedGeminiClient();
+      if (!ai) {
         return res.status(500).json({ error: 'Chave do serviço de Inteligência Artificial não configurada.' });
       }
-
-      const ai = new GoogleGenAI({ apiKey });
 
       // Limpa string base64 se vier com prefixo data URL
       const cleanBase64 = String(audioBase64)
@@ -3985,7 +4027,7 @@ Processe o áudio em anexo, diferencie todas as vozes e retorne o JSON estrutura
       };
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
+        model: 'gemini-4-hydrogen',
         contents: [
           {
             role: 'user',
@@ -4018,7 +4060,6 @@ Processe o áudio em anexo, diferencie todas as vozes e retorne o JSON estrutura
   // ROTA DE IA: GERADOR DE ATAS INTELIGENTES (ROTINA E OPERAÇÕES)
   // Restrito a Direção, Vice-Direção e CGPG. Otimizado com ThinkingLevel.LOW + SSE streaming.
   // ==========================================
-  let cachedGeminiAtaClient: GoogleGenAI | null = null;
   const limparMarkdownParaPlainText = (txt: string) =>
     String(txt || '')
       .replace(/^```[\s\S]*?\n/, '')
@@ -4062,24 +4103,12 @@ Processe o áudio em anexo, diferencie todas as vozes e retorne o JSON estrutura
         });
       }
 
-      const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-      if (!apiKey) {
+      const ai = getSharedGeminiClient();
+      if (!ai) {
         return res.status(500).json({
           error: 'Chave da API Gemini não configurada no servidor (GEMINI_API_KEY).'
         });
       }
-
-      if (!cachedGeminiAtaClient) {
-        cachedGeminiAtaClient = new GoogleGenAI({
-          apiKey,
-          httpOptions: {
-            headers: {
-              'User-Agent': 'aistudio-build'
-            }
-          }
-        });
-      }
-      const ai = cachedGeminiAtaClient;
 
       const agora = new Date();
       let refDate = agora;
@@ -4134,18 +4163,33 @@ ${String(notasBrutas).trim()}`;
 
       const formatarErroGeminiAmigavel = (err: any): { status: number; message: string } => {
         const rawMsg = String(err?.message || err || '');
-        const is429 = err?.status === 429 || rawMsg.includes('"code":429') || rawMsg.includes('RESOURCE_EXHAUSTED') || rawMsg.includes('quota');
+        const lower = rawMsg.toLowerCase();
+        const is429 = err?.status === 429 || rawMsg.includes('"code":429') || rawMsg.includes('RESOURCE_EXHAUSTED') || lower.includes('quota');
         if (is429) {
           return {
             status: 429,
-            message: 'Limite diário de requisições gratuitas da API Gemini atingido (429 RESOURCE_EXHAUSTED). Para aumentar a cota imediatamente, selecione ou vincule uma chave com faturamento ativo no painel Settings > Secrets.'
+            message: 'Limite de requisições da API Gemini atingido (429). Aguarde alguns instantes e tente novamente.'
           };
         }
-        const is403 = err?.status === 403 || rawMsg.includes('PERMISSION_DENIED');
+        const is403 = err?.status === 403 || rawMsg.includes('PERMISSION_DENIED') || rawMsg.includes('API_KEY_INVALID');
         if (is403) {
           return {
             status: 403,
             message: 'Permissão negada na chave da API Gemini (403). Verifique a chave configurada em Settings > Secrets.'
+          };
+        }
+        const is503 = err?.status === 503 || rawMsg.includes('"code":503') || rawMsg.includes('UNAVAILABLE') || lower.includes('high demand') || lower.includes('overloaded');
+        if (is503) {
+          return {
+            status: 503,
+            message: 'O serviço Gemini AI está temporariamente com alta demanda (503). Aguarde alguns segundos e clique novamente em Estruturar Ata com IA.'
+          };
+        }
+        const is404 = err?.status === 404 || rawMsg.includes('"code":404') || rawMsg.includes('NOT_FOUND');
+        if (is404) {
+          return {
+            status: 502,
+            message: 'Modelo Gemini indisponível no momento (404). Tente novamente em instantes.'
           };
         }
         return {
@@ -4161,10 +4205,17 @@ ${String(notasBrutas).trim()}`;
         return { textoAtaLimpo, resumoLimpo };
       };
 
-      const ataCandidates: Array<{ model: string; thinkingLevel: ThinkingLevel }> = [
-        { model: 'gemini-3.1-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL },
-        { model: 'gemini-4-hydrogen', thinkingLevel: ThinkingLevel.LOW }
+      const ataCandidates: Array<{ model: string; thinkingLevel?: ThinkingLevel }> = [
+        { model: 'gemini-4-hydrogen', thinkingLevel: ThinkingLevel.LOW },
+        { model: 'gemini-3.1-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL }
       ];
+
+      const sleepMs = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+      const retryDelaysMs = [0, 2000];
+      const isQuotaErr = (err: any): boolean => {
+        const raw = String(err?.message || err || '');
+        return err?.status === 429 || raw.includes('"code":429') || raw.includes('RESOURCE_EXHAUSTED') || raw.toLowerCase().includes('quota');
+      };
 
       if (stream) {
         res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -4175,50 +4226,81 @@ ${String(notasBrutas).trim()}`;
           (res as any).flushHeaders();
         }
 
+        let clientClosed = false;
+        req.on('close', () => {
+          clientClosed = true;
+        });
+
         let fullText = '';
         let modeloUsado = ataCandidates[0].model;
         let lastErr: any = null;
         let streamIniciado = false;
+        const rateLimitedModels = new Set<string>();
 
-        for (const cand of ataCandidates) {
-          try {
-            fullText = '';
-            modeloUsado = cand.model;
-            const responseStream = await ai.models.generateContentStream({
-              model: cand.model,
-              contents: promptUser,
-              config: {
-                systemInstruction,
-                thinkingConfig: { thinkingLevel: cand.thinkingLevel }
+        outerStreamLoop:
+        for (let round = 0; round < retryDelaysMs.length; round++) {
+          if (clientClosed) break;
+          if (retryDelaysMs[round] > 0) {
+            res.write(`: aguardando-nova-tentativa\n\n`);
+            if (typeof (res as any).flush === 'function') (res as any).flush();
+            await sleepMs(retryDelaysMs[round]);
+          }
+
+          let anyTransient = false;
+          for (const cand of ataCandidates) {
+            if (clientClosed) break outerStreamLoop;
+            if (rateLimitedModels.has(cand.model)) continue;
+            try {
+              fullText = '';
+              modeloUsado = cand.model;
+              const configObj: any = { systemInstruction };
+              if (cand.thinkingLevel) {
+                configObj.thinkingConfig = { thinkingLevel: cand.thinkingLevel };
               }
-            });
+              const responseStream = await ai.models.generateContentStream({
+                model: cand.model,
+                contents: promptUser,
+                config: configObj
+              });
 
-            let enviadoLen = 0;
-            for await (const chunk of responseStream) {
-              const delta = chunk.text || '';
-              if (!delta) continue;
-              streamIniciado = true;
-              fullText += delta;
+              let enviadoLen = 0;
+              for await (const chunk of responseStream) {
+                if (clientClosed) break outerStreamLoop;
+                const delta = chunk.text || '';
+                if (!delta) continue;
+                streamIniciado = true;
+                fullText += delta;
 
-              const markerPos = fullText.search(/---+\s*RESUMO_DOSSIE/i);
-              const safeLimit = markerPos >= 0 ? markerPos : Math.max(0, fullText.length - 18);
-              if (safeLimit > enviadoLen) {
-                const novoTrecho = fullText.slice(enviadoLen, safeLimit);
-                enviadoLen = safeLimit;
-                if (novoTrecho) {
-                  res.write(`data: ${JSON.stringify({ chunk: novoTrecho })}\n\n`);
-                  if (typeof (res as any).flush === 'function') (res as any).flush();
+                const markerPos = fullText.search(/---+\s*RESUMO_DOSSIE/i);
+                const safeLimit = markerPos >= 0 ? markerPos : Math.max(0, fullText.length - 18);
+                if (safeLimit > enviadoLen) {
+                  const novoTrecho = fullText.slice(enviadoLen, safeLimit);
+                  enviadoLen = safeLimit;
+                  if (novoTrecho) {
+                    res.write(`data: ${JSON.stringify({ chunk: novoTrecho })}\n\n`);
+                    if (typeof (res as any).flush === 'function') (res as any).flush();
+                  }
                 }
               }
+              if (fullText.trim()) {
+                lastErr = null;
+                break outerStreamLoop;
+              }
+            } catch (candErr: any) {
+              lastErr = candErr;
+              if (isQuotaErr(candErr)) {
+                rateLimitedModels.add(cand.model);
+              } else if (isTransientGeminiError(candErr)) {
+                anyTransient = true;
+              }
+              console.warn(`[API AI Estruturar Ata Stream][rodada ${round + 1}] Falha em ${cand.model}:`, candErr?.message || candErr);
+              if (streamIniciado) break outerStreamLoop;
             }
-            lastErr = null;
-            break;
-          } catch (candErr: any) {
-            lastErr = candErr;
-            console.warn(`[API AI Estruturar Ata Stream] Falha em ${cand.model}:`, candErr?.message || candErr);
-            if (streamIniciado) break;
           }
+          if (!anyTransient) break;
         }
+
+        if (clientClosed) return;
 
         if (lastErr && !fullText.trim()) {
           const amigavel = formatarErroGeminiAmigavel(lastErr);
@@ -4238,27 +4320,43 @@ ${String(notasBrutas).trim()}`;
       let rawText = '';
       let modeloUsado = ataCandidates[0].model;
       let lastErr: any = null;
+      const rateLimitedModels = new Set<string>();
 
-      for (const cand of ataCandidates) {
-        try {
-          modeloUsado = cand.model;
-          const response = await ai.models.generateContent({
-            model: cand.model,
-            contents: promptUser,
-            config: {
-              systemInstruction,
-              thinkingConfig: { thinkingLevel: cand.thinkingLevel }
-            }
-          });
-          rawText = (response.text || '').trim();
-          if (rawText) {
-            lastErr = null;
-            break;
-          }
-        } catch (candErr: any) {
-          lastErr = candErr;
-          console.warn(`[API AI Estruturar Ata] Falha em ${cand.model}:`, candErr?.message || candErr);
+      outerNonStreamLoop:
+      for (let round = 0; round < retryDelaysMs.length; round++) {
+        if (retryDelaysMs[round] > 0) {
+          await sleepMs(retryDelaysMs[round]);
         }
+        let anyTransient = false;
+        for (const cand of ataCandidates) {
+          if (rateLimitedModels.has(cand.model)) continue;
+          try {
+            modeloUsado = cand.model;
+            const configObj: any = { systemInstruction };
+            if (cand.thinkingLevel) {
+              configObj.thinkingConfig = { thinkingLevel: cand.thinkingLevel };
+            }
+            const response = await ai.models.generateContent({
+              model: cand.model,
+              contents: promptUser,
+              config: configObj
+            });
+            rawText = (response.text || '').trim();
+            if (rawText) {
+              lastErr = null;
+              break outerNonStreamLoop;
+            }
+          } catch (candErr: any) {
+            lastErr = candErr;
+            if (isQuotaErr(candErr)) {
+              rateLimitedModels.add(cand.model);
+            } else if (isTransientGeminiError(candErr)) {
+              anyTransient = true;
+            }
+            console.warn(`[API AI Estruturar Ata][rodada ${round + 1}] Falha em ${cand.model}:`, String(candErr?.message || candErr || '').slice(0, 180));
+          }
+        }
+        if (!anyTransient) break;
       }
 
       if (lastErr && !rawText) {
@@ -4281,7 +4379,7 @@ ${String(notasBrutas).trim()}`;
       });
     } catch (err: any) {
       console.error('[API AI Estruturar Ata] Erro:', err?.message || err);
-      const status = err?.status === 403 || err?.status === 400 || err?.status === 429 ? err.status : 500;
+      const status = err?.status === 403 || err?.status === 400 || err?.status === 429 || err?.status === 503 ? err.status : 500;
       res.status(status).json({
         error: 'Erro ao estruturar ata com Gemini AI.',
         details: err?.message || String(err)
@@ -4335,26 +4433,27 @@ ${String(notasBrutas).trim()}`;
       // Gera resumo objetivo e diplomático da conversa (1 a 2 frases) para o Dossiê dos envolvidos se não veio pré-preenchido
       let resumoConversa = String(resumoDossie || '').trim();
       if (!resumoConversa) {
-        const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-        if (apiKey) {
-          try {
-            if (!cachedGeminiAtaClient) {
-              cachedGeminiAtaClient = new GoogleGenAI({
-                apiKey,
-                httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+        const aiResumo = getSharedGeminiClient();
+        if (aiResumo) {
+          const resumoModels: Array<{ model: string; thinkingLevel?: ThinkingLevel }> = [
+            { model: 'gemini-4-hydrogen', thinkingLevel: ThinkingLevel.LOW },
+            { model: 'gemini-3.1-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL }
+          ];
+          for (const rc of resumoModels) {
+            try {
+              const sumResp = await aiResumo.models.generateContent({
+                model: rc.model,
+                contents: `Resuma em no máximo 2 frases curtas e objetivas (texto simples, sem Markdown, linguagem técnica e diplomática) o assunto principal tratado e os encaminhamentos desta ata (${tipoAta}) para constar no histórico do dossiê escolar:\n\n${textoFinal.slice(0, 3500)}`,
+                config: {
+                  systemInstruction: 'Você sintetiza atas escolares em 1 a 2 frases impessoais, objetivas e seguras para registro em dossiê estudantil/docente. Retorne apenas texto simples, sem asteriscos ou marcadores.',
+                  ...(rc.thinkingLevel ? { thinkingConfig: { thinkingLevel: rc.thinkingLevel } } : {})
+                }
               });
+              resumoConversa = limparMarkdownParaPlainText(sumResp.text || '');
+              if (resumoConversa) break;
+            } catch (sumErr: any) {
+              console.warn(`[API Atas] Aviso ao resumir ata via IA (${rc.model}):`, sumErr?.message);
             }
-            const sumResp = await cachedGeminiAtaClient.models.generateContent({
-              model: 'gemini-3.1-flash-lite',
-              contents: `Resuma em no máximo 2 frases curtas e objetivas (texto simples, sem Markdown, linguagem técnica e diplomática) o assunto principal tratado e os encaminhamentos desta ata (${tipoAta}) para constar no histórico do dossiê escolar:\n\n${textoFinal.slice(0, 3500)}`,
-              config: {
-                systemInstruction: 'Você sintetiza atas escolares em 1 a 2 frases impessoais, objetivas e seguras para registro em dossiê estudantil/docente. Retorne apenas texto simples, sem asteriscos ou marcadores.',
-                thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
-              }
-            });
-            resumoConversa = limparMarkdownParaPlainText(sumResp.text || '');
-          } catch (sumErr: any) {
-            console.warn('[API Atas] Aviso ao resumir ata via IA, usando síntese textual:', sumErr?.message);
           }
         }
 
@@ -4678,8 +4777,7 @@ ${String(notasBrutas).trim()}`;
         });
       }
 
-      const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-      const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+      const ai = getSharedGeminiClient();
 
       // Obter base oficial de alunos caso não venha no payload
       let baseAlunos = Array.isArray(alunosCadastrados) && alunosCadastrados.length > 0 ? alunosCadastrados : [];
@@ -4951,7 +5049,7 @@ Você deve responder ESTRITAMENTE em formato JSON com o seguinte schema:
 }
 `;
 
-      const modelosDisponiveis = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+      const modelosDisponiveis = ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'];
       let jsonResult: any;
       let sucesso = false;
 
@@ -4959,17 +5057,20 @@ Você deve responder ESTRITAMENTE em formato JSON com o seguinte schema:
         for (const modelo of modelosDisponiveis) {
           if (sucesso) break;
           try {
+            const configPayload: any = {
+              systemInstruction,
+              responseMimeType: 'application/json'
+            };
+            if (modelo !== 'gemini-4-hydrogen') {
+              configPayload.temperature = 0.2;
+            }
             const generatePromise = ai.models.generateContent({
               model: modelo,
               contents: promptUser,
-              config: {
-                systemInstruction,
-                temperature: 0.2,
-                responseMimeType: 'application/json'
-              }
+              config: configPayload
             });
             const timeoutPromise = new Promise<never>((_, reject) => 
-              setTimeout(() => reject(new Error('Timeout de 7s na API do modelo')), 7000)
+              setTimeout(() => reject(new Error('Timeout de 12s na API do modelo')), 12000)
             );
             const response = await Promise.race([generatePromise, timeoutPromise]);
 

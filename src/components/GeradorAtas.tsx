@@ -289,6 +289,46 @@ export default function GeradorAtas() {
 
     setEstruturandoIA(true);
     try {
+      const requestPayload = {
+        tipoAta,
+        dataAta,
+        horarioAta,
+        estudantes: estudantesSelecionados.map(e => ({
+          ra: e.ra,
+          nome: e.nome,
+          turma: e.turma
+        })),
+        funcionarios: funcionariosSelecionados.map(f => ({
+          nome: f.nome,
+          cargo: f.cargo
+        })),
+        outrosParticipantes,
+        notasBrutas
+      };
+
+      const solicitarModoJson = async () => {
+        const resJson = await fetch('/api/ai/estruturar-ata', {
+          method: 'POST',
+          headers: obterAuthHeaders(),
+          body: JSON.stringify({ ...requestPayload, stream: false })
+        });
+        const payload = await resJson.json().catch(() => ({}));
+        if (!resJson.ok) {
+          throw new Error(payload?.error || payload?.details || `Erro HTTP ${resJson.status}`);
+        }
+        const textoEstruturado = String(payload?.textoAta || '').trim();
+        if (!textoEstruturado) {
+          throw new Error('A resposta da IA veio vazia. Tente detalhar melhor as notas brutas.');
+        }
+        setTextoAta(textoEstruturado);
+        if (payload?.resumoDossie) {
+          setResumoDossie(String(payload.resumoDossie));
+        }
+        if (typeof (window as any).showToast === 'function') {
+          (window as any).showToast('Ata formal estruturada com sucesso em texto simples.', 'success');
+        }
+      };
+
       const headers = {
         ...obterAuthHeaders(),
         Accept: 'text/event-stream'
@@ -296,23 +336,7 @@ export default function GeradorAtas() {
       const res = await fetch('/api/ai/estruturar-ata', {
         method: 'POST',
         headers,
-        body: JSON.stringify({
-          tipoAta,
-          dataAta,
-          horarioAta,
-          estudantes: estudantesSelecionados.map(e => ({
-            ra: e.ra,
-            nome: e.nome,
-            turma: e.turma
-          })),
-          funcionarios: funcionariosSelecionados.map(f => ({
-            nome: f.nome,
-            cargo: f.cargo
-          })),
-          outrosParticipantes,
-          notasBrutas,
-          stream: true
-        })
+        body: JSON.stringify({ ...requestPayload, stream: true })
       });
 
       const contentType = res.headers.get('content-type') || '';
@@ -343,44 +367,51 @@ export default function GeradorAtas() {
       let acumulado = '';
       let finalRecebido = false;
 
+      const processarEventoSse = (ev: string) => {
+        const line = ev
+          .split(/\r?\n/)
+          .find(l => l.startsWith('data: '));
+        if (!line) return;
+        let parsed: any;
+        try {
+          parsed = JSON.parse(line.slice(6));
+        } catch {
+          return;
+        }
+        if (parsed.error) {
+          throw new Error(parsed.error);
+        }
+        if (parsed.chunk) {
+          acumulado += parsed.chunk;
+          setTextoAta(acumulado);
+        }
+        if (parsed.done && parsed.textoAta) {
+          finalRecebido = true;
+          setTextoAta(String(parsed.textoAta));
+          if (parsed.resumoDossie) {
+            setResumoDossie(String(parsed.resumoDossie));
+          }
+        }
+      };
+
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        const events = buffer.split('\n\n');
+        const events = buffer.split(/\r?\n\r?\n/);
         buffer = events.pop() || '';
-
         for (const ev of events) {
-          const line = ev
-            .split('\n')
-            .find(l => l.startsWith('data: '));
-          if (!line) continue;
-          try {
-            const parsed = JSON.parse(line.slice(6));
-            if (parsed.error) {
-              throw new Error(parsed.error);
-            }
-            if (parsed.chunk) {
-              acumulado += parsed.chunk;
-              setTextoAta(acumulado);
-            }
-            if (parsed.done && parsed.textoAta) {
-              finalRecebido = true;
-              setTextoAta(String(parsed.textoAta));
-              if (parsed.resumoDossie) {
-                setResumoDossie(String(parsed.resumoDossie));
-              }
-            }
-          } catch (parseErr: any) {
-            if (parseErr instanceof Error && !parseErr.message.includes('JSON')) {
-              throw parseErr;
-            }
-          }
+          processarEventoSse(ev);
         }
       }
 
+      if (buffer.trim()) {
+        processarEventoSse(buffer);
+      }
+
       if (!finalRecebido && !acumulado.trim()) {
-        throw new Error('A resposta da IA veio vazia. Tente detalhar melhor as notas brutas.');
+        await solicitarModoJson();
+        return;
       }
 
       if (typeof (window as any).showToast === 'function') {
