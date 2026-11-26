@@ -61,10 +61,34 @@ function isTransientGeminiError(err: any): boolean {
     raw.includes('high demand') ||
     raw.includes('overloaded') ||
     raw.includes('try again later') ||
+    raw.includes('timeout') ||
     raw.includes('econnreset') ||
     raw.includes('etimedout') ||
     raw.includes('fetch failed')
   );
+}
+
+const geminiModelCooldownUntil = new Map<string, number>();
+
+function markGeminiModelCooldown(model: string, durationMs: number) {
+  geminiModelCooldownUntil.set(model, Date.now() + durationMs);
+}
+
+function sortCandidatesByHealth<T extends { model: string }>(candidates: T[]): T[] {
+  const now = Date.now();
+  const saudaveis = candidates.filter(c => (geminiModelCooldownUntil.get(c.model) || 0) <= now);
+  const emCooldown = candidates.filter(c => (geminiModelCooldownUntil.get(c.model) || 0) > now);
+  return [...saudaveis, ...emCooldown];
+}
+
+function withGeminiTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timeout de ${Math.round(ms / 1000)}s no modelo ${label}`)), ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 const MOCK_FALLBACK_USERS: Record<string, any> = {
@@ -4205,16 +4229,21 @@ ${String(notasBrutas).trim()}`;
         return { textoAtaLimpo, resumoLimpo };
       };
 
-      const ataCandidates: Array<{ model: string; thinkingLevel?: ThinkingLevel }> = [
-        { model: 'gemini-4-hydrogen', thinkingLevel: ThinkingLevel.LOW },
-        { model: 'gemini-3.1-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL }
+      const ataCandidatesBase: Array<{ model: string; thinkingLevel?: ThinkingLevel; timeoutMs: number }> = [
+        { model: 'gemini-3.1-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL, timeoutMs: 15000 },
+        { model: 'gemini-4-hydrogen', thinkingLevel: ThinkingLevel.LOW, timeoutMs: 9000 }
       ];
+      const ataCandidates = sortCandidatesByHealth(ataCandidatesBase);
 
       const sleepMs = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-      const retryDelaysMs = [0, 2000];
+      const retryDelaysMs = [0, 900, 1800, 3000];
       const isQuotaErr = (err: any): boolean => {
         const raw = String(err?.message || err || '');
         return err?.status === 429 || raw.includes('"code":429') || raw.includes('RESOURCE_EXHAUSTED') || raw.toLowerCase().includes('quota');
+      };
+      const isTimeoutErr = (err: any): boolean => {
+        const raw = String(err?.message || err || '').toLowerCase();
+        return raw.includes('timeout') || raw.includes('etimedout');
       };
 
       if (stream) {
@@ -4227,77 +4256,146 @@ ${String(notasBrutas).trim()}`;
         }
 
         let clientClosed = false;
-        req.on('close', () => {
-          clientClosed = true;
+        res.on('close', () => {
+          if (!res.writableEnded) {
+            clientClosed = true;
+          }
         });
+
+        const heartbeatTimer = setInterval(() => {
+          if (!clientClosed && !res.writableEnded) {
+            try {
+              res.write(`: keep-alive\n\n`);
+              if (typeof (res as any).flush === 'function') (res as any).flush();
+            } catch {}
+          }
+        }, 3000);
 
         let fullText = '';
         let modeloUsado = ataCandidates[0].model;
         let lastErr: any = null;
         let streamIniciado = false;
         const rateLimitedModels = new Set<string>();
+        const timedOutModels = new Set<string>();
 
-        outerStreamLoop:
-        for (let round = 0; round < retryDelaysMs.length; round++) {
-          if (clientClosed) break;
-          if (retryDelaysMs[round] > 0) {
-            res.write(`: aguardando-nova-tentativa\n\n`);
-            if (typeof (res as any).flush === 'function') (res as any).flush();
-            await sleepMs(retryDelaysMs[round]);
-          }
+        try {
+          outerStreamLoop:
+          for (let round = 0; round < retryDelaysMs.length; round++) {
+            if (clientClosed) break;
+            if (retryDelaysMs[round] > 0) {
+              res.write(`: aguardando-nova-tentativa\n\n`);
+              if (typeof (res as any).flush === 'function') (res as any).flush();
+              await sleepMs(retryDelaysMs[round]);
+            }
 
-          let anyTransient = false;
-          for (const cand of ataCandidates) {
-            if (clientClosed) break outerStreamLoop;
-            if (rateLimitedModels.has(cand.model)) continue;
-            try {
-              fullText = '';
-              modeloUsado = cand.model;
-              const configObj: any = { systemInstruction };
-              if (cand.thinkingLevel) {
-                configObj.thinkingConfig = { thinkingLevel: cand.thinkingLevel };
-              }
-              const responseStream = await ai.models.generateContentStream({
-                model: cand.model,
-                contents: promptUser,
-                config: configObj
-              });
+            let anyTransient = false;
+            const roundCandidates = sortCandidatesByHealth(ataCandidatesBase);
+            for (const cand of roundCandidates) {
+              if (clientClosed) break outerStreamLoop;
+              if (rateLimitedModels.has(cand.model)) continue;
+              if (round > 0 && timedOutModels.has(cand.model) && timedOutModels.size < roundCandidates.length) continue;
+              try {
+                fullText = '';
+                modeloUsado = cand.model;
+                const configObj: any = { systemInstruction };
+                if (cand.thinkingLevel) {
+                  configObj.thinkingConfig = { thinkingLevel: cand.thinkingLevel };
+                }
+                const responseStream = await withGeminiTimeout(
+                  ai.models.generateContentStream({
+                    model: cand.model,
+                    contents: promptUser,
+                    config: configObj
+                  }),
+                  cand.timeoutMs,
+                  cand.model
+                );
 
-              let enviadoLen = 0;
-              for await (const chunk of responseStream) {
-                if (clientClosed) break outerStreamLoop;
-                const delta = chunk.text || '';
-                if (!delta) continue;
-                streamIniciado = true;
-                fullText += delta;
+                let enviadoLen = 0;
+                for await (const chunk of responseStream) {
+                  if (clientClosed) break outerStreamLoop;
+                  const delta = chunk.text || '';
+                  if (!delta) continue;
+                  streamIniciado = true;
+                  fullText += delta;
 
-                const markerPos = fullText.search(/---+\s*RESUMO_DOSSIE/i);
-                const safeLimit = markerPos >= 0 ? markerPos : Math.max(0, fullText.length - 18);
-                if (safeLimit > enviadoLen) {
-                  const novoTrecho = fullText.slice(enviadoLen, safeLimit);
-                  enviadoLen = safeLimit;
-                  if (novoTrecho) {
-                    res.write(`data: ${JSON.stringify({ chunk: novoTrecho })}\n\n`);
-                    if (typeof (res as any).flush === 'function') (res as any).flush();
+                  const markerPos = fullText.search(/---+\s*RESUMO_DOSSIE/i);
+                  const safeLimit = markerPos >= 0 ? markerPos : Math.max(0, fullText.length - 18);
+                  if (safeLimit > enviadoLen) {
+                    const novoTrecho = fullText.slice(enviadoLen, safeLimit);
+                    enviadoLen = safeLimit;
+                    if (novoTrecho) {
+                      res.write(`data: ${JSON.stringify({ chunk: novoTrecho })}\n\n`);
+                      if (typeof (res as any).flush === 'function') (res as any).flush();
+                    }
                   }
                 }
+                if (fullText.trim()) {
+                  geminiModelCooldownUntil.delete(cand.model);
+                  lastErr = null;
+                  break outerStreamLoop;
+                }
+              } catch (candErr: any) {
+                lastErr = candErr;
+                if (isQuotaErr(candErr)) {
+                  rateLimitedModels.add(cand.model);
+                  markGeminiModelCooldown(cand.model, 60000);
+                } else if (isTransientGeminiError(candErr)) {
+                  anyTransient = true;
+                  if (isTimeoutErr(candErr)) {
+                    timedOutModels.add(cand.model);
+                  }
+                  markGeminiModelCooldown(cand.model, 30000);
+                }
+                console.warn(`[API AI Estruturar Ata Stream][rodada ${round + 1}] Falha em ${cand.model}:`, String(candErr?.message || candErr || '').slice(0, 180));
+                if (streamIniciado) break outerStreamLoop;
               }
-              if (fullText.trim()) {
-                lastErr = null;
-                break outerStreamLoop;
+            }
+            if (!anyTransient) break;
+          }
+
+          // Fallback imediato para chamada não-streaming (generateContent) se o endpoint de streaming sofreu 503/timeout
+          if (!clientClosed && !fullText.trim()) {
+            const fallbackCandidates = sortCandidatesByHealth(ataCandidatesBase).filter(c => !rateLimitedModels.has(c.model));
+            for (const cand of fallbackCandidates) {
+              if (clientClosed) break;
+              try {
+                res.write(`: fallback-nao-streaming\n\n`);
+                if (typeof (res as any).flush === 'function') (res as any).flush();
+                modeloUsado = cand.model;
+                const configObj: any = { systemInstruction };
+                if (cand.thinkingLevel) {
+                  configObj.thinkingConfig = { thinkingLevel: cand.thinkingLevel };
+                }
+                const fallbackResp = await withGeminiTimeout(
+                  ai.models.generateContent({
+                    model: cand.model,
+                    contents: promptUser,
+                    config: configObj
+                  }),
+                  cand.timeoutMs,
+                  cand.model
+                );
+                const textFallback = (fallbackResp.text || '').trim();
+                if (textFallback) {
+                  fullText = textFallback;
+                  geminiModelCooldownUntil.delete(cand.model);
+                  lastErr = null;
+                  break;
+                }
+              } catch (fbErr: any) {
+                lastErr = fbErr;
+                if (isQuotaErr(fbErr)) {
+                  markGeminiModelCooldown(cand.model, 60000);
+                } else if (isTransientGeminiError(fbErr)) {
+                  markGeminiModelCooldown(cand.model, 30000);
+                }
+                console.warn(`[API AI Estruturar Ata Stream->JSON Fallback] Falha em ${cand.model}:`, String(fbErr?.message || fbErr || '').slice(0, 180));
               }
-            } catch (candErr: any) {
-              lastErr = candErr;
-              if (isQuotaErr(candErr)) {
-                rateLimitedModels.add(cand.model);
-              } else if (isTransientGeminiError(candErr)) {
-                anyTransient = true;
-              }
-              console.warn(`[API AI Estruturar Ata Stream][rodada ${round + 1}] Falha em ${cand.model}:`, candErr?.message || candErr);
-              if (streamIniciado) break outerStreamLoop;
             }
           }
-          if (!anyTransient) break;
+        } finally {
+          clearInterval(heartbeatTimer);
         }
 
         if (clientClosed) return;
@@ -4321,6 +4419,7 @@ ${String(notasBrutas).trim()}`;
       let modeloUsado = ataCandidates[0].model;
       let lastErr: any = null;
       const rateLimitedModels = new Set<string>();
+      const timedOutModels = new Set<string>();
 
       outerNonStreamLoop:
       for (let round = 0; round < retryDelaysMs.length; round++) {
@@ -4328,21 +4427,28 @@ ${String(notasBrutas).trim()}`;
           await sleepMs(retryDelaysMs[round]);
         }
         let anyTransient = false;
-        for (const cand of ataCandidates) {
+        const roundCandidates = sortCandidatesByHealth(ataCandidatesBase);
+        for (const cand of roundCandidates) {
           if (rateLimitedModels.has(cand.model)) continue;
+          if (round > 0 && timedOutModels.has(cand.model) && timedOutModels.size < roundCandidates.length) continue;
           try {
             modeloUsado = cand.model;
             const configObj: any = { systemInstruction };
             if (cand.thinkingLevel) {
               configObj.thinkingConfig = { thinkingLevel: cand.thinkingLevel };
             }
-            const response = await ai.models.generateContent({
-              model: cand.model,
-              contents: promptUser,
-              config: configObj
-            });
+            const response = await withGeminiTimeout(
+              ai.models.generateContent({
+                model: cand.model,
+                contents: promptUser,
+                config: configObj
+              }),
+              cand.timeoutMs,
+              cand.model
+            );
             rawText = (response.text || '').trim();
             if (rawText) {
+              geminiModelCooldownUntil.delete(cand.model);
               lastErr = null;
               break outerNonStreamLoop;
             }
@@ -4350,8 +4456,13 @@ ${String(notasBrutas).trim()}`;
             lastErr = candErr;
             if (isQuotaErr(candErr)) {
               rateLimitedModels.add(cand.model);
+              markGeminiModelCooldown(cand.model, 60000);
             } else if (isTransientGeminiError(candErr)) {
               anyTransient = true;
+              if (isTimeoutErr(candErr)) {
+                timedOutModels.add(cand.model);
+              }
+              markGeminiModelCooldown(cand.model, 30000);
             }
             console.warn(`[API AI Estruturar Ata][rodada ${round + 1}] Falha em ${cand.model}:`, String(candErr?.message || candErr || '').slice(0, 180));
           }
@@ -4435,20 +4546,24 @@ ${String(notasBrutas).trim()}`;
       if (!resumoConversa) {
         const aiResumo = getSharedGeminiClient();
         if (aiResumo) {
-          const resumoModels: Array<{ model: string; thinkingLevel?: ThinkingLevel }> = [
-            { model: 'gemini-4-hydrogen', thinkingLevel: ThinkingLevel.LOW },
-            { model: 'gemini-3.1-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL }
-          ];
+          const resumoModels = sortCandidatesByHealth<Array<{ model: string; thinkingLevel?: ThinkingLevel }>[number]>([
+            { model: 'gemini-3.1-flash-lite', thinkingLevel: ThinkingLevel.MINIMAL },
+            { model: 'gemini-4-hydrogen', thinkingLevel: ThinkingLevel.LOW }
+          ]);
           for (const rc of resumoModels) {
             try {
-              const sumResp = await aiResumo.models.generateContent({
-                model: rc.model,
-                contents: `Resuma em no máximo 2 frases curtas e objetivas (texto simples, sem Markdown, linguagem técnica e diplomática) o assunto principal tratado e os encaminhamentos desta ata (${tipoAta}) para constar no histórico do dossiê escolar:\n\n${textoFinal.slice(0, 3500)}`,
-                config: {
-                  systemInstruction: 'Você sintetiza atas escolares em 1 a 2 frases impessoais, objetivas e seguras para registro em dossiê estudantil/docente. Retorne apenas texto simples, sem asteriscos ou marcadores.',
-                  ...(rc.thinkingLevel ? { thinkingConfig: { thinkingLevel: rc.thinkingLevel } } : {})
-                }
-              });
+              const sumResp = await withGeminiTimeout(
+                aiResumo.models.generateContent({
+                  model: rc.model,
+                  contents: `Resuma em no máximo 2 frases curtas e objetivas (texto simples, sem Markdown, linguagem técnica e diplomática) o assunto principal tratado e os encaminhamentos desta ata (${tipoAta}) para constar no histórico do dossiê escolar:\n\n${textoFinal.slice(0, 3500)}`,
+                  config: {
+                    systemInstruction: 'Você sintetiza atas escolares em 1 a 2 frases impessoais, objetivas e seguras para registro em dossiê estudantil/docente. Retorne apenas texto simples, sem asteriscos ou marcadores.',
+                    ...(rc.thinkingLevel ? { thinkingConfig: { thinkingLevel: rc.thinkingLevel } } : {})
+                  }
+                }),
+                10000,
+                rc.model
+              );
               resumoConversa = limparMarkdownParaPlainText(sumResp.text || '');
               if (resumoConversa) break;
             } catch (sumErr: any) {

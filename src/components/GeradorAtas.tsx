@@ -307,25 +307,32 @@ export default function GeradorAtas() {
       };
 
       const solicitarModoJson = async () => {
-        const resJson = await fetch('/api/ai/estruturar-ata', {
-          method: 'POST',
-          headers: obterAuthHeaders(),
-          body: JSON.stringify({ ...requestPayload, stream: false })
-        });
-        const payload = await resJson.json().catch(() => ({}));
-        if (!resJson.ok) {
-          throw new Error(payload?.error || payload?.details || `Erro HTTP ${resJson.status}`);
-        }
-        const textoEstruturado = String(payload?.textoAta || '').trim();
-        if (!textoEstruturado) {
-          throw new Error('A resposta da IA veio vazia. Tente detalhar melhor as notas brutas.');
-        }
-        setTextoAta(textoEstruturado);
-        if (payload?.resumoDossie) {
-          setResumoDossie(String(payload.resumoDossie));
-        }
-        if (typeof (window as any).showToast === 'function') {
-          (window as any).showToast('Ata formal estruturada com sucesso em texto simples.', 'success');
+        const ctrlJson = new AbortController();
+        const timerJson = window.setTimeout(() => ctrlJson.abort(), 60000);
+        try {
+          const resJson = await fetch('/api/ai/estruturar-ata', {
+            method: 'POST',
+            headers: obterAuthHeaders(),
+            body: JSON.stringify({ ...requestPayload, stream: false }),
+            signal: ctrlJson.signal
+          });
+          const payload = await resJson.json().catch(() => ({}));
+          if (!resJson.ok) {
+            throw new Error(payload?.error || payload?.details || `Erro HTTP ${resJson.status}`);
+          }
+          const textoEstruturado = String(payload?.textoAta || '').trim();
+          if (!textoEstruturado) {
+            throw new Error('A resposta da IA veio vazia. Tente detalhar melhor as notas brutas.');
+          }
+          setTextoAta(textoEstruturado);
+          if (payload?.resumoDossie) {
+            setResumoDossie(String(payload.resumoDossie));
+          }
+          if (typeof (window as any).showToast === 'function') {
+            (window as any).showToast('Ata formal estruturada com sucesso em texto simples.', 'success');
+          }
+        } finally {
+          window.clearTimeout(timerJson);
         }
       };
 
@@ -333,14 +340,26 @@ export default function GeradorAtas() {
         ...obterAuthHeaders(),
         Accept: 'text/event-stream'
       };
-      const res = await fetch('/api/ai/estruturar-ata', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ ...requestPayload, stream: true })
-      });
+      const ctrlStream = new AbortController();
+      const timerStream = window.setTimeout(() => ctrlStream.abort(), 60000);
+
+      let res: Response;
+      try {
+        res = await fetch('/api/ai/estruturar-ata', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ ...requestPayload, stream: true }),
+          signal: ctrlStream.signal
+        });
+      } catch {
+        window.clearTimeout(timerStream);
+        await solicitarModoJson();
+        return;
+      }
 
       const contentType = res.headers.get('content-type') || '';
       if (!res.ok || !contentType.includes('text/event-stream') || !res.body) {
+        window.clearTimeout(timerStream);
         const payload = await res.json().catch(() => ({}));
         if (!res.ok) {
           throw new Error(payload?.error || payload?.details || `Erro HTTP ${res.status}`);
@@ -366,6 +385,8 @@ export default function GeradorAtas() {
       let buffer = '';
       let acumulado = '';
       let finalRecebido = false;
+      let erroAplicacaoRecebido = false;
+      let erroTransitorioRecebido = false;
 
       const processarEventoSse = (ev: string) => {
         const line = ev
@@ -379,7 +400,12 @@ export default function GeradorAtas() {
           return;
         }
         if (parsed.error) {
-          throw new Error(parsed.error);
+          const msgErro = String(parsed.error);
+          erroAplicacaoRecebido = true;
+          if (/503|alta demanda|temporariamente|indispon|timeout/i.test(msgErro)) {
+            erroTransitorioRecebido = true;
+          }
+          throw new Error(msgErro);
         }
         if (parsed.chunk) {
           acumulado += parsed.chunk;
@@ -394,19 +420,30 @@ export default function GeradorAtas() {
         }
       };
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const events = buffer.split(/\r?\n\r?\n/);
-        buffer = events.pop() || '';
-        for (const ev of events) {
-          processarEventoSse(ev);
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split(/\r?\n\r?\n/);
+          buffer = events.pop() || '';
+          for (const ev of events) {
+            processarEventoSse(ev);
+          }
         }
-      }
 
-      if (buffer.trim()) {
-        processarEventoSse(buffer);
+        if (buffer.trim()) {
+          processarEventoSse(buffer);
+        }
+      } catch (streamErr: any) {
+        if ((!erroAplicacaoRecebido || erroTransitorioRecebido) && !acumulado.trim()) {
+          window.clearTimeout(timerStream);
+          await solicitarModoJson();
+          return;
+        }
+        throw streamErr;
+      } finally {
+        window.clearTimeout(timerStream);
       }
 
       if (!finalRecebido && !acumulado.trim()) {
@@ -418,7 +455,11 @@ export default function GeradorAtas() {
         (window as any).showToast('Ata formal estruturada com sucesso em texto simples.', 'success');
       }
     } catch (err: any) {
-      setErroMensagem(err?.message || 'Não foi possível estruturar a ata com a IA.');
+      if (err?.name === 'AbortError') {
+        setErroMensagem('A requisição à IA excedeu o tempo limite. Tente novamente em instantes.');
+      } else {
+        setErroMensagem(err?.message || 'Não foi possível estruturar a ata com a IA.');
+      }
     } finally {
       setEstruturandoIA(false);
     }
