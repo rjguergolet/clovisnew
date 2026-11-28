@@ -109,21 +109,22 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
   const [selectedTeacherName, setSelectedTeacherName] = useState<string>('');
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
 
-  // Modo de Visualização: 'foco' (simples, urgente) vs 'completo' (analítico, todas as seções)
+  // Modo de Visualização: 'foco' (rápido, operacional, urgente) vs 'completo' (Modo Analítico completo)
   const [modoVisualizacao, setModoVisualizacao] = useState<'foco' | 'completo'>(() => {
     try {
-      return (localStorage.getItem('clovis_modo_visualizacao') as any) || 'foco';
+      const saved = localStorage.getItem('clovis_modo_visualizacao');
+      if (saved === 'completo' || saved === 'analitico') return 'completo';
+      return 'foco';
     } catch {
       return 'foco';
     }
   });
-
-  const toggleModoVisualizacao = (novoModo: 'foco' | 'completo') => {
-    setModoVisualizacao(novoModo);
-    try {
-      localStorage.setItem('clovis_modo_visualizacao', novoModo);
-    } catch {}
-  };
+  const [modoCarregado, setModoCarregado] = useState<'nenhum' | 'foco' | 'completo'>(() => {
+    const c = getInitialHomeCache();
+    if (!c) return 'nenhum';
+    return c.mode === 'analitico' || c.mode === 'completo' ? 'completo' : 'foco';
+  });
+  const [carregandoAnalitico, setCarregandoAnalitico] = useState(false);
 
   // Modais de Consulta e Detalhes (Tudo Clicável)
   const [modalAula, setModalAula] = useState<any | null>(null);
@@ -458,205 +459,165 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
   const isPdcaLeadership = isDirecao || isCoord;
   const isSecretaria = roleNorm === 'SECRETARIA';
 
-  // Carregamento de Coleções com Cache Inteligente e Stale-While-Revalidate (SWR)
-  const carregarDadosCompletos = useCallback(async (force = false) => {
+  // Carregamento Ultra-Rápido em 1 Requisição via /api/home/bootstrap (Modo Foco vs Modo Analítico)
+  const carregarDadosCompletos = useCallback(async (force = false, targetMode?: 'foco' | 'completo') => {
+    const modoSolicitado: 'foco' | 'completo' = targetMode || modoVisualizacao;
+    const apiMode = modoSolicitado === 'completo' ? 'analitico' : 'foco';
     const cached = typeof window !== 'undefined' ? (window as any).__clovisHomeCache : null;
     const now = Date.now();
-    const isFresh = cached && cached.timestamp && (now - cached.timestamp < 120_000); // 2 minutos de validade
+    const cacheCobreModo = cached && (
+      modoSolicitado === 'foco' ||
+      cached.mode === 'analitico' ||
+      cached.mode === 'completo'
+    );
+    const isFresh = Boolean(cached && cached.timestamp && (now - cached.timestamp < 120_000) && cacheCobreModo);
 
-    // Se temos cache recente em memória e a chamada não foi forçada, poupa leituras do Firebase
     if (isFresh && !force) {
       setLoading(false);
+      setCarregandoAnalitico(false);
       return;
     }
 
-    // Se a interface já tem dados para renderizar, faz revalidação suave em background (sem tela branca)
     const temDadosExibicao = Boolean(usuarios.length > 0 || recados.length > 0 || cached);
     if (!temDadosExibicao) {
       setLoading(true);
+    } else if (modoSolicitado === 'completo' && modoCarregado !== 'completo') {
+      setCarregandoAnalitico(true);
     } else {
       setRevalidando(true);
     }
 
     try {
-      // 1. Consultas simultâneas protegidas
-      const [uSnap, rSnap, tSnap, eSnap, oSnap, hSnap, subSnap, fdSnap, ntSnap] = await Promise.all([
-        getDocs(collection(db, 'usuarios')).catch(() => ({ docs: [], forEach: () => {} })),
-        getDocs(collection(db, 'mural_recados')).catch(() => ({ docs: [], forEach: () => {} })),
-        getDocs(collection(db, 'rotina_equipe')).catch(() => ({ docs: [], forEach: () => {} })),
-        getDocs(collection(db, 'eventos')).catch(() => ({ docs: [], forEach: () => {} })),
-        getDocs(collection(db, 'ocorrencias')).catch(() => ({ docs: [], forEach: () => {} })),
-        getDocs(collection(db, 'horarios')).catch(() => ({ docs: [], forEach: () => {} })),
-        getDocs(collection(db, 'substituicoes_diarias')).catch(() => ({ docs: [], forEach: () => {} })),
-        getDocs(collection(db, 'frequencia_diaria')).catch(() => ({ docs: [], forEach: () => {} })),
-        getDocs(collection(db, 'notificacoes_tutor')).catch(() => ({ docs: [], forEach: () => {} }))
-      ]);
+      const anoVig = obterAnoLetivoVigente();
+      const resp = await fetch(`/api/home/bootstrap?mode=${apiMode}&ano=${anoVig}`);
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status} no bootstrap da tela inicial`);
+      }
+      const data = await resp.json();
 
-      const listaU: any[] = [];
-      uSnap.forEach(d => listaU.push({ id: d.id, ...d.data() }));
+      const listaU: any[] = Array.isArray(data.usuarios) ? data.usuarios : [];
+      const listaR: any[] = Array.isArray(data.recados) ? data.recados : [];
+      const listaT: any[] = Array.isArray(data.tarefas) ? data.tarefas : [];
+      const listaE: any[] = Array.isArray(data.eventos) ? data.eventos : [];
+      const listaH: any[] = Array.isArray(data.horarios) ? data.horarios : [];
+      const listaSub: any[] = Array.isArray(data.substituicoes) ? data.substituicoes : [];
+      const listaFreq: any[] = Array.isArray(data.frequenciaDiaria) ? data.frequenciaDiaria : [];
+      const listaNT: any[] = Array.isArray(data.notificacoesTutor) ? data.notificacoesTutor : [];
+      const listaA: any[] = Array.isArray(data.alunos) ? data.alunos : [];
+      const listaO: any[] = Array.isArray(data.ocorrencias) ? data.ocorrencias : [];
+
       setUsuarios(listaU);
-      if (typeof window !== 'undefined') (window as any).usuariosCache = listaU;
-
-      const isBoasVindasRecado = (r: any) => {
-        if (!r) return false;
-        const tit = String(r.titulo || '').toLowerCase();
-        const cont = String(r.conteudo || '').toLowerCase();
-        const idStr = String(r.id || r._id || '').toLowerCase();
-        return (
-          tit.includes('boas-vinda') ||
-          tit.includes('boas vinda') ||
-          tit.includes('ano letivo & orientações iniciais') ||
-          tit.includes('diretrizes e calendário do ano letivo') ||
-          cont.includes('sejam bem-vindos ao novo período letivo') ||
-          cont.includes('bem-vindos ao novo período letivo') ||
-          cont.includes('o calendário letivo 2026 já está disponível na aba de planejamento') ||
-          idStr.startsWith('recado-inst')
-        );
-      };
-
-      const anoNumVig = obterAnoLetivoVigente();
-      const listaR: any[] = [];
-      rSnap.forEach(d => {
-        const item = { id: d.id, ...d.data() };
-        if (ehRegistroDoAnoVigente(item, anoNumVig) && !isBoasVindasRecado(item) && item.tipo !== 'ALERTA_PEDAGOGICO' && !(item.titulo && String(item.titulo).startsWith('ALERTA PEDAGÓGICO:'))) {
-          listaR.push(item);
-        }
-      });
-      listaR.sort((a, b) => new Date(b.criadoEm || b.data || 0).getTime() - new Date(a.criadoEm || a.data || 0).getTime());
       setRecados(listaR);
-      if (typeof window !== 'undefined') (window as any).muralRecadosCache = listaR;
-
-      const listaT: any[] = [];
-      tSnap.forEach(d => {
-        const item = { id: d.id, ...d.data() };
-        if (ehRegistroDoAnoVigente(item, anoNumVig)) listaT.push(item);
-      });
       setTarefas(listaT);
+      setEventos(listaE);
+      setHorarios(listaH);
+      setSubstituicoes(listaSub);
+      setFrequenciaDiaria(listaFreq);
+      setNotificacoesTutor(listaNT);
+      setAlunos(listaA);
+      setOcorrencias(listaO);
+      setModoCarregado(modoSolicitado);
+
       if (typeof window !== 'undefined') {
+        (window as any).usuariosCache = listaU;
+        (window as any).muralRecadosCache = listaR;
         (window as any).rotinaEquipeCache = listaT;
         (window as any).tasksCache = listaT;
-      }
+        (window as any).eventosCache = listaE;
+        (window as any).gradeCache = listaH;
+        (window as any).substituicoesCache = listaSub;
+        (window as any).frequenciaDiariaCache = listaFreq;
+        (window as any).notificacoesTutorCache = listaNT;
 
-      const listaE: any[] = [];
-      eSnap.forEach(d => {
-        const item = { id: d.id, ...d.data() };
-        if (ehRegistroDoAnoVigente(item, anoNumVig)) listaE.push(item);
-      });
-      listaE.sort((a, b) => new Date(a.data || 0).getTime() - new Date(b.data || 0).getTime());
-      setEventos(listaE);
-      if (typeof window !== 'undefined') (window as any).eventosCache = listaE;
-
-      const listaO: any[] = [];
-      oSnap.forEach(d => {
-        const item = { id: d.id, ...d.data() };
-        if (ehRegistroDoAnoVigente(item, anoNumVig)) listaO.push(item);
-      });
-      listaO.sort((a, b) => new Date(b.criadoEm || b.data || 0).getTime() - new Date(a.criadoEm || a.data || 0).getTime());
-      setOcorrencias(listaO);
-      if (typeof window !== 'undefined') {
-        (window as any).ocorrenciasTopLevel = listaO;
-      }
-
-      const listaH: any[] = [];
-      hSnap.forEach(d => listaH.push({ id: d.id, ...d.data() }));
-      setHorarios(listaH);
-      if (typeof window !== 'undefined') (window as any).gradeCache = listaH;
-
-      const listaSub: any[] = [];
-      subSnap.forEach(d => {
-        const item = { id: d.id, ...d.data() };
-        if (ehRegistroDoAnoVigente(item, anoNumVig)) listaSub.push(item);
-      });
-      setSubstituicoes(listaSub);
-      if (typeof window !== 'undefined') (window as any).substituicoesCache = listaSub;
-
-      const listaFreq: any[] = [];
-      fdSnap.forEach(d => {
-        const item = { id: d.id, ...d.data() };
-        if (ehRegistroDoAnoVigente(item, anoNumVig)) listaFreq.push(item);
-      });
-      setFrequenciaDiaria(listaFreq);
-      if (typeof window !== 'undefined') (window as any).frequenciaDiariaCache = listaFreq;
-
-      const listaNT: any[] = [];
-      ntSnap.forEach(d => {
-        const item = { id: d.id, ...d.data() };
-        if (ehRegistroDoAnoVigente(item, anoNumVig)) listaNT.push(item);
-      });
-      listaNT.sort((a, b) => new Date(b.criadoEm || b.data || 0).getTime() - new Date(a.criadoEm || a.data || 0).getTime());
-      setNotificacoesTutor(listaNT);
-      if (typeof window !== 'undefined') (window as any).notificacoesTutorCache = listaNT;
-
-      // Alunos: prioriza memória e cache local antes de consultar Firestore
-      let listaA: any[] = Array.isArray((window as any).allStudentsData) && (window as any).allStudentsData.length > 0
-        ? (window as any).allStudentsData
-        : [];
-
-      if (listaA.length === 0) {
-        try {
-          const lcA = localStorage.getItem('alunos_cache');
-          if (lcA) {
-            const parsedA = JSON.parse(lcA);
-            if (Array.isArray(parsedA) && parsedA.length > 0) {
-              listaA = parsedA;
-              (window as any).allStudentsData = parsedA;
-            }
-          }
-        } catch (e) {}
-      }
-
-      if (listaA.length === 0) {
-        const aSnap = await getDocs(collection(db, 'alunos')).catch(() => ({ docs: [], forEach: () => {} }));
-        const fetchedA: any[] = [];
-        aSnap.forEach(d => fetchedA.push({ id: d.id, ...d.data() }));
-        listaA = fetchedA;
-        if (typeof window !== 'undefined') {
+        // Só atualiza ocorrenciasTopLevel global se vier completo ou se ainda não existir em memória
+        if (apiMode === 'analitico' || !Array.isArray((window as any).ocorrenciasTopLevel) || (window as any).ocorrenciasTopLevel.length === 0) {
+          (window as any).ocorrenciasTopLevel = listaO;
+        }
+        // Só preenche allStudentsData se ainda estiver vazio (para não sobrescrever prontuários completos carregados em outras abas)
+        if (!Array.isArray((window as any).allStudentsData) || (window as any).allStudentsData.length === 0) {
           (window as any).allStudentsData = listaA;
         }
-      }
-      setAlunos(listaA);
 
-      // Armazenamento em Cache Consolidado
-      const newCache = {
-        usuarios: listaU,
-        recados: listaR,
-        tarefas: listaT,
-        eventos: listaE,
-        ocorrencias: listaO,
-        horarios: listaH,
-        substituicoes: listaSub,
-        frequenciaDiaria: listaFreq,
-        notificacoesTutor: listaNT,
-        alunos: listaA,
-        timestamp: Date.now()
-      };
-      if (typeof window !== 'undefined') {
+        const newCache = {
+          mode: apiMode,
+          usuarios: listaU,
+          recados: listaR,
+          tarefas: listaT,
+          eventos: listaE,
+          ocorrencias: listaO,
+          horarios: listaH,
+          substituicoes: listaSub,
+          frequenciaDiaria: listaFreq,
+          notificacoesTutor: listaNT,
+          alunos: listaA,
+          timestamp: Date.now()
+        };
         (window as any).__clovisHomeCache = newCache;
         try {
           sessionStorage.setItem('clovis_home_cache', JSON.stringify({
+            mode: apiMode,
             usuarios: listaU,
             recados: listaR,
             tarefas: listaT,
             eventos: listaE,
-            ocorrencias: listaO,
+            ocorrencias: apiMode === 'foco' ? listaO : listaO.slice(0, 300),
             horarios: listaH,
             substituicoes: listaSub,
             notificacoesTutor: listaNT,
+            alunos: listaA,
             timestamp: Date.now()
           }));
         } catch (e) {}
       }
     } catch (err) {
-      console.warn('[PaginaInicial] Carregamento operando com fallbacks:', err);
+      console.warn('[PaginaInicial] Fallback para consultas individuais:', err);
+      try {
+        const [uSnap, rSnap, tSnap, eSnap, hSnap, subSnap, ntSnap] = await Promise.all([
+          getDocs(collection(db, 'usuarios')).catch(() => ({ docs: [], forEach: () => {} })),
+          getDocs(collection(db, 'mural_recados')).catch(() => ({ docs: [], forEach: () => {} })),
+          getDocs(collection(db, 'rotina_equipe')).catch(() => ({ docs: [], forEach: () => {} })),
+          getDocs(collection(db, 'eventos')).catch(() => ({ docs: [], forEach: () => {} })),
+          getDocs(collection(db, 'horarios')).catch(() => ({ docs: [], forEach: () => {} })),
+          getDocs(collection(db, 'substituicoes_diarias')).catch(() => ({ docs: [], forEach: () => {} })),
+          getDocs(collection(db, 'notificacoes_tutor')).catch(() => ({ docs: [], forEach: () => {} }))
+        ]);
+        const anoNumVig = obterAnoLetivoVigente();
+        const toArr = (snap: any, filterYear = false) => {
+          const out: any[] = [];
+          snap.forEach((d: any) => {
+            const it = { id: d.id, ...d.data() };
+            if (!filterYear || ehRegistroDoAnoVigente(it, anoNumVig)) out.push(it);
+          });
+          return out;
+        };
+        setUsuarios(toArr(uSnap));
+        setRecados(toArr(rSnap, true));
+        setTarefas(toArr(tSnap, true));
+        setEventos(toArr(eSnap, true));
+        setHorarios(toArr(hSnap));
+        setSubstituicoes(toArr(subSnap, true));
+        setNotificacoesTutor(toArr(ntSnap, true));
+      } catch {}
     } finally {
       setLoading(false);
       setRevalidando(false);
+      setCarregandoAnalitico(false);
     }
-  }, [usuarios.length, recados.length]);
+  }, [modoVisualizacao, modoCarregado, usuarios.length, recados.length]);
+
+  const toggleModoVisualizacao = useCallback((novoModo: 'foco' | 'completo') => {
+    setModoVisualizacao(novoModo);
+    try {
+      localStorage.setItem('clovis_modo_visualizacao', novoModo);
+    } catch {}
+    if (novoModo === 'completo' && modoCarregado !== 'completo') {
+      carregarDadosCompletos(true, 'completo');
+    }
+  }, [modoCarregado, carregarDadosCompletos]);
 
   useEffect(() => {
-    carregarDadosCompletos(false);
-  }, [carregarDadosCompletos]);
+    carregarDadosCompletos(false, modoVisualizacao);
+  }, [anoLetivo]);
 
   // Lista de Professores Cadastrados (estritamente desduplicada a partir da lista unificada)
   const listaDocentes = useMemo(() => {
@@ -775,6 +736,10 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         const bFreq = parsePercentualSeguro(fn[bim]?.frequencia);
         if (bFreq !== null) return bFreq;
       }
+    }
+
+    if (typeof aluno._fechamentoFreq === 'number' && !isNaN(aluno._fechamentoFreq)) {
+      return aluno._fechamentoFreq;
     }
 
     const daily = indiceFrequenciaDiaria.get(normalizarRa(aluno.ra));
@@ -1181,6 +1146,7 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
   const alunosMapaoPendentes = useMemo(() => {
     return alunos.filter(a => {
       if (!isAlunoAtivo(a)) return false;
+      if (typeof a._mapaoPendente === 'boolean') return a._mapaoPendente;
       const fn = a.fechamento_notas || a.fechamentos || a.notas || {};
       const tem1B = !!(fn['1B'] && fn['1B'].disciplinas && Object.keys(fn['1B'].disciplinas).length > 0);
       const tem2B = !!(fn['2B'] && fn['2B'].disciplinas && Object.keys(fn['2B'].disciplinas).length > 0);
@@ -1827,28 +1793,26 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             />
           </div>
           <div className="space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-medium text-slate-500 capitalize">
+            <div className="flex items-center gap-2 flex-wrap text-xs text-slate-500">
+              <span className="font-medium capitalize">
                 {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
               </span>
-              <span className="text-slate-300">·</span>
-              <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${
-                anoLetivo !== '2026' ? 'text-cyan-800 bg-cyan-50/90 border-cyan-200/70' : 'text-indigo-700 bg-indigo-50/80 border-indigo-200/60'
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${anoLetivo !== '2026' ? 'bg-cyan-500' : 'bg-indigo-500'}`}></span>
-                Semana PEI {anoLetivo}
+              <span aria-hidden="true" className="text-slate-300">·</span>
+              <span className="font-semibold text-slate-700 tabular-nums">
+                Ano Letivo {anoLetivo}
               </span>
-              {revalidando ? (
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-indigo-700 bg-indigo-50/80 px-2.5 py-0.5 rounded-full border border-indigo-200/60">
+              <span aria-hidden="true" className="text-slate-300">·</span>
+              {revalidando || carregandoAnalitico ? (
+                <span className="inline-flex items-center gap-1.5 font-medium text-indigo-700">
                   <i className="fa-solid fa-arrows-rotate animate-spin text-[10px]"></i>
-                  <span>Sincronizando...</span>
+                  <span>{carregandoAnalitico ? 'Carregando dados analíticos...' : 'Sincronizando...'}</span>
                 </span>
               ) : (
                 <button
                   type="button"
-                  onClick={() => carregarDadosCompletos(true)}
-                  className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-600 hover:text-indigo-700 bg-slate-100/80 hover:bg-indigo-50/80 px-2.5 py-0.5 rounded-full border border-slate-200/80 hover:border-indigo-200 transition-all cursor-pointer"
-                  title="Clique para forçar atualização em tempo real com o banco"
+                  onClick={() => carregarDadosCompletos(true, modoVisualizacao)}
+                  className="inline-flex items-center gap-1.5 font-medium text-slate-600 hover:text-indigo-700 transition-colors cursor-pointer"
+                  title="Atualizar dados em tempo real com o banco"
                 >
                   <i className="fa-solid fa-arrows-rotate text-[10px] text-slate-400"></i>
                   <span>Atualizar dados</span>
@@ -1860,15 +1824,61 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
               Olá, {effectiveUser.nome.split(' ')[0]}!
             </h1>
             <p className="text-sm text-slate-500">
-              Painel Executivo da EE Clóvis de Lucca · Perfil:{' '}
+              EE Clóvis de Lucca · Perfil:{' '}
               <span className="font-semibold text-slate-800">{activeRole}</span>
               {selectedEmployeeId ? (
-                <span className="ml-2 inline-flex items-center text-xs font-medium text-purple-800 bg-purple-50/90 px-2.5 py-0.5 rounded-full border border-purple-200/70">
-                  Visualizando: {effectiveUser.nome}
-                </span>
+                <>
+                  <span aria-hidden="true" className="mx-1.5 text-slate-300">·</span>
+                  <span className="font-semibold text-indigo-700">Visualizando: {effectiveUser.nome}</span>
+                </>
               ) : null}
             </p>
           </div>
+        </div>
+
+        {/* Seletor Principal de Modo (Modo Foco vs Modo Analítico) */}
+        <div className="flex flex-col sm:flex-row lg:flex-col items-stretch sm:items-center lg:items-end gap-2.5 w-full lg:w-auto">
+          <div
+            role="tablist"
+            aria-label="Modo de visualização da tela inicial"
+            className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 self-start sm:self-auto"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={modoVisualizacao === 'foco'}
+              onClick={() => toggleModoVisualizacao('foco')}
+              className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
+                modoVisualizacao === 'foco'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Carregamento ultrarrápido focado nas pendências prioritárias e ações do dia"
+            >
+              <i className={`fa-solid fa-bolt text-[11px] ${modoVisualizacao === 'foco' ? 'text-indigo-600' : 'text-slate-400'}`}></i>
+              <span>Modo Foco</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={modoVisualizacao === 'completo'}
+              onClick={() => toggleModoVisualizacao('completo')}
+              className={`px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0 ${
+                modoVisualizacao === 'completo'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Carrega todos os painéis gerenciais, PDCA, histórico de ocorrências, busca ativa e indicadores completos"
+            >
+              <i className={`fa-solid fa-chart-column text-[11px] ${modoVisualizacao === 'completo' ? 'text-indigo-600' : 'text-slate-400'}`}></i>
+              <span>Modo Analítico</span>
+            </button>
+          </div>
+          <span className="text-[11px] text-slate-500">
+            {modoVisualizacao === 'foco'
+              ? 'Modo Foco ativo · Carregamento leve e ações prioritárias de hoje'
+              : 'Modo Analítico ativo · Painéis completos, gráficos e históricos'}
+          </span>
         </div>
 
         {/* Comutador de Visão: EXCLUSIVO PARA O DIRETOR com seleção de cada funcionário individualmente */}
@@ -1947,6 +1957,28 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
           </div>
         )}
       </header>
+
+      {/* Skeleton rápido apenas na primeira carga sem cache */}
+      {loading && (
+        <div className="space-y-4 animate-pulse" aria-label="Carregando dados essenciais">
+          <div className="h-32 bg-white rounded-2xl border border-slate-200/80 p-5 flex flex-col justify-between">
+            <div className="h-4 w-56 bg-slate-200 rounded"></div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="h-10 bg-slate-100 rounded-xl"></div>
+              <div className="h-10 bg-slate-100 rounded-xl"></div>
+              <div className="h-10 bg-slate-100 rounded-xl"></div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+            {[0, 1, 2, 3].map(i => (
+              <div key={i} className="h-28 bg-white rounded-2xl border border-slate-200/80 p-4 space-y-3">
+                <div className="h-6 w-12 bg-slate-200 rounded"></div>
+                <div className="h-3 w-24 bg-slate-100 rounded"></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* CENTRAL DE PENDÊNCIAS E ALERTAS RÁPIDOS POR CARGO */}
       <CentralPendenciasPerfil
@@ -2493,10 +2525,21 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
         </div>
       </section>
 
+      {/* Indicador discreto ao expandir para Modo Analítico sob demanda */}
+      {modoVisualizacao === 'completo' && carregandoAnalitico && (
+        <div className="bg-white rounded-2xl px-4 py-3 border border-indigo-200/80 flex items-center justify-between gap-3 text-xs text-indigo-900">
+          <div className="flex items-center gap-2.5">
+            <i className="fa-solid fa-arrows-rotate animate-spin text-indigo-600"></i>
+            <span className="font-medium">Carregando indicadores completos, histórico de ocorrências e auditorias para o Modo Analítico...</span>
+          </div>
+          <span className="text-[11px] text-indigo-600 font-semibold whitespace-nowrap shrink-0">Sincronizando</span>
+        </div>
+      )}
+
       {/* ======================================================== */}
       {/* 2.5. PAINEL EXECUTIVO PDCA & ROTINA DA EQUIPE (DIRETOR, VICE, CGPG) */}
       {/* ======================================================== */}
-      {isPdcaLeadership && (
+      {modoVisualizacao === 'completo' && isPdcaLeadership && (
         <section id="painel-executivo-pdca" className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-amber-200/80 border-l-4 border-l-amber-500 shadow-[0_4px_20px_-4px_rgba(245,158,11,0.10)] space-y-4">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
             <div className="flex items-start gap-3">
@@ -3012,8 +3055,8 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             </section>
           )}
 
-          {/* Informações sobre seus Tutorados */}
-          {(!isCoord || tutoradosDoProfessor.length > 0) && (
+          {/* Informações sobre seus Tutorados (Modo Analítico) */}
+          {modoVisualizacao === 'completo' && (!isCoord || tutoradosDoProfessor.length > 0) && (
             <section id="secao-tutorados-professor" className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2.5">
@@ -3301,7 +3344,9 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
             </section>
           )}
 
-          {/* 2. Dash dos Atrasos da Secretaria */}
+          {/* 2. Dash dos Atrasos da Secretaria e Documentos (Modo Analítico) */}
+          {modoVisualizacao === 'completo' && (
+          <>
           <section className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-[0_2px_15px_-3px_rgba(15,23,42,0.04)] space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
@@ -3497,11 +3542,13 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
               </div>
             )}
           </section>
+          </>
+          )}
         </div>
       )}
 
-      {/* C. VISÃO GESTÃO: PAAC, CGPG, VICE-DIREÇÃO, SÊNIOR/GOE E DIREÇÃO */}
-      {['PAAC', 'CGPG', 'VICE_DIRETOR', 'SENIOR_GOE', 'DIRETOR'].includes(activeRole) && (
+      {/* C. VISÃO GESTÃO: PAAC, CGPG, VICE-DIREÇÃO, SÊNIOR/GOE E DIREÇÃO (MODO ANALÍTICO) */}
+      {modoVisualizacao === 'completo' && ['PAAC', 'CGPG', 'VICE_DIRETOR', 'SENIOR_GOE', 'DIRETOR'].includes(activeRole) && (
         <div className="space-y-5 sm:space-y-6">
 
           {/* MONITORAMENTO DE LEITURA & CIÊNCIA NO MURAL */}
@@ -4061,8 +4108,9 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
       )}
 
       {/* ======================================================== */}
-      {/* 4. SEÇÕES UNIVERSAIS RELEVANTES: MURAL, TAREFAS & AGENDA */}
+      {/* 4. SEÇÕES UNIVERSAIS RELEVANTES: MURAL, TAREFAS & AGENDA (MODO ANALÍTICO) */}
       {/* ======================================================== */}
+      {modoVisualizacao === 'completo' ? (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
 
         {/* COLUNA 1 & 2: Mensagens Direcionadas do Mural */}
@@ -4330,6 +4378,26 @@ export default function PaginaInicial({ onNavigate }: PaginaInicialProps) {
 
         </div>
       </div>
+      ) : (
+        <section className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="space-y-1 max-w-2xl">
+            <h2 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+              Visualização rápida em Modo Foco
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              Os painéis pesados (PDCA da equipe, monitor de ciência do mural, auditorias SED vs Mapão, lista completa de tutorados e histórico de ocorrências) estão pausados para manter a tela inicial instantânea.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => toggleModoVisualizacao('completo')}
+            className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-xl transition-colors flex items-center gap-2 cursor-pointer whitespace-nowrap shrink-0"
+          >
+            <i className="fa-solid fa-chart-column text-[11px]"></i>
+            <span>Abrir Modo Analítico</span>
+          </button>
+        </section>
+      )}
 
       {/* ======================================================== */}
       {/* 5. MODAIS: RECADO, NOVA TAREFA, COMPROVANTE & DOCUMENTOS */}

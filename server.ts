@@ -9,7 +9,7 @@ import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
 import * as pdfParseModule from 'pdf-parse';
 const pdfParse = (pdfParseModule as any).default || pdfParseModule;
-import { getDatabase, getDocs, getDoc, setDoc, addDoc, updateDoc, deleteDoc, countDocs, executeBatch, prewarmCache, formatMongoDoc, searchAlunosInDb, resolveCollectionName, buildDocumentQuery, invalidateCollectionCache } from './src/server/mongodb.ts';
+import { getDatabase, getDocs, getDoc, setDoc, addDoc, updateDoc, deleteDoc, countDocs, executeBatch, prewarmCache, formatMongoDoc, searchAlunosInDb, resolveCollectionName, buildDocumentQuery, invalidateCollectionCache, isCollectionCached } from './src/server/mongodb.ts';
 import { parseBoletimSEDText, limparNomeDisciplina } from './src/modules/boletimPdfParser.ts';
 import { parseRelatorioFrequenciaSED, normalizarNomeTurmaSED, normalizarRaSED } from './src/modules/frequenciaSedPdfParser.ts';
 import {
@@ -1344,6 +1344,315 @@ async function startServer() {
       res.status(500).json({
         error: 'Erro ao buscar alunos no MongoDB Atlas',
         details: err.message
+      });
+    }
+  });
+
+  // ==========================================
+  // GET: BOOTSTRAP ULTRA-RÁPIDO DA TELA INICIAL (MODO FOCO vs MODO ANALÍTICO)
+  // Substitui 10 requisições pesadas (~27.5MB) por 1 único pacote enxuto e comprimido (<150KB no Modo Foco)
+  // ==========================================
+  // Cache transitório para respostas ultrarrápidas do Modo Foco enquanto o prewarm completo termina em segundo plano
+  let coldFocoOcorrenciasCache: { list: any[]; total: number; ts: number } | null = null;
+  let coldFocoAlunosCache: { list: any[]; ts: number } | null = null;
+
+  app.get('/api/home/bootstrap', async (req, res) => {
+    const tStart = Date.now();
+    const rawMode = String(req.query.mode || 'foco').toLowerCase().trim();
+    const mode: 'foco' | 'analitico' = (rawMode === 'analitico' || rawMode === 'completo') ? 'analitico' : 'foco';
+    const anoParam = parseInt(String(req.query.ano || new Date().getFullYear()), 10) || new Date().getFullYear();
+
+    const ehDoAno = (item: any): boolean => {
+      if (!item || typeof item !== 'object') return true;
+      const anoCampo = Number(item.anoLetivo || item.ano_letivo || item.ano || 0);
+      if (anoCampo >= 2020 && anoCampo <= 2035) return anoCampo === anoParam;
+      const dRaw = String(item.data || item.dataChamada || item.dataEvento || item.criadoEm || item.data_criacao || '').trim();
+      const matchIso = dRaw.match(/^(\d{4})-/);
+      if (matchIso) return Number(matchIso[1]) === anoParam;
+      const matchBr = dRaw.match(/\/(\d{4})$/);
+      if (matchBr) return Number(matchBr[1]) === anoParam;
+      return true;
+    };
+
+    const parsePct = (v: any): number | null => {
+      if (v === null || v === undefined || v === '') return null;
+      if (typeof v === 'number' && !isNaN(v)) return v;
+      const s = String(v).replace('%', '').replace(',', '.').trim();
+      const n = parseFloat(s);
+      return isNaN(n) ? null : n;
+    };
+
+    const projetarAlunoLeve = (a: any) => {
+      const fn = a.fechamento_notas || a.fechamentos || a.notas;
+      let fechamentoFreq: number | null = null;
+      let mapaoPendente: boolean | null = null;
+      if (fn && typeof fn === 'object') {
+        for (const bim of ['4B', '3B', '2B', '1B']) {
+          const bf = parsePct(fn[bim]?.frequencia);
+          if (bf !== null) {
+            fechamentoFreq = bf;
+            break;
+          }
+        }
+        const tem1B = !!(fn['1B'] && fn['1B'].disciplinas && Object.keys(fn['1B'].disciplinas).length > 0);
+        const tem2B = !!(fn['2B'] && fn['2B'].disciplinas && Object.keys(fn['2B'].disciplinas).length > 0);
+        const tem3B = !!(fn['3B'] && fn['3B'].disciplinas && Object.keys(fn['3B'].disciplinas).length > 0);
+        mapaoPendente = !tem1B || !tem2B || !tem3B;
+      }
+
+      return {
+        id: a.id || a.ra,
+        ra: String(a.ra || a.id || ''),
+        nome: a.nome || '',
+        turma: a.turma || '',
+        segmento: a.segmento || '',
+        status: a.status,
+        situacao: a.situacao,
+        ativo: a.ativo,
+        tutor: a.tutor,
+        tutorNome: a.tutorNome,
+        nomeTutor: a.nomeTutor,
+        tutor_2026: a.tutor_2026,
+        presenca_anual: a.presenca_anual,
+        presenca: a.presenca,
+        frequencia: a.frequencia,
+        freq_sed: a.freq_sed,
+        sed_frequencia: a.sed_frequencia,
+        frequenciaAnual: a.frequenciaAnual,
+        frequencia_atual: a.frequencia_atual,
+        faltasConsecutivas: a.faltasConsecutivas,
+        dias_seguidos_faltando: a.dias_seguidos_faltando,
+        faltas_consecutivas: a.faltas_consecutivas,
+        ultima_auditoria_sed: a.ultima_auditoria_sed,
+        data_auditoria_sed: a.data_auditoria_sed,
+        dataAuditoriaFreq: a.dataAuditoriaFreq,
+        dataAtualizacaoFreq: a.dataAtualizacaoFreq,
+        atualizado_em: a.atualizado_em,
+        updatedAt: a.updatedAt,
+        recomposicao: a.recomposicao,
+        aee: a.aee,
+        _fechamentoFreq: fechamentoFreq,
+        _mapaoPendente: mapaoPendente,
+        _isResumo: true
+      };
+    };
+
+    const projetarOcorrenciaLeve = (o: any) => ({
+      id: o.id,
+      ra: o.ra,
+      nomeAluno: o.nomeAluno || o.alunoNome || o.aluno,
+      turma: o.turma || o.alunoTurma,
+      tipo: o.tipo,
+      categoria: o.categoria,
+      origem: o.origem,
+      descricao: typeof o.descricao === 'string' && o.descricao.length > 420 ? o.descricao.slice(0, 420) + '…' : o.descricao,
+      observacao: typeof o.observacao === 'string' && o.observacao.length > 260 ? o.observacao.slice(0, 260) + '…' : o.observacao,
+      data: o.data,
+      criadoEm: o.criadoEm,
+      horarioAtraso: o.horarioAtraso,
+      motivo: o.motivo,
+      justificado: o.justificado,
+      isAtraso: o.isAtraso,
+      isDispensa: o.isDispensa,
+      autor: o.autor || o.autor_nome,
+      autor_nome: o.autor_nome,
+      autor_cargo: o.autor_cargo,
+      notificarDirecao: o.notificarDirecao,
+      notificar_direcao: o.notificar_direcao,
+      notificarGestao: o.notificarGestao,
+      notificacaoAtendida: o.notificacaoAtendida,
+      atendida: o.atendida,
+      resolvida: o.resolvida,
+      anoLetivo: o.anoLetivo
+    });
+
+    const projetarRecadoLeve = (r: any) => ({
+      ...r,
+      cientes: Array.isArray(r.cientes)
+        ? r.cientes.map((c: any) => (
+            typeof c === 'string'
+              ? { nome: c }
+              : { nome: c?.nome || '', email: c?.email || '', cargo: c?.cargo || '', data: c?.data || c?.dataCiencia || '' }
+          ))
+        : []
+    });
+
+    const projetarHorarioLeve = (h: any) => ({
+      id: h.id,
+      dia: h.dia,
+      periodoId: h.periodoId,
+      turma: h.turma,
+      disciplina: h.disciplina,
+      professor: h.professor,
+      sala: h.sala,
+      turno: h.turno,
+      tipo: h.tipo,
+      ativo: h.ativo
+    });
+
+    try {
+      const agora = new Date();
+      const inicioMesIso = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-01`;
+
+      // Busca ocorrências sem bloquear o Modo Foco em 5.896 documentos se o cache ainda estiver aquecendo
+      const carregarOcorrenciasParaModo = async (): Promise<{ list: any[]; total: number; parcial: boolean }> => {
+        if (mode === 'analitico' || isCollectionCached('ocorrencias')) {
+          const todas = await getDocs('ocorrencias');
+          const doAno = todas.filter(ehDoAno);
+          doAno.sort((a: any, b: any) => new Date(b.criadoEm || b.data || 0).getTime() - new Date(a.criadoEm || a.data || 0).getTime());
+
+          if (mode === 'analitico') {
+            return { list: doAno.map(projetarOcorrenciaLeve), total: doAno.length, parcial: false };
+          }
+
+          // Modo Foco: alertas pedagógicos não atendidos + atrasos do mês + 40 ocorrências mais recentes
+          const seen = new Set<string>();
+          const focoList: any[] = [];
+          const addItem = (o: any) => {
+            const k = String(o.id || '');
+            if (k && seen.has(k)) return;
+            if (k) seen.add(k);
+            focoList.push(projetarOcorrenciaLeve(o));
+          };
+
+          for (const o of doAno) {
+            const isNotif = (o.notificarDirecao === true || o.notificar_direcao === true || o.notificarGestao === true) &&
+              !(o.notificacaoAtendida === true || o.atendida === true || o.resolvida === true);
+            const dataStr = String(o.data || o.criadoEm || '').slice(0, 10);
+            const isAtrasoMes = dataStr >= inicioMesIso && (
+              o.isAtraso === true ||
+              String(o.tipo || '').toUpperCase().includes('ATRASO') ||
+              String(o.categoria || '').toUpperCase().includes('ATRASO')
+            );
+            if (isNotif || isAtrasoMes) addItem(o);
+          }
+          for (const o of doAno.slice(0, 40)) {
+            addItem(o);
+          }
+          return { list: focoList, total: doAno.length, parcial: true };
+        }
+
+        // Cache frio no Modo Foco: consulta ultrarrápida usando apenas índice nativo _id (-1) + projeção enxuta
+        if (coldFocoOcorrenciasCache && (Date.now() - coldFocoOcorrenciasCache.ts) < 60_000) {
+          return { list: coldFocoOcorrenciasCache.list, total: coldFocoOcorrenciasCache.total, parcial: true };
+        }
+        const db = await getDatabase();
+        const ocProjection = {
+          id: 1, ra: 1, nomeAluno: 1, alunoNome: 1, aluno: 1, turma: 1, alunoTurma: 1,
+          tipo: 1, categoria: 1, origem: 1, descricao: 1, observacao: 1, data: 1,
+          criadoEm: 1, horarioAtraso: 1, motivo: 1, justificado: 1, isAtraso: 1, isDispensa: 1,
+          autor: 1, autor_nome: 1, autor_cargo: 1, notificarDirecao: 1, notificar_direcao: 1,
+          notificarGestao: 1, notificacaoAtendida: 1, atendida: 1, resolvida: 1, anoLetivo: 1
+        };
+        const recentesRaw = await db.collection('ocorrencias')
+          .find({}, { projection: ocProjection })
+          .sort({ _id: -1 })
+          .limit(200)
+          .toArray();
+        const formatted = recentesRaw
+          .map(rawDoc => formatMongoDoc(rawDoc))
+          .filter((fmt): fmt is Record<string, any> => Boolean(fmt && ehDoAno(fmt)));
+        formatted.sort((a: any, b: any) => new Date(b.criadoEm || b.data || 0).getTime() - new Date(a.criadoEm || a.data || 0).getTime());
+        const projectedList = formatted.map(projetarOcorrenciaLeve);
+        coldFocoOcorrenciasCache = { list: projectedList, total: projectedList.length, ts: Date.now() };
+        return { list: projectedList, total: projectedList.length, parcial: true };
+      };
+
+      // Busca alunos sem bloquear em 17.8MB caso o cache frio ainda esteja aquecendo no Modo Foco
+      const carregarAlunosParaModo = async (): Promise<any[]> => {
+        if (mode === 'analitico' || isCollectionCached('alunos')) {
+          const todos = await getDocs('alunos');
+          return todos.map(projetarAlunoLeve);
+        }
+        if (coldFocoAlunosCache && (Date.now() - coldFocoAlunosCache.ts) < 60_000) {
+          return coldFocoAlunosCache.list;
+        }
+        const db = await getDatabase();
+        const rawDocs = await db.collection('alunos').find({}, {
+          projection: {
+            id: 1, ra: 1, nome: 1, turma: 1, segmento: 1, status: 1, situacao: 1, ativo: 1,
+            tutor: 1, tutorNome: 1, nomeTutor: 1, tutor_2026: 1,
+            presenca_anual: 1, presenca: 1, frequencia: 1, freq_sed: 1, sed_frequencia: 1,
+            frequenciaAnual: 1, frequencia_atual: 1,
+            faltasConsecutivas: 1, dias_seguidos_faltando: 1, faltas_consecutivas: 1,
+            ultima_auditoria_sed: 1, data_auditoria_sed: 1, dataAuditoriaFreq: 1,
+            dataAtualizacaoFreq: 1, atualizado_em: 1, updatedAt: 1, recomposicao: 1, aee: 1
+          },
+          batchSize: 1000
+        }).toArray();
+        const projected = rawDocs.map(d => formatMongoDoc(d)!).filter(Boolean).map(projetarAlunoLeve);
+        coldFocoAlunosCache = { list: projected, ts: Date.now() };
+        return projected;
+      };
+
+      const [
+        usuariosRaw,
+        recadosRaw,
+        tarefasRaw,
+        eventosRaw,
+        horariosRaw,
+        substituicoesRaw,
+        frequenciaDiariaRaw,
+        notificacoesTutorRaw,
+        alunosResumo,
+        ocorrenciasPack
+      ] = await Promise.all([
+        getDocs('usuarios').catch(() => []),
+        getDocs('mural_recados').catch(() => []),
+        getDocs('rotina_equipe').catch(() => []),
+        getDocs('eventos').catch(() => []),
+        getDocs('horarios').catch(() => []),
+        getDocs('substituicoes_diarias').catch(() => []),
+        getDocs('frequencia_diaria').catch(() => []),
+        getDocs('notificacoes_tutor').catch(() => []),
+        carregarAlunosParaModo().catch(() => []),
+        carregarOcorrenciasParaModo().catch(() => ({ list: [], total: 0, parcial: true }))
+      ]);
+
+      const recadosFiltrados = recadosRaw
+        .filter((r: any) => ehDoAno(r) && !isBoasVindasRecado(r) && r.tipo !== 'ALERTA_PEDAGOGICO' && !(r.titulo && String(r.titulo).startsWith('ALERTA PEDAGÓGICO:')))
+        .filter((r: any) => mode === 'analitico' ? true : !r.arquivado)
+        .sort((a: any, b: any) => new Date(b.criadoEm || b.data || 0).getTime() - new Date(a.criadoEm || a.data || 0).getTime())
+        .map(projetarRecadoLeve);
+
+      const tarefasFiltradas = tarefasRaw.filter(ehDoAno);
+      const eventosFiltrados = eventosRaw
+        .filter(ehDoAno)
+        .sort((a: any, b: any) => new Date(a.data || 0).getTime() - new Date(b.data || 0).getTime());
+      const substituicoesFiltradas = substituicoesRaw.filter(ehDoAno);
+      const frequenciaFiltrada = frequenciaDiariaRaw.filter(ehDoAno);
+      const notificacoesFiltradas = notificacoesTutorRaw
+        .filter(ehDoAno)
+        .sort((a: any, b: any) => new Date(b.criadoEm || b.data || 0).getTime() - new Date(a.criadoEm || a.data || 0).getTime());
+
+      res.json({
+        mode,
+        ano: anoParam,
+        usuarios: usuariosRaw,
+        recados: recadosFiltrados,
+        tarefas: tarefasFiltradas,
+        eventos: eventosFiltrados,
+        horarios: horariosRaw.map(projetarHorarioLeve),
+        substituicoes: substituicoesFiltradas,
+        frequenciaDiaria: frequenciaFiltrada,
+        notificacoesTutor: notificacoesFiltradas,
+        alunos: alunosResumo,
+        ocorrencias: ocorrenciasPack.list,
+        meta: {
+          mode,
+          ano: anoParam,
+          totalAlunos: alunosResumo.length,
+          totalOcorrencias: ocorrenciasPack.total,
+          ocorrenciasParciais: ocorrenciasPack.parcial,
+          elapsedMs: Date.now() - tStart,
+          geradoEm: new Date().toISOString()
+        }
+      });
+    } catch (err: any) {
+      console.error('[API Home Bootstrap] Erro ao montar pacote inicial:', err?.message || err);
+      res.status(500).json({
+        error: 'Erro ao carregar pacote inicial do banco de dados.',
+        details: err?.message || String(err)
       });
     }
   });
@@ -5397,6 +5706,7 @@ Você deve responder ESTRITAMENTE em formato JSON com o seguinte schema:
         licencasAfastamentos: Number(st.licencasAfastamentos || 0),
         faltasEfetivas: Number(st.faltasEfetivas ?? Math.max(0, Number(st.faltasTotais || 0) - Number(st.licencasAfastamentos || 0))),
         atrasosAcumulados: Number(st.atrasosAcumulados || 0),
+        atrasosConsecutivos: Number(st.atrasosConsecutivos || 0),
         faltasConsecutivas: Number(st.faltasConsecutivas || 0)
       }));
 
@@ -5721,6 +6031,7 @@ Regras obrigatórias:
         faltososPorTurma = {},
         atrasadosPorTurma = {},
         faltasConsecutivasAlerta = [],
+        atrasosConsecutivosAlerta = [],
         tomComunicado = 'acolhedor'
       } = req.body || {};
 
@@ -5756,7 +6067,8 @@ REGRAS ESTRITAS (INVIOLÁVEIS):
 - Estatísticas: ${JSON.stringify(estatisticas)}
 - Estudantes Ausentes por Turma (nomes já sanitizados LGPD): ${JSON.stringify(faltososPorTurma)}
 - Estudantes Atrasados por Turma (nomes já sanitizados LGPD): ${JSON.stringify(atrasadosPorTurma)}
-- Alertas de Reincidência / Faltas Consecutivas (mencionar orientação geral sem expor nome individual com estigma): ${JSON.stringify(faltasConsecutivasAlerta)}`;
+- Alertas de Reincidência / Faltas Consecutivas (mencionar orientação geral sem expor nome individual com estigma): ${JSON.stringify(faltasConsecutivasAlerta)}
+- Alertas de Reincidência / Atrasos em Dias Seguidos (mencionar acolhimento perguntando às famílias se houve algum imprevisto, sem expor nome com estigma): ${JSON.stringify(atrasosConsecutivosAlerta)}`;
 
           const response = await ai.models.generateContent({
             model: 'gemini-4-hydrogen',
@@ -5784,6 +6096,7 @@ REGRAS ESTRITAS (INVIOLÁVEIS):
           estatisticas,
           faltososPorTurma,
           atrasadosPorTurma,
+          atrasosConsecutivosAlerta,
           tomComunicado
         });
         origem = 'fallback';
@@ -5813,6 +6126,7 @@ REGRAS ESTRITAS (INVIOLÁVEIS):
       estatisticas = {},
       faltososPorTurma = {},
       atrasadosPorTurma = {},
+      atrasosConsecutivosAlerta = [],
       tomComunicado = 'acolhedor'
     } = params || {};
 
@@ -5864,13 +6178,16 @@ REGRAS ESTRITAS (INVIOLÁVEIS):
 
     msg += `⚠️ *ORIENTAÇÃO AOS PAIS E RESPONSÁVEIS:*\n`;
     if (tomComunicado === 'urgente') {
-      msg += `Reforçamos a necessidade imediata de justificativa junto à Secretaria Escolar e ao Professor Tutor. O acúmulo de ausências e atrasos compromete o rendimento e a permanência pedagógica no Programa Ensino Integral (PEI). Caso haja atestado médico, apresentá-lo em até 48 horas.\n\n`;
+      msg += `Reforçamos a necessidade imediata de justificativa junto à Secretaria Escolar e ao Professor Tutor. O acúmulo de ausências e atrasos compromete o rendimento e a permanência pedagógica no Programa Ensino Integral (PEI). Caso haja atestado médico, apresentá-lo em até 48 horas.`;
     } else if (tomComunicado === 'padrao') {
-      msg += `A frequência e a pontualidade diárias no Programa Ensino Integral (PEI) são indispensáveis para o aproveitamento pedagógico e o Projeto de Vida do estudante. Em caso de motivo de saúde, solicitamos encaminhar o atestado à Secretaria Escolar em até 48 horas.\n\n`;
+      msg += `A frequência e a pontualidade diárias no Programa Ensino Integral (PEI) são indispensáveis para o aproveitamento pedagógico e o Projeto de Vida do estudante. Em caso de motivo de saúde, solicitamos encaminhar o atestado à Secretaria Escolar em até 48 horas.`;
     } else {
-      msg += `Contamos sempre com a parceria das famílias para fortalecer a pontualidade e o acompanhamento diário dos nossos jovens no Programa Ensino Integral (PEI). Caso o estudante tenha precisado se ausentar por motivo de saúde ou imprevisto, pedimos a gentileza de informar a equipe ou entregar o atestado na Secretaria em até 48 horas.\n\n`;
+      msg += `Contamos sempre com a parceria das famílias para fortalecer a pontualidade e o acompanhamento diário dos nossos jovens no Programa Ensino Integral (PEI). Caso o estudante tenha precisado se ausentar por motivo de saúde ou imprevisto, pedimos a gentileza de informar a equipe ou entregar o atestado na Secretaria em até 48 horas.`;
     }
-    msg += `Atenciosamente,\n*Equipe Gestora & Coordenação Pedagógica*\nEE Prof. Clóvis de Lucca`;
+    if (Array.isArray(atrasosConsecutivosAlerta) && atrasosConsecutivosAlerta.length > 0) {
+      msg += ` Em casos de atrasos em dias seguidos, pedimos que procurem a coordenação caso tenha acontecido algum imprevisto para que possamos acolher e apoiar o estudante.`;
+    }
+    msg += `\n\nAtenciosamente,\n*Equipe Gestora & Coordenação Pedagógica*\nEE Prof. Clóvis de Lucca`;
 
     return msg;
   }
@@ -5892,8 +6209,8 @@ REGRAS ESTRITAS (INVIOLÁVEIS):
     const taxaPresenca = totalMatriculados > 0 ? (((totalPresentes + totalAtrasados) / totalMatriculados) * 100).toFixed(1) : '92.5';
     
     const alunosCriticos = (Array.isArray(chamadaHoje) ? chamadaHoje : [])
-      .filter((a: any) => a.faltasEfetivas >= 8 || a.atrasosAcumulados >= 2 || a.statusHoje === 'falta' || a.faltasConsecutivas >= 2)
-      .sort((a: any, b: any) => (b.faltasEfetivas + b.atrasosAcumulados * 2) - (a.faltasEfetivas + a.atrasosAcumulados * 2))
+      .filter((a: any) => a.faltasEfetivas >= 8 || a.atrasosConsecutivos >= 2 || a.atrasosAcumulados >= 2 || a.statusHoje === 'falta' || a.faltasConsecutivas >= 2)
+      .sort((a: any, b: any) => (b.faltasEfetivas + b.atrasosAcumulados * 2 + (b.atrasosConsecutivos || 0) * 3) - (a.faltasEfetivas + a.atrasosAcumulados * 2 + (a.atrasosConsecutivos || 0) * 3))
       .slice(0, 8);
 
     const somaBrutas = Number(estatisticas.somaFaltasTotais ?? (totalFaltosos + totalLicencas));
@@ -5901,15 +6218,16 @@ REGRAS ESTRITAS (INVIOLÁVEIS):
     const somaEfetivas = Number(estatisticas.somaFaltasEfetivas ?? Math.max(0, somaBrutas - somaLicencas));
     const diasAnalisados = Number(historicoResumo?.diasRegistrados || 1);
     const diaCritico = historicoResumo?.diaSemanaMaisCritico || 'Segunda-feira';
+    const atrasos3Seguidos = Number(estatisticas.atrasos3Seguidos || 0);
 
     return {
-      diagnosticoGeral: `Apuração de Frequência realizada em ${dataReferencia} para ${turma === 'TODAS' ? 'todas as turmas' : turma} (${diasAnalisados} dia(s) analisado(s) no histórico): Taxa de presença calculada em ${taxaPresenca}%. Foram registrados ${totalAtrasados} atrasos e ${totalFaltosos} ausências injustificadas hoje, além de ${totalLicencas} licenças médicas formais. A aplicação da 3ª métrica (${somaEfetivas} faltas efetivas desconsiderando ${somaLicencas} afastamentos médicos de ${somaBrutas} faltas brutas) revela com precisão o público que demanda acolhimento imediato pela Tutoria e Busca Ativa para ${anoLetivoAlvo}.`,
+      diagnosticoGeral: `Apuração de Frequência realizada em ${dataReferencia} para ${turma === 'TODAS' ? 'todas as turmas' : turma} (${diasAnalisados} dia(s) analisado(s) no histórico): Taxa de presença calculada em ${taxaPresenca}%. Foram registrados ${totalAtrasados} atrasos${atrasos3Seguidos > 0 ? ` (${atrasos3Seguidos} estudante(s) em sequência de 3+ dias seguidos chegando atrasado)` : ''} e ${totalFaltosos} ausências injustificadas hoje, além de ${totalLicencas} licenças médicas formais. A aplicação da 3ª métrica (${somaEfetivas} faltas efetivas desconsiderando ${somaLicencas} afastamentos médicos de ${somaBrutas} faltas brutas) revela com precisão o público que demanda acolhimento imediato pela Tutoria e Busca Ativa para ${anoLetivoAlvo}.`,
       padroesDetectados: [
         {
           titulo: `Concentração de Atrasos no 1º Período • Pico em ${diaCritico}`,
-          descricao: `Dos ${totalAtrasados} atrasos apontados hoje${historicoResumo?.totalAtrasosHistorico ? ` (${historicoResumo.totalAtrasosHistorico} no histórico registrado)` : ''}, a maior incidência ocorre nos primeiros minutos da manhã, especialmente em ${diaCritico}, impactando o primeiro componente da rotina PEI.`,
+          descricao: `Dos ${totalAtrasados} atrasos apontados hoje${historicoResumo?.totalAtrasosHistorico ? ` (${historicoResumo.totalAtrasosHistorico} no histórico registrado)` : ''}, a maior incidência ocorre nos primeiros minutos da manhã, especialmente em ${diaCritico}${atrasos3Seguidos > 0 ? `, com ${atrasos3Seguidos} estudante(s) atingindo 3 ou mais dias seguidos de atraso` : ''}.`,
           grau: 'ALTO',
-          alunosImpactados: totalAtrasados || alunosCriticos.length || 3
+          alunosImpactados: Math.max(totalAtrasados, atrasos3Seguidos) || alunosCriticos.length || 3
         },
         {
           titulo: 'Diferenciação Crítica: 3ª Métrica (Faltas Efetivas vs Licenças)',
@@ -5919,7 +6237,7 @@ REGRAS ESTRITAS (INVIOLÁVEIS):
         },
         {
           titulo: `Comportamento Preditivo para Transição ${anoLetivoAlvo}`,
-          descricao: `Estudantes com 2 ou mais atrasos sistemáticos ou faltas efetivas crescentes tendem a ampliar a infrequência no 1º bimestre de ${anoLetivoAlvo} se não houver pactuação prévia na Tutoria.`,
+          descricao: `Estudantes com atrasos em dias seguidos (2+ ou 3+ consecutivos) ou faltas efetivas crescentes tendem a ampliar a infrequência no 1º bimestre de ${anoLetivoAlvo} se não houver acolhimento familiar e pactuação prévia na Tutoria.`,
           grau: 'ALTO',
           alunosImpactados: alunosCriticos.length || 4
         }
@@ -5929,15 +6247,15 @@ REGRAS ESTRITAS (INVIOLÁVEIS):
         totalFaltasBrutas: somaBrutas,
         totalLicencasAfastamentos: somaLicencas,
         totalFaltasEfetivas: somaEfetivas,
-        conclusaoPedagogica: 'Priorizar contato telefônico e visitas familiares exclusivamente para alunos cuja 3ª métrica ultrapassa 10% do teto letivo, orientando o Tutor a incluir a pontualidade no Plano de Tutoria.'
+        conclusaoPedagogica: 'Priorizar contato telefônico e visitas familiares exclusivamente para alunos cuja 3ª métrica ultrapassa 10% do teto letivo ou com 3+ atrasos seguidos, orientando o Tutor a incluir a pontualidade no Plano de Tutoria.'
       },
       projecaoRisco2027: alunosCriticos.map((a: any) => ({
         ra: a.ra || '0001098...',
         nome: a.nome || 'Estudante em Acompanhamento',
         turma: a.turma || turma,
-        nivelRisco: (a.faltasEfetivas >= 12 || a.faltasConsecutivas >= 3) ? 'CRÍTICO' : 'ATENÇÃO',
-        motivo: `${a.faltasEfetivas} faltas efetivas (sem licença) e ${a.atrasosAcumulados} atraso(s) acumulados.`,
-        acaoTutoria2027: `Pactuar meta de pontualidade no Projeto de Vida e agendar alinhamento individual com responsáveis para o início de ${anoLetivoAlvo}.`
+        nivelRisco: (a.faltasEfetivas >= 12 || a.faltasConsecutivas >= 3 || (a.atrasosConsecutivos || 0) >= 3) ? 'CRÍTICO' : 'ATENÇÃO',
+        motivo: `${a.faltasEfetivas} faltas efetivas (${a.faltasConsecutivas || 0}d seguidos) e ${a.atrasosAcumulados} atraso(s) reais${(a.atrasosConsecutivos || 0) >= 2 ? ` (${a.atrasosConsecutivos}d seguidos)` : ''}.`,
+        acaoTutoria2027: `Pactuar meta de pontualidade no Projeto de Vida e agendar acolhimento individual com responsáveis para entender possíveis imprevistos.`
       })),
       acoesImediatas: [
         {
@@ -6699,19 +7017,30 @@ Direção e Equipe Gestora`;
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Servidor Clóvis] Rodando na porta ${PORT} com suporte oficial ao MongoDB Atlas`);
-    // Higieniza registros categorizados incorretamente como Atraso, migra gatilhos automáticos legados, remove logs silenciosos do dossiê e pré-aquece cache
-    limparFalsosAtrasosNoBanco()
-      .catch(err => console.warn('[Limpeza Atrasos] Erro inicial:', err?.message || err))
-      .then(() => migrarERemoverGatilhosAutomaticosNoBanco())
-      .catch(err => console.warn('[Migração Gatilhos Tutoria] Erro inicial:', err?.message || err))
-      .then(() => limparLogsSilenciososDossieNoBanco())
-      .catch(err => console.warn('[Limpeza Logs Silenciosos Dossiê] Erro inicial:', err?.message || err))
-      .then(() => sincronizarSegmentosAlunosPorTurmaNoBanco())
-      .catch(err => console.warn('[Sincronização Segmentos] Erro inicial:', err?.message || err))
-      .then(() => normalizarAnoFrequenciaDiariaNoBanco())
-      .catch(err => console.warn('[Normalização Frequência Diária] Erro inicial:', err?.message || err))
-      .finally(() => {
-        prewarmCache().catch(err => console.warn('[MongoDB Prewarm] Erro inicial:', err.message));
+    // Prioridade máxima no boot: pré-aquecer o cache em RAM imediatamente para resposta instantânea na Tela Inicial
+    prewarmCache()
+      .catch(err => console.warn('[MongoDB Prewarm] Erro inicial:', err?.message || err))
+      .finally(async () => {
+        // Executa rotinas de higienização legada apenas uma vez (marcadas em sistema_meta) para não travar o Atlas a cada reinício
+        try {
+          const db = await getDatabase();
+          const metaCol = db.collection('sistema_meta');
+          const done = await metaCol.findOne({ chave: 'startup_hygiene_v1' });
+          if (done) return;
+
+          await limparFalsosAtrasosNoBanco().catch(err => console.warn('[Limpeza Atrasos] Erro inicial:', err?.message || err));
+          await migrarERemoverGatilhosAutomaticosNoBanco().catch(err => console.warn('[Migração Gatilhos Tutoria] Erro inicial:', err?.message || err));
+          await limparLogsSilenciososDossieNoBanco().catch(err => console.warn('[Limpeza Logs Silenciosos Dossiê] Erro inicial:', err?.message || err));
+          await sincronizarSegmentosAlunosPorTurmaNoBanco().catch(err => console.warn('[Sincronização Segmentos] Erro inicial:', err?.message || err));
+          await normalizarAnoFrequenciaDiariaNoBanco().catch(err => console.warn('[Normalização Frequência Diária] Erro inicial:', err?.message || err));
+          await metaCol.updateOne(
+            { chave: 'startup_hygiene_v1' },
+            { $set: { chave: 'startup_hygiene_v1', executadoEm: new Date().toISOString() } },
+            { upsert: true }
+          );
+        } catch (err: any) {
+          console.warn('[Startup Hygiene] Aviso:', err?.message || err);
+        }
       });
   });
 }

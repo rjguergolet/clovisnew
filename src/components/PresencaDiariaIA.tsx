@@ -52,11 +52,18 @@ interface AlunoPresenca {
   licencasAfastamentos: number;
   faltasEfetivas: number;
   atrasosAcumulados: number;
+  atrasosBrutos: number;
+  atrasosConsecutivos: number;
   faltasConsecutivas: number;
 }
 
 function normalizarRaChave(val: unknown): string {
   return String(val || '').replace(/\D/g, '');
+}
+
+function normalizarRaLookup(val: unknown): string {
+  const clean = normalizarRaChave(val);
+  return clean.replace(/^0+/, '') || clean;
 }
 
 function toLocalYmd(raw: unknown): string {
@@ -592,10 +599,12 @@ export default function PresencaDiariaIA() {
 
   // 9. Indexar Dispensas com Datas e Atrasos do Dia/Histórico a partir de 'ocorrencias' + 'alunos'
   const integracaoCruzada = useMemo(() => {
+    const anoNum = Number(ANO_LETIVO_OPERACAO);
     const dispensasPorRa: Record<string, DispensaPeriodo[]> = {};
     const atrasosDiaPorRa: Record<string, AtrasoDiaInfo> = {};
     const atrasosPorRaData: Record<string, Record<string, AtrasoDiaInfo>> = {};
     const atrasosCountOcorrenciasPorRa: Record<string, number> = {};
+    const atrasosPorDataGlobal: Record<string, number> = {};
     const seenSigDispensa = new Set<string>();
     const seenSigAtraso = new Set<string>();
 
@@ -626,7 +635,10 @@ export default function PresencaDiariaIA() {
 
       if (dtYmd) {
         if (!atrasosPorRaData[raKey]) atrasosPorRaData[raKey] = {};
-        atrasosPorRaData[raKey][dtYmd] = infoAtraso;
+        if (!atrasosPorRaData[raKey][dtYmd]) {
+          atrasosPorRaData[raKey][dtYmd] = infoAtraso;
+          atrasosPorDataGlobal[dtYmd] = (atrasosPorDataGlobal[dtYmd] || 0) + 1;
+        }
       }
 
       if (dtYmd === dataSelecionada) {
@@ -634,9 +646,10 @@ export default function PresencaDiariaIA() {
       }
     };
 
-    // Fontes: coleção top-level 'ocorrencias'
+    // Fontes: coleção top-level 'ocorrencias' (filtrada pelo ano letivo vigente)
     ocorrenciasLista.forEach((oc) => {
-      const raKey = normalizarRaChave(oc?.ra);
+      if (!ehRegistroDoAnoVigente(oc, anoNum)) return;
+      const raKey = normalizarRaLookup(oc?.ra);
       if (!raKey) return;
       if (isOcorrenciaDispensaValid(oc)) {
         const dtIni = toLocalYmd(oc.dataInicio || oc.data || oc.createdAt || oc.criadoEm);
@@ -655,11 +668,12 @@ export default function PresencaDiariaIA() {
 
     // Fontes: arrays embutidos em cada aluno (dispensas + ocorrencias)
     alunosBase.forEach((al) => {
-      const raKey = normalizarRaChave(al?.ra || al?.id);
+      const raKey = normalizarRaLookup(al?.ra || al?.id);
       if (!raKey) return;
 
       if (Array.isArray(al.dispensas)) {
         al.dispensas.forEach((d: any) => {
+          if (!ehRegistroDoAnoVigente(d, anoNum)) return;
           if (d?.dataInicio || d?.dataFim || d?.data) {
             const dtIni = toLocalYmd(d.dataInicio || d.data);
             const dtFim = toLocalYmd(d.dataFim || d.dataInicio || d.data);
@@ -676,7 +690,7 @@ export default function PresencaDiariaIA() {
 
       const embutidas = Array.isArray(al.ocorrencias) ? al.ocorrencias : Array.isArray(al.registros) ? al.registros : [];
       embutidas.forEach((oc: any) => {
-        if (!oc) return;
+        if (!oc || !ehRegistroDoAnoVigente(oc, anoNum)) return;
         if (isOcorrenciaDispensaValid(oc)) {
           const dtIni = toLocalYmd(oc.dataInicio || oc.data || oc.createdAt || oc.criadoEm);
           const dtFim = toLocalYmd(oc.dataFim || oc.dataInicio || oc.data || oc.createdAt || oc.criadoEm);
@@ -725,9 +739,10 @@ export default function PresencaDiariaIA() {
       atrasosDiaPorRa,
       atrasosPorRaData,
       atrasosCountOcorrenciasPorRa,
+      atrasosPorDataGlobal,
       diasDispensaLetivosPorRa
     };
-  }, [ocorrenciasLista, alunosBase, dataSelecionada, hojeIso, eventosAgenda]);
+  }, [ocorrenciasLista, alunosBase, dataSelecionada, hojeIso, eventosAgenda, ANO_LETIVO_OPERACAO]);
 
   // Sincronização automática: se atraso ou afastamento/dispensa for lançado para um aluno já marcado com falta,
   // a falta perde e passa a constar o atraso ou afastamento.
@@ -739,7 +754,7 @@ export default function PresencaDiariaIA() {
 
       Object.entries(prev).forEach(([raRaw, reg]) => {
         if (!reg || reg.status !== 'falta') return;
-        const raKey = normalizarRaChave(raRaw);
+        const raKey = normalizarRaLookup(raRaw);
         if (!raKey) return;
 
         const dispensaAtiva = (integracaoCruzada.dispensasPorRa[raKey] || []).find(
@@ -807,7 +822,7 @@ export default function PresencaDiariaIA() {
     [alunosBase, turmaSelecionada]
   );
 
-  // 11. Agregação contínua multi-dias (considerando dispensas e atrasos cruzados sobrepondo faltas)
+  // 11. Agregação contínua multi-dias (considerando dispensas e atrasos cruzados sobrepondo faltas + dias seguidos)
   const historicoAgregado = useMemo(() => {
     const docIdAtual = `chamada_${dataSelecionada}_${ANO_LETIVO_OPERACAO}`;
     const mapaPorRa: Record<
@@ -818,9 +833,27 @@ export default function PresencaDiariaIA() {
         datasLicencaRegistradas: Set<string>;
         atrasosDiario: number;
         datasAtrasoRegistradas: Set<string>;
+        datasAtrasoReais: Set<string>;
         faltasConsecutivas: number;
+        atrasosConsecutivos: number;
       }
     > = {};
+
+    const garantirEntradaRa = (raKey: string) => {
+      if (!mapaPorRa[raKey]) {
+        mapaPorRa[raKey] = {
+          faltasDiario: 0,
+          licencasDiario: 0,
+          datasLicencaRegistradas: new Set<string>(),
+          atrasosDiario: 0,
+          datasAtrasoRegistradas: new Set<string>(),
+          datasAtrasoReais: new Set<string>(),
+          faltasConsecutivas: 0,
+          atrasosConsecutivos: 0
+        };
+      }
+      return mapaPorRa[raKey];
+    };
 
     const resolverStatusDia = (raKey: string, dataIso: string, info?: RegistroPresencaItem): StatusPresenca => {
       const stBase: StatusPresenca = info?.status || 'presente';
@@ -841,6 +874,7 @@ export default function PresencaDiariaIA() {
     const diasNomes = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 
     const sessoesPorData = new Map<string, Record<string, RegistroPresencaItem>>();
+    const sessoesPorDataLookup = new Map<string, Map<string, RegistroPresencaItem>>();
     const temRegistrosAtuais = Object.keys(registrosPresenca).length > 0;
 
     historicoChamadas.forEach((docChamada) => {
@@ -862,6 +896,15 @@ export default function PresencaDiariaIA() {
       sessoesPorData.set(dataSelecionada, normalizarMapaRegistrosChamada(registrosPresenca));
     }
 
+    sessoesPorData.forEach((regs, dataIso) => {
+      const m = new Map<string, RegistroPresencaItem>();
+      Object.entries(regs).forEach(([k, v]) => {
+        const lk = normalizarRaLookup(k);
+        if (lk) m.set(lk, v);
+      });
+      sessoesPorDataLookup.set(dataIso, m);
+    });
+
     const datasOrdenadasDesc = Array.from(sessoesPorData.keys()).sort((a, b) => b.localeCompare(a));
 
     let totalAtrasosHistorico = 0;
@@ -869,39 +912,56 @@ export default function PresencaDiariaIA() {
     let totalLicencasHistorico = 0;
 
     datasOrdenadasDesc.forEach((dataIso) => {
-      const registros = sessoesPorData.get(dataIso) || {};
+      const lookupMap = sessoesPorDataLookup.get(dataIso);
+      if (!lookupMap) return;
       const dt = new Date(`${dataIso}T12:00:00`);
       const diaLabel = !isNaN(dt.getTime()) ? diasNomes[dt.getDay()] : '';
 
-      Object.entries(registros).forEach(([raRaw, info]) => {
-        const raKey = normalizarRaChave(raRaw);
-        if (!raKey) return;
-        if (!mapaPorRa[raKey]) {
-          mapaPorRa[raKey] = {
-            faltasDiario: 0,
-            licencasDiario: 0,
-            datasLicencaRegistradas: new Set<string>(),
-            atrasosDiario: 0,
-            datasAtrasoRegistradas: new Set<string>(),
-            faltasConsecutivas: 0
-          };
-        }
+      lookupMap.forEach((info, raKey) => {
+        const entry = garantirEntradaRa(raKey);
         const st = resolverStatusDia(raKey, dataIso, info);
         if (st === 'falta') {
-          mapaPorRa[raKey].faltasDiario++;
+          entry.faltasDiario++;
           totalFaltasHistorico++;
           if (diaLabel && faltasPorDiaSemana[diaLabel] !== undefined) faltasPorDiaSemana[diaLabel]++;
         } else if (st === 'licenca') {
-          mapaPorRa[raKey].licencasDiario++;
-          mapaPorRa[raKey].datasLicencaRegistradas.add(dataIso);
+          entry.licencasDiario++;
+          entry.datasLicencaRegistradas.add(dataIso);
           totalLicencasHistorico++;
         } else if (st === 'atrasado') {
-          mapaPorRa[raKey].atrasosDiario++;
-          mapaPorRa[raKey].datasAtrasoRegistradas.add(dataIso);
+          entry.atrasosDiario++;
+          entry.datasAtrasoRegistradas.add(dataIso);
+          entry.datasAtrasoReais.add(dataIso);
           totalAtrasosHistorico++;
           if (diaLabel && atrasosPorDiaSemana[diaLabel] !== undefined) atrasosPorDiaSemana[diaLabel]++;
         }
       });
+    });
+
+    // Consolida datas reais de atraso vindas das ocorrências (portaria/recepção) no ano letivo vigente,
+    // sem duplicar datas já computadas na chamada e respeitando dispensas ou sobrescritas manuais.
+    Object.entries(integracaoCruzada.atrasosPorRaData).forEach(([raKey, datasMap]) => {
+      const entry = garantirEntradaRa(raKey);
+      Object.keys(datasMap).forEach((dtYmd) => {
+        if (!dtYmd || dtYmd.slice(0, 4) !== ANO_LETIVO_OPERACAO) return;
+        const temDispensaNoDia = (integracaoCruzada.dispensasPorRa[raKey] || []).some(
+          (d) => dtYmd >= d.dataInicio && dtYmd <= d.dataFim
+        );
+        if (temDispensaNoDia) return;
+
+        const regDia = sessoesPorDataLookup.get(dtYmd)?.get(raKey);
+        if (regDia) {
+          const stEfetivo = resolverStatusDia(raKey, dtYmd, regDia);
+          if (stEfetivo !== 'atrasado') return;
+        }
+        entry.datasAtrasoReais.add(dtYmd);
+      });
+    });
+
+    // Garante entrada no mapa para todos os alunos ativos
+    alunosBase.forEach((al) => {
+      const raKey = normalizarRaLookup(al?.ra || al?.id);
+      if (raKey) garantirEntradaRa(raKey);
     });
 
     const dtRefConsec = new Date(`${dataSelecionada}T12:00:00`);
@@ -909,28 +969,42 @@ export default function PresencaDiariaIA() {
     dtCorteConsec.setDate(dtCorteConsec.getDate() - 30);
     const limite30dConsecIso = `${dtCorteConsec.getFullYear()}-${String(dtCorteConsec.getMonth() + 1).padStart(2, '0')}-${String(dtCorteConsec.getDate()).padStart(2, '0')}`;
 
-    // Apenas dias letivos reais com chamada (pelo menos 1 registro de presença/atraso/falta); fins de semana e feriados sem chamada são ignorados
-    const datasLetivasJanela30dDesc = datasOrdenadasDesc.filter((dataIso) => {
-      if (dataIso > dataSelecionada || dataIso < limite30dConsecIso) return false;
+    // Apenas dias letivos reais com chamada (ou dias com atividade de portaria/chamada na data selecionada)
+    const datasConsecSet = new Set<string>();
+    datasOrdenadasDesc.forEach((dataIso) => {
+      if (dataIso > dataSelecionada || dataIso < limite30dConsecIso) return;
       const regs = sessoesPorData.get(dataIso);
-      if (!regs) return false;
-      return Object.values(regs).some(
-        (r) => r && (r.status === 'presente' || r.status === 'falta' || r.status === 'atrasado')
-      );
+      if (!regs) return;
+      if (Object.values(regs).some((r) => r && (r.status === 'presente' || r.status === 'falta' || r.status === 'atrasado'))) {
+        datasConsecSet.add(dataIso);
+      }
     });
 
+    if (
+      dataSelecionada >= limite30dConsecIso &&
+      (Object.keys(integracaoCruzada.atrasosDiaPorRa).length > 0 || temRegistrosAtuais)
+    ) {
+      datasConsecSet.add(dataSelecionada);
+    }
+
+    const datasAtrasoConsecSet = new Set<string>(datasConsecSet);
+    Object.entries(integracaoCruzada.atrasosPorDataGlobal).forEach(([dtYmd, qtd]) => {
+      if (dtYmd <= dataSelecionada && dtYmd >= limite30dConsecIso && qtd >= 3) {
+        datasAtrasoConsecSet.add(dtYmd);
+      }
+    });
+
+    const datasLetivasJanela30dDesc = Array.from(datasConsecSet).sort((a, b) => b.localeCompare(a));
+    const datasAtrasosJanela30dDesc = Array.from(datasAtrasoConsecSet).sort((a, b) => b.localeCompare(a));
+
     Object.keys(mapaPorRa).forEach((raKey) => {
-      let seq = 0;
+      // 1) Faltas seguidas
+      let seqFalta = 0;
       for (const dataIso of datasLetivasJanela30dDesc) {
-        const registrosDia = sessoesPorData.get(dataIso);
-        if (!registrosDia) continue;
-        const reg =
-          registrosDia[raKey] ||
-          Object.entries(registrosDia).find(([k]) => normalizarRaChave(k) === raKey)?.[1];
+        const lookupDia = sessoesPorDataLookup.get(dataIso);
+        const reg = lookupDia?.get(raKey);
 
         if (!reg) {
-          // Na data selecionada hoje, se ainda não foi marcado/verificado, não interrompe a leitura prévia;
-          // Em dias letivos anteriores com chamada, não ter falta marcada significa que o aluno compareceu (quebra a sequência)
           if (dataIso === dataSelecionada) {
             const temDispHoje = (integracaoCruzada.dispensasPorRa[raKey] || []).some(
               (d) => dataIso >= d.dataInicio && dataIso <= d.dataFim
@@ -943,10 +1017,38 @@ export default function PresencaDiariaIA() {
         }
 
         const stEfetivo = resolverStatusDia(raKey, dataIso, reg);
-        if (stEfetivo === 'falta') seq++;
+        if (stEfetivo === 'falta') seqFalta++;
         else break;
       }
-      mapaPorRa[raKey].faltasConsecutivas = seq;
+      mapaPorRa[raKey].faltasConsecutivas = seqFalta;
+
+      // 2) Atrasos seguidos
+      let seqAtraso = 0;
+      for (const dataIso of datasAtrasosJanela30dDesc) {
+        const lookupDia = sessoesPorDataLookup.get(dataIso);
+        const reg = lookupDia?.get(raKey);
+        const temDispNoDia = (integracaoCruzada.dispensasPorRa[raKey] || []).some(
+          (d) => dataIso >= d.dataInicio && dataIso <= d.dataFim
+        );
+        const temAtrasoNoDia = Boolean(integracaoCruzada.atrasosPorRaData[raKey]?.[dataIso]);
+
+        if (!reg) {
+          if (temDispNoDia) break;
+          if (temAtrasoNoDia) {
+            seqAtraso++;
+            continue;
+          }
+          if (dataIso === dataSelecionada) {
+            continue;
+          }
+          break;
+        }
+
+        const stEfetivo = resolverStatusDia(raKey, dataIso, reg);
+        if (stEfetivo === 'atrasado') seqAtraso++;
+        else break;
+      }
+      mapaPorRa[raKey].atrasosConsecutivos = seqAtraso;
     });
 
     let diaSemanaMaisCritico = 'Sem dados';
@@ -960,6 +1062,8 @@ export default function PresencaDiariaIA() {
     });
 
     const alertasConsecutivos = Object.values(mapaPorRa).filter((v) => v.faltasConsecutivas >= 2).length;
+    const alertasAtrasosConsecutivos = Object.values(mapaPorRa).filter((v) => v.atrasosConsecutivos >= 2).length;
+    const alertasAtrasos3Mais = Object.values(mapaPorRa).filter((v) => v.atrasosConsecutivos >= 3).length;
 
     return {
       mapaPorRa,
@@ -971,42 +1075,32 @@ export default function PresencaDiariaIA() {
         atrasosPorDiaSemana,
         faltasPorDiaSemana,
         diaSemanaMaisCritico,
-        alertasConsecutivos
+        alertasConsecutivos,
+        alertasAtrasosConsecutivos,
+        alertasAtrasos3Mais
       }
     };
-  }, [historicoChamadas, registrosPresenca, dataSelecionada, integracaoCruzada]);
+  }, [historicoChamadas, registrosPresenca, dataSelecionada, integracaoCruzada, alunosBase, ANO_LETIVO_OPERACAO]);
 
   // 12. Montagem da lista enriquecida: ordenação estrita por TURMA -> ALFABÉTICA, cruzando Dispensas + Atrasos
   // Regra de precedência: falta sempre perde para atraso ou afastamento/dispensa lançado para o mesmo estudante.
   const listaAlunosEnriquecida: AlunoPresenca[] = useMemo(() => {
-    const registrosSemZeroMap = new Map<string, RegistroPresencaItem>();
+    const registrosLookupMap = new Map<string, RegistroPresencaItem>();
     Object.entries(registrosPresenca).forEach(([k, v]) => {
-      const clean = normalizarRaChave(k);
-      if (clean) {
-        registrosSemZeroMap.set(clean, v);
-        registrosSemZeroMap.set(clean.replace(/^0+/, ''), v);
-      }
-    });
-
-    const histSemZeroMap = new Map<string, (typeof historicoAgregado.mapaPorRa)[string]>();
-    Object.entries(historicoAgregado.mapaPorRa).forEach(([k, v]) => {
-      const clean = normalizarRaChave(k);
-      if (clean) {
-        histSemZeroMap.set(clean, v);
-        histSemZeroMap.set(clean.replace(/^0+/, ''), v);
-      }
+      const lk = normalizarRaLookup(k);
+      if (lk) registrosLookupMap.set(lk, v);
     });
 
     const lista = alunosBase.map((a) => {
       const raKey = normalizarRaChave(a.ra || a.id);
-      const raSemZeros = raKey.replace(/^0+/, '');
-      const regSalvo = registrosPresenca[raKey] || registrosSemZeroMap.get(raKey) || registrosSemZeroMap.get(raSemZeros);
+      const raLookup = normalizarRaLookup(a.ra || a.id);
+      const regSalvo = registrosPresenca[raKey] || registrosLookupMap.get(raLookup);
 
-      const dispensasDoAluno = integracaoCruzada.dispensasPorRa[raKey] || [];
+      const dispensasDoAluno = integracaoCruzada.dispensasPorRa[raLookup] || [];
       const dispensaAtiva = dispensasDoAluno.find(
         (d) => dataSelecionada >= d.dataInicio && dataSelecionada <= d.dataFim
       ) || null;
-      const atrasoOcorrencia = integracaoCruzada.atrasosDiaPorRa[raKey] || null;
+      const atrasoOcorrencia = integracaoCruzada.atrasosDiaPorRa[raLookup] || null;
 
       let statusEfetivo: StatusPresenca = 'presente';
       let origem: OrigemRegistro = 'pendente';
@@ -1045,16 +1139,18 @@ export default function PresencaDiariaIA() {
         motivoLicenca = regSalvo.motivoLicenca || (dispensaAtiva?.motivo ?? '');
       }
 
-      const hist = historicoAgregado.mapaPorRa[raKey] || histSemZeroMap.get(raSemZeros) || {
+      const hist = historicoAgregado.mapaPorRa[raLookup] || {
         faltasDiario: 0,
         licencasDiario: 0,
         datasLicencaRegistradas: new Set<string>(),
         atrasosDiario: 0,
         datasAtrasoRegistradas: new Set<string>(),
-        faltasConsecutivas: 0
+        datasAtrasoReais: new Set<string>(),
+        faltasConsecutivas: 0,
+        atrasosConsecutivos: 0
       };
 
-      const diasDispensaSet = integracaoCruzada.diasDispensaLetivosPorRa[raKey] || new Set<string>();
+      const diasDispensaSet = integracaoCruzada.diasDispensaLetivosPorRa[raLookup] || new Set<string>();
       let dispensasExtrasNaoDuplicadas = 0;
       diasDispensaSet.forEach((ymd) => {
         const ehHojeDispensaAuto = ymd === dataSelecionada && statusEfetivo === 'licenca' && !regSalvo;
@@ -1070,9 +1166,9 @@ export default function PresencaDiariaIA() {
       const licencasBase = Number(
         a.licencas_afastamentos || a.atestados_dias || (a.justificativas ? a.justificativas.length : 0)
       );
-      const ajusteExtraLicenca = Number(licencasAjuste[raKey] || 0);
+      const ajusteExtraLicenca = Number(licencasAjuste[raKey] ?? licencasAjuste[raLookup] ?? 0);
       const atrasosBase = Number(a.atrasos || a.total_atrasos || 0);
-      const atrasosOcorrTotal = integracaoCruzada.atrasosCountOcorrenciasPorRa[raKey] || 0;
+      const atrasosOcorrTotal = integracaoCruzada.atrasosCountOcorrenciasPorRa[raLookup] || 0;
 
       const faltasTotais = faltasBase + hist.faltasDiario + hist.licencasDiario + hojeAutoLicenca;
       const licencasAfastamentos = Math.max(
@@ -1081,7 +1177,13 @@ export default function PresencaDiariaIA() {
       );
       const faltasEfetivas = Math.max(0, faltasTotais - licencasAfastamentos);
 
-      const atrasosAcumulados = Math.max(atrasosBase + hist.atrasosDiario + hojeAutoAtraso, atrasosOcorrTotal);
+      const hojeRealAtrasoExtra = statusEfetivo === 'atrasado' && !hist.datasAtrasoReais.has(dataSelecionada) ? 1 : 0;
+      const atrasosAcumulados = atrasosBase + hist.datasAtrasoReais.size + hojeRealAtrasoExtra;
+      const atrasosBrutos = Math.max(
+        atrasosAcumulados,
+        atrasosBase + hist.atrasosDiario + hojeAutoAtraso,
+        atrasosBase + atrasosOcorrTotal
+      );
 
       const tutor = String(a.tutor_2027 || a.tutor || a.tutor_2026 || 'Não atribuído').trim();
 
@@ -1104,6 +1206,8 @@ export default function PresencaDiariaIA() {
         licencasAfastamentos,
         faltasEfetivas,
         atrasosAcumulados,
+        atrasosBrutos,
+        atrasosConsecutivos: hist.atrasosConsecutivos,
         faltasConsecutivas: hist.faltasConsecutivas
       };
     });
@@ -1179,6 +1283,14 @@ export default function PresencaDiariaIA() {
       }
       if (filtroStatus === 'PENDENTE') {
         if (a.verificado) return false;
+      } else if (filtroStatus === 'ATRASO_CONSECUTIVO_3') {
+        if (a.atrasosConsecutivos < 3) return false;
+      } else if (filtroStatus === 'ATRASO_CONSECUTIVO_2') {
+        if (a.atrasosConsecutivos < 2) return false;
+      } else if (filtroStatus === 'FALTA_CONSECUTIVA_3') {
+        if (a.faltasConsecutivas < 3) return false;
+      } else if (filtroStatus === 'FALTA_CONSECUTIVA_2') {
+        if (a.faltasConsecutivas < 2) return false;
       } else if (filtroStatus !== 'TODOS' && a.status !== filtroStatus) {
         return false;
       }
@@ -1226,6 +1338,9 @@ export default function PresencaDiariaIA() {
     let somaFaltasTotais = 0;
     let somaLicencas = 0;
     let somaFaltasEfetivas = 0;
+    let faltas3Seguidos = 0;
+    let atrasos3Seguidos = 0;
+    let atrasos2Seguidos = 0;
 
     base.forEach((a) => {
       if (a.status === 'presente') presentes++;
@@ -1236,6 +1351,9 @@ export default function PresencaDiariaIA() {
       somaFaltasTotais += a.faltasTotais;
       somaLicencas += a.licencasAfastamentos;
       somaFaltasEfetivas += a.faltasEfetivas;
+      if (a.faltasConsecutivas >= 3) faltas3Seguidos++;
+      if (a.atrasosConsecutivos >= 3) atrasos3Seguidos++;
+      if (a.atrasosConsecutivos >= 2) atrasos2Seguidos++;
     });
 
     const taxaPresenca = total > 0 ? (((presentes + atrasados) / total) * 100).toFixed(1) : '100.0';
@@ -1249,7 +1367,10 @@ export default function PresencaDiariaIA() {
       taxaPresenca,
       somaFaltasTotais,
       somaLicencas,
-      somaFaltasEfetivas
+      somaFaltasEfetivas,
+      faltas3Seguidos,
+      atrasos3Seguidos,
+      atrasos2Seguidos
     };
   }, [alunosNoSegmento, turmaSelecionada]);
 
@@ -1576,6 +1697,27 @@ export default function PresencaDiariaIA() {
     [alunosBase]
   );
 
+  const gerarMensagemIndividualWhatsApp = (aluno: AlunoPresenca): string => {
+    if (aluno.atrasosConsecutivos >= 3) {
+      const infoHoje =
+        aluno.status === 'atrasado' && aluno.horarioAtraso ? ` (hoje às ${aluno.horarioAtraso})` : '';
+      return `Olá! Sou da coordenação da EE Prof. Clóvis de Lucca. Notamos que o(a) estudante ${aluno.nome} (${aluno.turma}) completou ${aluno.atrasosConsecutivos} dias seguidos chegando atrasado(a)${infoHoje}, somando ${aluno.atrasosAcumulados} atrasos reais no período. Aconteceu alguma coisa? Gostaria de conversar para entendermos como podemos ajudar.`;
+    }
+    if (aluno.atrasosConsecutivos === 2) {
+      const infoHoje =
+        aluno.status === 'atrasado' && aluno.horarioAtraso ? ` (hoje às ${aluno.horarioAtraso})` : '';
+      return `Olá! Sou da coordenação da EE Prof. Clóvis de Lucca. Registramos que o(a) estudante ${aluno.nome} (${aluno.turma}) chegou atrasado(a) por 2 dias seguidos${infoHoje} (${aluno.atrasosAcumulados} atrasos reais no período). Está tudo bem? Pedimos atenção ao horário de entrada para não prejudicar a rotina escolar.`;
+    }
+    if (aluno.faltasConsecutivas >= 3) {
+      return `Olá! Sou da coordenação da EE Prof. Clóvis de Lucca. Notamos que o(a) estudante ${aluno.nome} (${aluno.turma}) completou ${aluno.faltasConsecutivas} dias seguidos de ausência sem justificativa (${aluno.faltasEfetivas} faltas efetivas). Aconteceu alguma coisa? Por favor, nos dê um retorno ou informe se há atestado médico.`;
+    }
+    if (aluno.status === 'atrasado') {
+      const horaTxt = aluno.horarioAtraso ? ` às ${aluno.horarioAtraso}` : '';
+      return `Olá! Sou da coordenação da EE Prof. Clóvis de Lucca. Registramos a entrada com atraso do(a) estudante ${aluno.nome} (${aluno.turma}) hoje${horaTxt} (${aluno.atrasosAcumulados} atraso(s) real(is) no período). Por favor, confirme o recebimento.`;
+    }
+    return `Olá! Sou da coordenação da EE Prof. Clóvis de Lucca. Registramos a ausência do(a) estudante ${aluno.nome} (${aluno.turma}) hoje (${aluno.faltasEfetivas} falta(s) efetiva(s)). Aconteceu alguma coisa? Por favor, confirme o recebimento ou informe se há justificativa médica.`;
+  };
+
   // Mensagem para os pais com IA + LGPD
   const handleGerarMensagemWhatsapp = async (tomOverride?: 'acolhedor' | 'padrao' | 'urgente') => {
     const tomAtivo = tomOverride || tomComunicado;
@@ -1586,6 +1728,7 @@ export default function PresencaDiariaIA() {
     const faltososPorTurma: Record<string, string[]> = {};
     const atrasadosPorTurma: Record<string, string[]> = {};
     const faltasConsecutivasAlerta: { turma: string; dias: number }[] = [];
+    const atrasosConsecutivosAlerta: { turma: string; dias: number }[] = [];
 
     const escopoComunicado =
       turmaSelecionada !== 'TODAS'
@@ -1608,6 +1751,9 @@ export default function PresencaDiariaIA() {
         atrasadosPorTurma[t] = atrasadosPorTurma[t] || [];
         const hr = a.horarioAtraso ? ` (${a.horarioAtraso})` : '';
         atrasadosPorTurma[t].push(`${formatarNomeLgpd(a.nome, t)}${hr}`);
+        if (a.atrasosConsecutivos >= 2) {
+          atrasosConsecutivosAlerta.push({ turma: t, dias: a.atrasosConsecutivos });
+        }
       }
     });
 
@@ -1647,8 +1793,11 @@ export default function PresencaDiariaIA() {
         msg += `• Dispensas / Afastamentos Justificados: ${estatisticas.licencas}\n`;
       }
       msg += `\n⚠️ *ORIENTAÇÃO AOS PAIS E RESPONSÁVEIS:*\n`;
-      msg += `A frequência e pontualidade diárias no Programa Ensino Integral (PEI) são fundamentais para o aproveitamento pedagógico. Caso haja justificativa médica para a ausência, favor encaminhar o atestado à Secretaria Escolar.\n\n`;
-      msg += `Atenciosamente,\n*Equipe Gestora & Coordenação Pedagógica*\nEE Prof. Clóvis de Lucca`;
+      msg += `A frequência e pontualidade diárias no Programa Ensino Integral (PEI) são fundamentais para o aproveitamento pedagógico. Caso haja justificativa médica para a ausência, favor encaminhar o atestado à Secretaria Escolar.`;
+      if (atrasosConsecutivosAlerta.length > 0) {
+        msg += ` Em situações de atrasos em dias seguidos, pedimos que entrem em contato com a coordenação caso tenha acontecido algum imprevisto, para que possamos acolher e apoiar o estudante.`;
+      }
+      msg += `\n\nAtenciosamente,\n*Equipe Gestora & Coordenação Pedagógica*\nEE Prof. Clóvis de Lucca`;
       return msg;
     };
 
@@ -1664,6 +1813,7 @@ export default function PresencaDiariaIA() {
           faltososPorTurma,
           atrasadosPorTurma,
           faltasConsecutivasAlerta,
+          atrasosConsecutivosAlerta,
           tomComunicado: tomAtivo
         })
       });
@@ -1703,8 +1853,18 @@ export default function PresencaDiariaIA() {
 
     const amostraPriorizada = [...baseAnalise]
       .sort((a, b) => {
-        const pesoA = (a.status === 'falta' ? 40 : a.status === 'atrasado' ? 25 : 0) + a.faltasConsecutivas * 20 + a.faltasEfetivas + a.atrasosAcumulados * 3;
-        const pesoB = (b.status === 'falta' ? 40 : b.status === 'atrasado' ? 25 : 0) + b.faltasConsecutivas * 20 + b.faltasEfetivas + b.atrasosAcumulados * 3;
+        const pesoA =
+          (a.status === 'falta' ? 40 : a.status === 'atrasado' ? 25 : 0) +
+          a.faltasConsecutivas * 20 +
+          a.atrasosConsecutivos * 15 +
+          a.faltasEfetivas +
+          a.atrasosAcumulados * 3;
+        const pesoB =
+          (b.status === 'falta' ? 40 : b.status === 'atrasado' ? 25 : 0) +
+          b.faltasConsecutivas * 20 +
+          b.atrasosConsecutivos * 15 +
+          b.faltasEfetivas +
+          b.atrasosAcumulados * 3;
         return pesoB - pesoA;
       })
       .slice(0, 80);
@@ -1727,13 +1887,13 @@ export default function PresencaDiariaIA() {
       if (resJson.data) setAnaliseIaDados(resJson.data);
     } catch {
       setAnaliseIaDados({
-        diagnosticoGeral: `Diagnóstico de Frequência ${ANO_LETIVO_OPERACAO} para ${escopoAnalise} em ${formatarDataBr(dataSelecionada)}: Taxa de presença em ${estatisticas.taxaPresenca}% (${historicoAgregado.resumo.diasRegistrados} dia(s) apurado(s)). A 3ª métrica isolou ${estatisticas.somaFaltasEfetivas} faltas efetivas reais após descontar dispensas e licenças.`,
+        diagnosticoGeral: `Diagnóstico de Frequência ${ANO_LETIVO_OPERACAO} para ${escopoAnalise} em ${formatarDataBr(dataSelecionada)}: Taxa de presença em ${estatisticas.taxaPresenca}% (${historicoAgregado.resumo.diasRegistrados} dia(s) apurado(s)). A 3ª métrica isolou ${estatisticas.somaFaltasEfetivas} faltas efetivas reais após descontar dispensas e licenças${estatisticas.atrasos3Seguidos > 0 ? `, com ${estatisticas.atrasos3Seguidos} estudante(s) em sequência de 3+ atrasos seguidos` : ''}.`,
         padroesDetectados: [
           {
             titulo: 'Pontualidade na 1ª Aula (07:00)',
-            descricao: `Atrasos concentrados na entrada matinal. Dia mais crítico observado: ${historicoAgregado.resumo.diaSemanaMaisCritico}.`,
+            descricao: `Atrasos concentrados na entrada matinal. Dia mais crítico observado: ${historicoAgregado.resumo.diaSemanaMaisCritico}.${estatisticas.atrasos3Seguidos > 0 ? ` Há ${estatisticas.atrasos3Seguidos} estudante(s) com 3 ou mais atrasos consecutivos demandando contato preventivo.` : ''}`,
             grau: 'ALTO',
-            alunosImpactados: estatisticas.atrasados || 1
+            alunosImpactados: Math.max(estatisticas.atrasados || 0, estatisticas.atrasos3Seguidos || 0) || 1
           },
           {
             titulo: 'Expurgo Automático de Dispensas Legais',
@@ -1747,18 +1907,18 @@ export default function PresencaDiariaIA() {
           totalFaltasBrutas: estatisticas.somaFaltasTotais,
           totalLicencasAfastamentos: estatisticas.somaLicencas,
           totalFaltasEfetivas: estatisticas.somaFaltasEfetivas,
-          conclusaoPedagogica: 'Priorizar Busca Ativa e Tutoria nos estudantes com maior saldo de faltas efetivas reais.'
+          conclusaoPedagogica: 'Priorizar Busca Ativa e Tutoria nos estudantes com maior saldo de faltas efetivas reais e sequências de atrasos.'
         },
         projecaoRisco2027: amostraPriorizada
-          .filter((a) => a.status === 'falta' || a.atrasosAcumulados >= 3 || a.faltasEfetivas >= 8)
+          .filter((a) => a.status === 'falta' || a.atrasosConsecutivos >= 2 || a.atrasosAcumulados >= 3 || a.faltasEfetivas >= 8)
           .slice(0, 6)
           .map((a) => ({
             ra: a.ra,
             nome: a.nome,
             turma: a.turma,
-            nivelRisco: a.faltasEfetivas >= 12 ? 'CRÍTICO' : 'ATENÇÃO',
-            motivo: `${a.faltasEfetivas} faltas efetivas e ${a.atrasosAcumulados} atrasos acumulados.`,
-            acaoTutoria2027: 'Pactuar meta de assiduidade e pontualidade com Tutor PEI e responsáveis.'
+            nivelRisco: a.faltasEfetivas >= 12 || a.faltasConsecutivas >= 3 || a.atrasosConsecutivos >= 3 ? 'CRÍTICO' : 'ATENÇÃO',
+            motivo: `${a.faltasEfetivas} faltas efetivas (${a.faltasConsecutivas}d seguidas) e ${a.atrasosAcumulados} atrasos reais (${a.atrasosConsecutivos}d seguidos).`,
+            acaoTutoria2027: 'Pactuar meta de assiduidade e pontualidade com Tutor PEI e conversar com responsáveis.'
           })),
         acoesImediatas: [
           {
@@ -2002,6 +2162,37 @@ export default function PresencaDiariaIA() {
               <span>Presentes: {estatisticas.presentes}</span>
               <span className="text-amber-700 font-semibold">Atrasos: {estatisticas.atrasados}</span>
             </div>
+            {(estatisticas.atrasos3Seguidos > 0 || estatisticas.atrasos2Seguidos > 0) && (
+              <div className="mt-1.5 pt-1.5 border-t border-slate-100 text-[11px] tabular-nums">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFiltroStatus((prev) =>
+                      prev === 'ATRASO_CONSECUTIVO_3' || prev === 'ATRASO_CONSECUTIVO_2'
+                        ? 'TODOS'
+                        : estatisticas.atrasos3Seguidos > 0
+                        ? 'ATRASO_CONSECUTIVO_3'
+                        : 'ATRASO_CONSECUTIVO_2'
+                    )
+                  }
+                  className={`font-semibold transition cursor-pointer flex items-center gap-1 ${
+                    filtroStatus === 'ATRASO_CONSECUTIVO_3' || filtroStatus === 'ATRASO_CONSECUTIVO_2'
+                      ? 'text-rose-700 underline'
+                      : estatisticas.atrasos3Seguidos > 0
+                      ? 'text-rose-700 hover:text-rose-900'
+                      : 'text-amber-700 hover:text-amber-900'
+                  }`}
+                  title="Filtrar estudantes com atrasos em dias seguidos"
+                >
+                  <i className="fa-solid fa-clock-rotate-left text-[10px]"></i>
+                  <span>
+                    {estatisticas.atrasos3Seguidos > 0
+                      ? `${estatisticas.atrasos3Seguidos} com 3+ atrasos seguidos`
+                      : `${estatisticas.atrasos2Seguidos} com 2+ atrasos seguidos`}
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -2056,6 +2247,27 @@ export default function PresencaDiariaIA() {
             <p className="text-[11px] text-slate-500 mt-2 leading-snug">
               Desconsidera licenças para orientar Busca Ativa e Tutoria.
             </p>
+            {estatisticas.faltas3Seguidos > 0 && (
+              <div className="mt-1.5 pt-1.5 border-t border-rose-100 text-[11px] tabular-nums">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFiltroStatus((prev) =>
+                      prev === 'FALTA_CONSECUTIVA_3' ? 'TODOS' : 'FALTA_CONSECUTIVA_3'
+                    )
+                  }
+                  className={`font-semibold transition cursor-pointer flex items-center gap-1 ${
+                    filtroStatus === 'FALTA_CONSECUTIVA_3'
+                      ? 'text-rose-800 underline'
+                      : 'text-rose-700 hover:text-rose-900'
+                  }`}
+                  title="Filtrar estudantes com 3 ou mais faltas seguidas"
+                >
+                  <i className="fa-solid fa-user-clock text-[10px]"></i>
+                  <span>{estatisticas.faltas3Seguidos} com 3+ faltas seguidas</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -2231,6 +2443,10 @@ export default function PresencaDiariaIA() {
               <option value="atrasado">Atrasados</option>
               <option value="falta">Faltosos Injustificados</option>
               <option value="licenca">Dispensas / Licenças</option>
+              <option value="ATRASO_CONSECUTIVO_3">3+ Atrasos Seguidos ({estatisticas.atrasos3Seguidos})</option>
+              <option value="ATRASO_CONSECUTIVO_2">2+ Atrasos Seguidos ({estatisticas.atrasos2Seguidos})</option>
+              <option value="FALTA_CONSECUTIVA_3">3+ Faltas Seguidas ({estatisticas.faltas3Seguidos})</option>
+              <option value="FALTA_CONSECUTIVA_2">2+ Faltas Seguidas</option>
             </select>
           </div>
         </div>
@@ -2337,7 +2553,7 @@ export default function PresencaDiariaIA() {
                       {grupo.alunos.map((aluno, idx) => {
                         const isCritico = aluno.faltasEfetivas >= 15;
                         const isAlerta = aluno.faltasEfetivas >= 8 && aluno.faltasEfetivas < 15;
-                        const msgIndividual = `Olá! Sou da coordenação da EE Prof. Clóvis de Lucca. Registramos a ausência/atraso do(a) estudante ${aluno.nome} (${aluno.turma}) hoje. Por favor, confirme o recebimento ou informe se há justificativa médica.`;
+                        const msgIndividual = gerarMensagemIndividualWhatsApp(aluno);
                         const encoded = encodeURIComponent(msgIndividual);
                         const foneLimpo = String(aluno.telefone || '').replace(/\D/g, '');
                         const waHref = foneLimpo
@@ -2529,12 +2745,37 @@ export default function PresencaDiariaIA() {
                                 >
                                   {aluno.faltasEfetivas}
                                 </span>
+                                {aluno.faltasConsecutivas >= 2 && (
+                                  <span
+                                    className={`block text-[10px] font-semibold ${
+                                      aluno.faltasConsecutivas >= 3 ? 'text-rose-700' : 'text-amber-700'
+                                    }`}
+                                  >
+                                    {aluno.faltasConsecutivas}d seguidos
+                                  </span>
+                                )}
                               </div>
                               <div>
-                                <span className="text-slate-400 block">Atrasos</span>
-                                <span className={aluno.atrasosAcumulados > 0 ? 'font-semibold text-amber-700' : 'text-slate-400'}>
+                                <span className="text-slate-400 block">Atrasos Reais</span>
+                                <span
+                                  className={aluno.atrasosAcumulados > 0 ? 'font-semibold text-amber-700' : 'text-slate-400'}
+                                  title={
+                                    aluno.atrasosBrutos > aluno.atrasosAcumulados
+                                      ? `${aluno.atrasosAcumulados} dia(s) letivo(s) distinto(s) (${aluno.atrasosBrutos} registros brutos)`
+                                      : `${aluno.atrasosAcumulados} dia(s) com atraso`
+                                  }
+                                >
                                   {aluno.atrasosAcumulados}x
                                 </span>
+                                {aluno.atrasosConsecutivos >= 2 && (
+                                  <span
+                                    className={`block text-[10px] font-semibold ${
+                                      aluno.atrasosConsecutivos >= 3 ? 'text-rose-700' : 'text-amber-700'
+                                    }`}
+                                  >
+                                    {aluno.atrasosConsecutivos}d seguidos
+                                  </span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -2556,7 +2797,7 @@ export default function PresencaDiariaIA() {
                             <th className="py-2.5 px-3 text-center bg-rose-50/60 text-rose-800 border-x border-rose-100">
                               3ª Faltas Efetivas
                             </th>
-                            <th className="py-2.5 px-3 text-center">Atrasos</th>
+                            <th className="py-2.5 px-3 text-center">Atrasos Reais</th>
                             <th className="py-2.5 px-3 text-center">Ações</th>
                           </tr>
                         </thead>
@@ -2765,22 +3006,42 @@ export default function PresencaDiariaIA() {
                                     {aluno.faltasEfetivas}
                                   </span>
                                   {aluno.faltasConsecutivas >= 2 && (
-                                    <div className="text-[10px] font-semibold text-rose-700">
+                                    <div
+                                      className={`text-[10px] font-semibold ${
+                                        aluno.faltasConsecutivas >= 3 ? 'text-rose-700' : 'text-amber-700'
+                                      }`}
+                                    >
                                       {aluno.faltasConsecutivas}d seguidos
                                     </div>
                                   )}
                                 </td>
 
-                                <td className="py-2.5 px-3 text-center font-semibold tabular-nums">
+                                <td
+                                  className="py-2.5 px-3 text-center font-semibold tabular-nums"
+                                  title={
+                                    aluno.atrasosBrutos > aluno.atrasosAcumulados
+                                      ? `${aluno.atrasosAcumulados} dia(s) letivo(s) distinto(s) (${aluno.atrasosBrutos} registros brutos na base)`
+                                      : `${aluno.atrasosAcumulados} dia(s) com atraso`
+                                  }
+                                >
                                   <span className={aluno.atrasosAcumulados > 0 ? 'text-amber-700' : 'text-slate-400'}>
                                     {aluno.atrasosAcumulados}x
                                   </span>
+                                  {aluno.atrasosConsecutivos >= 2 && (
+                                    <div
+                                      className={`text-[10px] font-semibold ${
+                                        aluno.atrasosConsecutivos >= 3 ? 'text-rose-700' : 'text-amber-700'
+                                      }`}
+                                    >
+                                      {aluno.atrasosConsecutivos}d seguidos
+                                    </div>
+                                  )}
                                 </td>
 
                                 <td className="py-2.5 px-3 text-center">
                                   <div className="flex items-center justify-center gap-1">
                                     {(() => {
-                                      const msgIndividual = `Olá! Sou da coordenação da EE Prof. Clóvis de Lucca. Registramos a ausência/atraso do(a) estudante ${aluno.nome} (${aluno.turma}) hoje. Por favor, confirme o recebimento ou informe se há justificativa médica.`;
+                                      const msgIndividual = gerarMensagemIndividualWhatsApp(aluno);
                                       const encoded = encodeURIComponent(msgIndividual);
                                       const foneLimpo = String(aluno.telefone || '').replace(/\D/g, '');
                                       const waHref = foneLimpo
@@ -2792,7 +3053,11 @@ export default function PresencaDiariaIA() {
                                           target="_blank"
                                           rel="noopener noreferrer"
                                           className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg transition cursor-pointer inline-flex items-center justify-center"
-                                          title="Enviar WhatsApp para o responsável"
+                                          title={
+                                            aluno.atrasosConsecutivos >= 3 || aluno.faltasConsecutivas >= 3
+                                              ? 'Enviar WhatsApp de acolhimento (3+ dias seguidos)'
+                                              : 'Enviar WhatsApp para o responsável'
+                                          }
                                         >
                                           <i className="fa-brands fa-whatsapp text-sm"></i>
                                         </a>

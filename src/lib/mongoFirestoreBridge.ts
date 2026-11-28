@@ -49,8 +49,24 @@ const listeners = new Map<string, Set<(snapshot: any) => void>>();
 const docListeners = new Map<string, Set<(snapshot: any) => void>>();
 const notifyDebounceTimers = new Map<string, any>();
 
+// Deduplicação em voo + cache curto (15s) para evitar rajadas duplicadas na inicialização
+const inFlightGetDocs = new Map<string, Promise<MongoQuerySnapshot<any>>>();
+const shortGetDocsCache = new Map<string, { snap: MongoQuerySnapshot<any>; ts: number }>();
+const SHORT_CACHE_TTL_MS = 15_000;
+
+function invalidateClientCollectionCache(collectionName: string) {
+  if (!collectionName) return;
+  const prefix = `/api/db/${encodeURIComponent(collectionName)}`;
+  for (const key of Array.from(shortGetDocsCache.keys())) {
+    if (key === prefix || key.startsWith(`${prefix}?`)) {
+      shortGetDocsCache.delete(key);
+    }
+  }
+}
+
 export function notifyCollectionChanged(collectionName: string, docId?: string) {
   if (!collectionName) return;
+  invalidateClientCollectionCache(collectionName);
 
   if (docId) {
     const docKey = `${collectionName}/${docId}`;
@@ -166,13 +182,24 @@ export async function getDocs<T = any>(queryOrCol: MongoCollectionRef | MongoQue
   const queryString = queryParams.toString();
   const url = `/api/db/${encodeURIComponent(colName)}${queryString ? `?${queryString}` : ''}`;
 
-  try {
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} ao consultar ${colName}`);
-    }
-    const dataList = await res.json();
-    const array = Array.isArray(dataList) ? dataList : [];
+  const cachedShort = shortGetDocsCache.get(url);
+  if (cachedShort && (Date.now() - cachedShort.ts < SHORT_CACHE_TTL_MS)) {
+    return cachedShort.snap as MongoQuerySnapshot<T>;
+  }
+
+  const existingPromise = inFlightGetDocs.get(url);
+  if (existingPromise) {
+    return existingPromise as Promise<MongoQuerySnapshot<T>>;
+  }
+
+  const execFetch = (async (): Promise<MongoQuerySnapshot<T>> => {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} ao consultar ${colName}`);
+      }
+      const dataList = await res.json();
+      const array = Array.isArray(dataList) ? dataList : [];
 
     // Persiste no cache local do navegador para resiliência instantânea
     try {
@@ -252,12 +279,14 @@ export async function getDocs<T = any>(queryOrCol: MongoCollectionRef | MongoQue
       };
     });
 
-    return {
+    const snapshot: MongoQuerySnapshot<T> = {
       docs,
       size: docs.length,
       empty: docs.length === 0,
       forEach: (cb) => docs.forEach(cb)
     };
+    shortGetDocsCache.set(url, { snap: snapshot, ts: Date.now() });
+    return snapshot;
   } catch (err: any) {
     console.warn(`[MongoDB Atlas] Aviso ao consultar '${colName}':`, err.message);
     let cachedArray: any[] = [];
@@ -332,6 +361,14 @@ export async function getDocs<T = any>(queryOrCol: MongoCollectionRef | MongoQue
       empty: docs.length === 0,
       forEach: (cb) => docs.forEach(cb)
     };
+  }
+  })();
+
+  inFlightGetDocs.set(url, execFetch);
+  try {
+    return await execFetch;
+  } finally {
+    inFlightGetDocs.delete(url);
   }
 }
 

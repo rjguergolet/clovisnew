@@ -30,8 +30,8 @@ export async function getDatabase(): Promise<Db> {
         client = new MongoClient(uri, {
           serverSelectionTimeoutMS: 8000,
           connectTimeoutMS: 10000,
-          maxPoolSize: 10,
-          minPoolSize: 1,
+          maxPoolSize: 20,
+          minPoolSize: 2,
           retryWrites: true,
           w: 'majority'
         });
@@ -40,6 +40,7 @@ export async function getDatabase(): Promise<Db> {
       await client.connect();
       console.log(`[MongoDB Atlas] Conexão ativa com sucesso ao banco '${dbName}'!`);
       dbInstance = client.db(dbName);
+      ensurePerformanceIndexes(dbInstance).catch(() => {});
       return dbInstance;
     } catch (err: any) {
       connectionPromise = null;
@@ -50,6 +51,22 @@ export async function getDatabase(): Promise<Db> {
   })();
 
   return connectionPromise;
+}
+
+let indexesEnsured = false;
+async function ensurePerformanceIndexes(db: Db): Promise<void> {
+  if (indexesEnsured) return;
+  indexesEnsured = true;
+  try {
+    const oc = db.collection('ocorrencias');
+    await Promise.allSettled([
+      oc.createIndex({ criadoEm: -1 }, { background: true }),
+      oc.createIndex({ data: -1 }, { background: true }),
+      oc.createIndex({ notificarDirecao: 1, notificacaoAtendida: 1 }, { background: true }),
+      oc.createIndex({ notificarGestao: 1, notificacaoAtendida: 1 }, { background: true }),
+      oc.createIndex({ notificar_direcao: 1, notificacaoAtendida: 1 }, { background: true })
+    ]);
+  } catch (_) {}
 }
 
 /**
@@ -190,51 +207,63 @@ interface CacheEntry {
 
 const collectionCache = new Map<string, CacheEntry>();
 const pendingFetches = new Map<string, Promise<any[]>>();
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos de TTL
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutos de TTL (com write-through imediato em toda escrita)
 
 /**
- * Busca todos os alunos do MongoDB Atlas de forma ultra-otimizada
- * usando busca de IDs + chunks paralelos para contornar o gargalo de WAN
+ * Busca coleções volumosas (alunos) via _id projection + chunks paralelos
+ * para eliminar o gargalo de latência serial de cursor sobre WAN no MongoDB Atlas
  */
-async function fetchAllAlunosFromDb(): Promise<any[]> {
+async function fetchLargeCollectionChunked(realName: string, chunkSize: number, maxConcurrency = 6): Promise<any[]> {
   const db = await getDatabase();
-  const realName = 'alunos';
-
-  // 1. Obter todos os _ids com projeção mínima (leva ~600ms)
-  const idDocs = await db.collection(realName).find({}, { projection: { _id: 1 } }).toArray();
+  const idDocs = await db.collection(realName).find({}, { projection: { _id: 1 }, batchSize: 5000 }).toArray();
   if (!idDocs || idDocs.length === 0) return [];
 
-  if (idDocs.length <= 50) {
-    const rawDocs = await db.collection(realName).find({}).toArray();
+  if (idDocs.length <= chunkSize) {
+    const rawDocs = await db.collection(realName).find({}, { batchSize: 5000 }).toArray();
     return rawDocs.map(doc => formatMongoDoc(doc)!).filter(Boolean);
   }
 
-  // 2. Dividir em chunks paralelos de 75 IDs
-  const chunkSize = 75;
   const chunks: any[][] = [];
   for (let i = 0; i < idDocs.length; i += chunkSize) {
     chunks.push(idDocs.slice(i, i + chunkSize).map(d => d._id));
   }
 
-  // 3. Executar em paralelo
-  const results = await Promise.all(chunks.map(async (cIds) => {
-    const docs = await db.collection(realName).find({ _id: { $in: cIds } }).toArray();
-    return docs;
-  }));
+  const results: any[][] = new Array(chunks.length);
+  let cursor = 0;
 
-  const allRaw = results.flat();
-  return allRaw.map(doc => formatMongoDoc(doc)!).filter(Boolean);
+  const workers = Array.from({ length: Math.min(maxConcurrency, chunks.length) }, async () => {
+    while (cursor < chunks.length) {
+      const idx = cursor++;
+      const cIds = chunks[idx];
+      results[idx] = await db.collection(realName).find({ _id: { $in: cIds } }, { batchSize: chunkSize }).toArray();
+    }
+  });
+
+  await Promise.all(workers);
+  return results.flat().map(doc => formatMongoDoc(doc)!).filter(Boolean);
 }
 
 /**
- * Carrega uma coleção do banco (com estratégia especializada para alunos)
+ * Verifica se uma coleção já está aquecida em RAM
+ */
+export function isCollectionCached(collectionName: string): boolean {
+  const realName = resolveCollectionName(collectionName);
+  const entry = collectionCache.get(realName);
+  return Boolean(entry && Array.isArray(entry.docs) && entry.docs.length > 0);
+}
+
+/**
+ * Carrega uma coleção do banco com estratégia otimizada de batchSize/chunks
  */
 async function fetchCollectionFromDb(realName: string): Promise<any[]> {
   if (realName === 'alunos') {
-    return fetchAllAlunosFromDb();
+    return fetchLargeCollectionChunked('alunos', 150, 5);
+  }
+  if (realName === 'ocorrencias') {
+    return fetchLargeCollectionChunked('ocorrencias', 500, 6);
   }
   const db = await getDatabase();
-  const rawDocs = await db.collection(realName).find({}).toArray();
+  const rawDocs = await db.collection(realName).find({}, { batchSize: 5000 }).toArray();
   return rawDocs.map(doc => formatMongoDoc(doc)!).filter(Boolean);
 }
 
@@ -312,21 +341,37 @@ export function invalidateCollectionCache(collectionName: string) {
 }
 
 /**
- * Pré-carrega coleções críticas no boot do servidor para que a primeira requisição do usuário seja imediata
+ * Pré-carrega coleções críticas em paralelo no boot do servidor para resposta imediata na Tela Inicial
  */
 export async function prewarmCache(): Promise<void> {
-  const collectionsToWarm = [
+  const fastCollections = [
     'usuarios',
     'agenda_eventos',
     'mural_recados_memoria',
-    'alunos'
+    'tarefas_equipe',
+    'clovis_horarios_cache',
+    'substituicoes_diarias',
+    'frequencia_diaria',
+    'notificacoes_tutor'
   ];
 
-  console.log('[MongoDB Prewarm] Pré-aquecendo cache essencial (otimizado para Render 512MB RAM)...');
-  for (const col of collectionsToWarm) {
+  console.log('[MongoDB Prewarm] Pré-aquecendo coleções essenciais em paralelo...');
+  await Promise.allSettled(
+    fastCollections.map(async (col) => {
+      try {
+        const docs = await getDocs(col);
+        console.log(`[MongoDB Prewarm] '${col}': ${docs.length} registros em RAM.`);
+      } catch (err: any) {
+        console.warn(`[MongoDB Prewarm] Aviso ao carregar '${col}':`, err?.message || err);
+      }
+    })
+  );
+
+  // Em seguida, aquece coleções volumosas (alunos e ocorrencias) de forma escalonada para não saturar IOPS no Atlas
+  for (const col of ['alunos', 'ocorrencias']) {
     try {
       const docs = await getDocs(col);
-      console.log(`[MongoDB Prewarm] Coleção '${col}' carregada: ${docs.length} registros em RAM.`);
+      console.log(`[MongoDB Prewarm] '${col}': ${docs.length} registros em RAM.`);
     } catch (err: any) {
       console.warn(`[MongoDB Prewarm] Aviso ao carregar '${col}':`, err?.message || err);
     }

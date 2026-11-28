@@ -19341,7 +19341,31 @@ Yasmin Seline`;
           const cleanTarget = String(ra || "").replace(/\D/g, "").substring(0, 12);
           aluno = (window.allStudentsData || []).find(s => String(s.ra || "").replace(/\D/g, "").substring(0, 12) === cleanTarget);
         }
-        if (!aluno) return;
+        if (!aluno || aluno._isResumo) {
+          // Busca rápida sob demanda de um único estudante (~20ms) sem precisar baixar todos os 755 antes
+          if (ra && !window.__buscandoFichaRa) {
+            window.__buscandoFichaRa = String(ra);
+            fetch(`/api/db/alunos/${encodeURIComponent(String(ra))}`)
+              .then(r => (r.ok ? r.json() : null))
+              .then(docFull => {
+                window.__buscandoFichaRa = null;
+                if (!docFull) return;
+                if (!docFull.ra) docFull.ra = String(ra);
+                if (!docFull.id) docFull.id = String(docFull.ra);
+                docFull.docId = docFull.id;
+                docFull._isResumo = false;
+                if (!Array.isArray(window.allStudentsData)) window.allStudentsData = [];
+                const idxExist = window.allStudentsData.findIndex(s => String(s.ra || s.id) === String(docFull.ra));
+                if (idxExist >= 0) window.allStudentsData[idxExist] = docFull;
+                else window.allStudentsData.push(docFull);
+                window.abrirFichaAluno(docFull.ra, initialTab);
+              })
+              .catch(() => {
+                window.__buscandoFichaRa = null;
+              });
+          }
+          if (!aluno) return;
+        }
 
         document.getElementById("modal-aluno-ra-hidden").value = aluno.ra;
 
@@ -25843,22 +25867,26 @@ Yasmin Seline`;
           window.switchTab(tabDestino);
         }
 
-        if (typeof window.iniciarListenerMural === "function") {
-          window.iniciarListenerMural(false);
-        }
+        // Quando abre na Tela Inicial ("inicio"), evita disparar rajada pesada (~25MB) de coleções
+        // que competem com o bootstrap ultrarrápido da Tela Inicial. As demais abas carregam sob demanda.
+        if (tabDestino !== "inicio") {
+          if (typeof window.iniciarListenerMural === "function") {
+            window.iniciarListenerMural(false);
+          }
 
-        if (typeof window.iniciarRealtimeListeners === "function") {
-          window.iniciarRealtimeListeners();
-        }
+          if (typeof window.iniciarRealtimeListeners === "function") {
+            window.iniciarRealtimeListeners();
+          }
 
-        if (typeof window.carregarTodosAlunos === "function") {
-          window.carregarTodosAlunos(false);
-        } else if (typeof carregarDadosReais === "function") {
-          carregarDadosReais();
-        }
+          if (typeof window.carregarTodosAlunos === "function") {
+            window.carregarTodosAlunos(false);
+          } else if (typeof carregarDadosReais === "function") {
+            carregarDadosReais();
+          }
 
-        if (typeof window.carregarLogsAuditoria === "function") {
-          window.carregarLogsAuditoria();
+          if (typeof window.carregarLogsAuditoria === "function") {
+            window.carregarLogsAuditoria();
+          }
         }
 
         // Alerta Global de Segurança LGPD / ECA
@@ -29329,12 +29357,17 @@ Yasmin Seline`;
         }
       };
 
-      // Inicialização assíncrona automática em segundo plano para garantir que os 751 alunos estejam disponíveis
+      // Carregamento automático da base completa apenas se o usuário já estiver em uma aba que exige os 755 prontuários completos
       setTimeout(() => {
-        if (typeof window !== "undefined" && (!window.allStudentsData || window.allStudentsData.length < 500)) {
+        if (
+          typeof window !== "undefined" &&
+          window.currentActiveTab &&
+          window.currentActiveTab !== "inicio" &&
+          (!window.allStudentsData || window.allStudentsData.length < 500)
+        ) {
           if (typeof window.carregarTodosAlunos === "function") {
             window.carregarTodosAlunos(false).catch(() => {});
           }
         }
-      }, 350);
+      }, 600);
     
